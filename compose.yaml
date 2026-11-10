@@ -1,0 +1,33 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: aegissoc
+      POSTGRES_USER: aegis
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aegis_dev_password}
+    volumes:
+      - aegis_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aegis -d aegissoc"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    restart: unless-stopped
+    mem_limit: 1g
+
+  api:
+    build: .
+    environment:
+      APP_NAME: ${APP_NAME:-AegisSOC API}
+      APP_ENV: ${APP_ENV:-development}
+      DATABASE_URL: postgresql+psycopg://aegis:${POSTGRES_PASSWORD:-aegis_dev_password}@db:5432/aegissoc
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 1g
+
+volumes:
+  aegis_postgres_data:
