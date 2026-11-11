@@ -32,6 +32,9 @@ Event producers (manual lab input today; Wazuh adapter planned)
                          |
              query API / detection engine
              evidence-backed alert store
+                         ^
+                         |
+              analyst dashboard UI
 ```
 
 ## Requirements
@@ -58,7 +61,7 @@ Event producers (manual lab input today; Wazuh adapter planned)
 
    The API container applies pending Alembic migrations before starting Uvicorn.
 
-3. Open the API documentation at http://localhost:8000/docs. Liveness and readiness are available at /health/live and /health/ready.
+3. Open the analyst dashboard at http://localhost:8000/dashboard. API documentation is at http://localhost:8000/docs. Liveness and readiness are available at /health/live and /health/ready.
 
 4. Stop the stack with docker compose down. To delete the database volume as well (destructive), use docker compose down -v.
 
@@ -217,6 +220,6 @@ Only ingest events from systems you own or are explicitly authorized to monitor.
 2. Phase 1.2: event search filters, stable pagination, and automated test execution.
 3. Phase 1.3: normalized event contract and ingestion validation.
 4. Phase 1.4: deterministic SSH brute-force detection and evidence-backed alerts.
-5. Phase 1.5: alert lifecycle and analyst workflow.
+5. Phase 1.5: alert lifecycle, analyst workflow, and local analyst dashboard.
 6. Phase 1.6: MITRE ATT&CK references and Wazuh integration.
 7. Phase 1.7: operational security controls and deployment readiness.
