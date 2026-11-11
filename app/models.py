@@ -244,3 +244,61 @@ class ConnectorConfig(Base):
     last_error_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class IncidentCase(Base):
+    """Analyst-owned incident that groups alerts, notes, and response state."""
+
+    __tablename__ = "incident_cases"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    case_number: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="open", index=True)
+    priority: Mapped[str] = mapped_column(String(8), nullable=False, default="p2", index=True)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False, default="medium", index=True)
+    assignee: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    tags: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    created_by: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CaseAlertLink(Base):
+    """Many-to-many link between incident cases and evidence alerts."""
+
+    __tablename__ = "case_alert_links"
+    __table_args__ = (UniqueConstraint("case_id", "alert_id", name="uq_case_alert_links_case_alert"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    case_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("incident_cases.id", ondelete="CASCADE"), nullable=False, index=True)
+    alert_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("detection_alerts.id", ondelete="CASCADE"), nullable=False, index=True)
+    linked_by: Mapped[str] = mapped_column(String(64), nullable=False)
+    linked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class CaseNote(Base):
+    """Append-only analyst note attached to an incident case."""
+
+    __tablename__ = "case_notes"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    case_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("incident_cases.id", ondelete="CASCADE"), nullable=False, index=True)
+    author: Mapped[str] = mapped_column(String(64), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class DetectionRuleConfig(Base):
+    """Operator-controlled enablement and bounded tuning for a built-in detection."""
+
+    __tablename__ = "detection_rule_configs"
+
+    rule_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=true())
+    severity_override: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    threshold_override: Mapped[int | None] = mapped_column(nullable=True)
+    updated_by: Mapped[str] = mapped_column(String(64), nullable=False, default="system")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)

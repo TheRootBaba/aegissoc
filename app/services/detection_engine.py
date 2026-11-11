@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import DetectionAlert, SecurityEvent
+from app.models import DetectionAlert, DetectionRuleConfig, SecurityEvent
 
 
 SSH_BRUTE_FORCE_RULE_ID = "AUTH-SSH-001"
@@ -114,13 +114,20 @@ def _upsert_alert(
     return alert, created
 
 
-def _record_match(db, matches, *, rule_id, title, source_ip, hostname, events,
+def _record_match(db, matches, *, rule_configs, rule_id, title, source_ip, hostname, events,
                   usernames, window_minutes, severity, description, fingerprint_scope=None):
+    config = rule_configs.get(rule_id)
+    if config is not None and not config.enabled:
+        return
+    if config is not None and config.severity_override is not None:
+        severity = config.severity_override
     alert, created = _upsert_alert(
         db, rule_id=rule_id, title=title, source_ip=source_ip, hostname=hostname,
         events=events, usernames=usernames, window_minutes=window_minutes,
         severity=severity, description=description, fingerprint_scope=fingerprint_scope,
     )
+    if config is not None and config.severity_override is not None:
+        alert.severity = severity
     matches.append((alert, created))
 
 
@@ -140,6 +147,15 @@ def run_ssh_brute_force_detection(
     if not 2 <= threshold <= 100:
         raise ValueError("threshold must be between 2 and 100")
 
+    rule_configs = {
+        config.rule_id: config
+        for config in db.scalars(select(DetectionRuleConfig)).all()
+    }
+    rule_threshold = lambda rule_id: (
+        rule_configs[rule_id].threshold_override
+        if rule_id in rule_configs and rule_configs[rule_id].threshold_override is not None
+        else threshold
+    )
     run_at = _as_utc(now or datetime.now(timezone.utc))
     window_start = run_at - timedelta(minutes=window_minutes)
     relevant_types = (
@@ -179,18 +195,18 @@ def run_ssh_brute_force_detection(
 
     for (source_ip, hostname), events in ssh_groups.items():
         usernames = [event.username for event in events if event.username]
-        if len(events) >= threshold:
+        if len(events) >= rule_threshold(SSH_BRUTE_FORCE_RULE_ID):
             _record_match(
-                db, matches, rule_id=SSH_BRUTE_FORCE_RULE_ID,
+                db, matches, rule_configs=rule_configs, rule_id=SSH_BRUTE_FORCE_RULE_ID,
                 title="SSH brute-force activity detected", source_ip=source_ip,
                 hostname=hostname, events=events, usernames=usernames,
                 window_minutes=window_minutes,
-                severity="high" if len(events) >= threshold * 2 else "medium",
+                severity="high" if len(events) >= rule_threshold(SSH_BRUTE_FORCE_RULE_ID) * 2 else "medium",
                 description=f"{len(events)} SSH authentication failures from {source_ip} targeting {hostname or 'an unspecified host'} within {window_minutes} minutes.",
             )
-        if len(set(usernames)) >= threshold:
+        if len(set(usernames)) >= rule_threshold(SSH_PASSWORD_SPRAY_RULE_ID):
             _record_match(
-                db, matches, rule_id=SSH_PASSWORD_SPRAY_RULE_ID,
+                db, matches, rule_configs=rule_configs, rule_id=SSH_PASSWORD_SPRAY_RULE_ID,
                 title="SSH password-spray activity detected", source_ip=source_ip,
                 hostname=hostname, events=events, usernames=usernames,
                 window_minutes=window_minutes, severity="high",
@@ -200,7 +216,7 @@ def run_ssh_brute_force_detection(
     for (source_ip, hostname, username), events in auth_groups.items():
         failures = [event for event in events if event.event_type.lower() in AUTH_FAILURE_TYPES]
         successes = [event for event in events if event.event_type.lower() in AUTH_SUCCESS_TYPES]
-        if len(failures) < threshold or not successes:
+        if len(failures) < rule_threshold(AUTH_SUCCESS_AFTER_FAILURES_RULE_ID) or not successes:
             continue
         qualifying_successes = [
             success for success in successes
@@ -215,7 +231,7 @@ def run_ssh_brute_force_detection(
         ]
         evidence = prior_failures + [first_success]
         _record_match(
-            db, matches, rule_id=AUTH_SUCCESS_AFTER_FAILURES_RULE_ID,
+            db, matches, rule_configs=rule_configs, rule_id=AUTH_SUCCESS_AFTER_FAILURES_RULE_ID,
             title="Successful login after repeated authentication failures",
             source_ip=source_ip, hostname=hostname, events=evidence,
             usernames=[username], window_minutes=window_minutes, severity="high",
@@ -225,7 +241,7 @@ def run_ssh_brute_force_detection(
 
     for (source_ip, hostname, username), events in privilege_groups.items():
         _record_match(
-            db, matches, rule_id=PRIVILEGE_ESCALATION_RULE_ID,
+            db, matches, rule_configs=rule_configs, rule_id=PRIVILEGE_ESCALATION_RULE_ID,
             title="Privilege escalation activity detected", source_ip=source_ip,
             hostname=hostname, events=events, usernames=[username] if username else [],
             window_minutes=window_minutes, severity="high",
@@ -235,7 +251,7 @@ def run_ssh_brute_force_detection(
 
     for (source_ip, hostname, username, indicator), events in process_groups.items():
         _record_match(
-            db, matches, rule_id=SUSPICIOUS_PROCESS_RULE_ID,
+            db, matches, rule_configs=rule_configs, rule_id=SUSPICIOUS_PROCESS_RULE_ID,
             title="Suspicious process execution detected", source_ip=source_ip,
             hostname=hostname, events=events, usernames=[username] if username else [],
             window_minutes=window_minutes, severity="high",
@@ -258,9 +274,8 @@ def run_ssh_brute_force_detection(
     return {
         "rule_id": SSH_BRUTE_FORCE_RULE_ID,
         "rules_evaluated": [
-            SSH_BRUTE_FORCE_RULE_ID, SSH_PASSWORD_SPRAY_RULE_ID,
-            AUTH_SUCCESS_AFTER_FAILURES_RULE_ID, PRIVILEGE_ESCALATION_RULE_ID,
-            SUSPICIOUS_PROCESS_RULE_ID,
+            rule_id for rule_id in ATTACK_MAPPINGS
+            if rule_id not in rule_configs or rule_configs[rule_id].enabled
         ],
         "window_minutes": window_minutes, "threshold": threshold,
         "events_evaluated": len(candidates), "alerts_created": created,

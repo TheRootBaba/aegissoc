@@ -1,69 +1,81 @@
 # AegisSOC interface design system
 
-A matte, technical operations console: restrained contrast, compact data surfaces, clear hierarchy, and semantic color used only when it carries operational meaning. The design avoids ornamental gradients, glass effects, inflated cards, and decorative animation.
+**Direction:** premium security operations workstation. The interface is matte, information-dense, editorially restrained, and optimized for long analyst sessions. It borrows the clarity and precision of Vercel, Linear, and Datadog without imitating their branding.
 
 ## 1. Color palette
 
 | Token | Hex | Tailwind equivalent |
 |---|---|---|
-| Background / Base | `#0B0D10` | `bg-[#0B0D10]` |
-| Surface | `#11151A` | `bg-[#11151A]` |
-| Elevated surface | `#171D24` | `bg-[#171D24]` |
-| Border / subtle | `#242B33` | `border-[#242B33]` |
-| Border / strong | `#303943` | `border-[#303943]` |
-| Text / primary | `#E7EBEF` | `text-[#E7EBEF]` |
-| Text / secondary | `#98A2AD` | `text-[#98A2AD]` |
-| Text / disabled | `#59636E` | `text-[#59636E]` |
-| Healthy / online | `#3C9B76` | `text-[#3C9B76]` / `bg-[#3C9B76]/10` |
-| Warning / latency | `#C18A3A` | `text-[#C18A3A]` / `bg-[#C18A3A]/10` |
-| Critical / offline | `#C46B75` | `text-[#C46B75]` / `bg-[#C46B75]/10` |
-| Informational / egress | `#648DB8` | `text-[#648DB8]` / `bg-[#648DB8]/10` |
-| Hover surface | `#1A222B` | `hover:bg-[#1A222B]` |
-| Active surface | `#202A35` | `bg-[#202A35]` |
-| Focus ring | `#6B9A9A` | `ring-[#6B9A9A]` |
+| Background / Base | #090C10 | bg-[#090C10] |
+| Surface | #10151B | bg-[#10151B] |
+| Elevated surface | #161D25 | bg-[#161D25] |
+| Border / subtle | #222B35 | border-[#222B35] |
+| Border / strong | #34404D | border-[#34404D] |
+| Text / primary | #E9EDF2 | text-[#E9EDF2] |
+| Text / secondary | #A0AAB6 | text-[#A0AAB6] |
+| Text / disabled | #707C89 | text-[#707C89] |
+| Healthy / online | #4B9B7A | text-[#4B9B7A] |
+| Warning / latency | #C4934E | text-[#C4934E] |
+| Critical / offline | #C77780 | text-[#C77780] |
+| Informational / egress | #7699BB | text-[#7699BB] |
+| Hover surface | #151D26 | hover:bg-[#151D26] |
+| Active surface | #18212B | bg-[#18212B] |
+| Focus ring | #7899A4 | ring-[#7899A4] |
 
-Semantic accents are for state, severity, and telemetry classification—not large decorative fills. Pair every status color with a readable label or icon; never rely on color alone.
+Use semantic colors only for status, severity, and telemetry classification. Keep fills subtle and pair color with a label or icon.
 
 ## 2. Typography
 
-- **Primary:** Geist, with a system fallback stack: `Geist, Inter, ui-sans-serif, system-ui, sans-serif`.
-- **Monospace:** Geist Mono, then `ui-monospace, SFMono-Regular, Consolas, monospace`.
-- Use monospace exclusively for IP/MAC addresses, event IDs, hashes, timestamps when precision matters, log excerpts, code, and technical measurements. Use the primary face for navigation, labels, descriptions, and actions.
+- Primary family: Geist. Fallbacks: Inter, system UI, sans-serif.
+- Monospace family: Geist Mono. Fallbacks: SF Mono, Consolas, system monospace.
+- Reserve monospace for IP and MAC addresses, event IDs, hashes, logs, precise timestamps, query syntax, and technical measurements. UI copy and navigation always use the primary family.
 
 | Role | Size / line height | Weight |
 |---|---:|---:|
-| H1 | 32 / 40 px | 600 |
-| H2 | 22 / 30 px | 600 |
-| H3 | 16 / 24 px | 600 |
-| Body | 13 / 20 px | 400 |
-| Body emphasis | 13 / 20 px | 500 |
-| Metadata / labels | 11 / 16 px | 500 |
-| Dense table values | 12 / 18 px | 400 |
-| Technical data | 12 / 18 px | 400 |
+| H1 | 34 / 40 px | 560–600 |
+| H2 | 23 / 30 px | 560–600 |
+| H3 | 17 / 24 px | 560–600 |
+| Body | 13 / 21 px | 400 |
+| Body emphasis | 13 / 20 px | 500–560 |
+| Table values | 12 / 18 px | 400–500 |
+| Metadata | 10 / 16 px | 400–500 |
+| Technical data | 10–12 / 16–18 px | 400–500 |
+| Section labels | 9 / 14 px | 500 |
 
-UI headings use tight tracking from `-0.025em` to `-0.01em`; body copy uses `0`. Technical data uses `0` or `0.01em`, never artificial wide tracking on long IDs. Uppercase section labels may use `0.08em` at 10–11 px.
+Headings use -0.045em to -0.02em tracking. Body text uses -0.005em to 0. Technical values use 0 or 0.01em; do not widen long identifiers. Uppercase metadata may use 0.10em to 0.14em.
 
 ## 3. Layout & spacing
 
-- Use a 12-column content grid with a 24 px gutter. Main content max width is 1,600 px; center it on wide displays while keeping the sidebar fixed.
-- Use a strict 4 px spacing scale: 4, 8, 12, 16, 20, 24, 32, 40, 48, 64 px. Prefer 8 px increments for major layout rhythm.
-- Density is **breathable but data-dense**: 16–20 px card padding, 12–14 px table rows, 24 px section gaps, and 8–12 px control gaps. Avoid oversized empty hero regions.
-- Global sidebar: 248 px expanded, 64 px compact. Header: 60 px high. Main content horizontal padding: 32 px desktop, 20 px tablet, 14 px mobile.
-- Use two-column analyst workspaces where detail panels add value; collapse to one column below 1,000 px. Tables scroll horizontally rather than crushing technical columns.
+- Grid: 12 columns, 24 px gutters, max content width 1,600–1,700 px.
+- Spacing scale: 4, 8, 12, 16, 20, 24, 32, 40, 48, 64 px. Do not introduce arbitrary 5/7/13 px layout spacing.
+- Density: breathable, data-dense. Use 16–20 px panel padding, 12–14 px table cell padding, 14–18 px between cards, and 40–48 px between major sections.
+- Sidebar: 252 px expanded; 68 px compact.
+- Header: 64 px.
+- Content gutters: 40 px desktop, 24 px tablet, 14 px mobile.
+- Prefer two-column analyst workspaces for queue/detail and case/evidence layouts. Collapse below 1,120 px; reduce to a single column on mobile. Preserve table readability with horizontal scrolling.
 
 ## 4. UI surfaces & elevation
 
-- Cards and panels: 6 px radius. Inputs and standard buttons: 5 px. Menus/popovers: 8 px. Status badges may use 4 px; avoid pill geometry elsewhere.
-- Standard separators are 1 px solid `#242B33`; stronger grouping uses 1 px solid `#303943`. Do not use translucent borders as the default.
-- Default surfaces are flat matte fills. Only floating menus, dialogs, and toasts receive a diffuse shadow: `0 8px 24px rgb(0 0 0 / 18%)`. No persistent card shadows.
-- Focus states use a 1 px border plus a restrained 2 px `#6B9A9A` ring. Hover and active states change surface/border, not scale or glow.
+| Component | Radius |
+|---|---:|
+| Cards / panels | 5 px |
+| Buttons / inputs | 4 px |
+| Menus / popovers | 6–8 px |
+| Status badges | 3–4 px |
+
+- Standard separator: 1 px solid #222B35.
+- Strong grouping separator: 1 px solid #34404D.
+- Flat matte surface fills by default.
+- Floating menus and dialogs only: 0 10px 28px rgb(0 0 0 / 16%).
+- Focus: 1 px border plus restrained 2 px #7899A4 ring.
+- Hover and active states change surface and border; never scale or glow.
 
 ## 5. Anti-patterns (do not do these)
 
-- No bright primary colors, including pure red, pure blue, or pure yellow. Use the semantic palette above.
-- No heavy glossy gradients, glassmorphism, blur-heavy panels, neon glow, or decorative radial backgrounds.
-- No icons heavier than 1.5 px stroke. Prefer crisp 1.5 px line icons with consistent 16–18 px sizing.
-- No pill-shaped buttons except status badges when the badge semantics justify it.
-- No playful or cartoonish UI elements, oversized emoji, novelty illustrations, or gratuitous motion.
-- No excessive corner rounding, huge KPI tiles, rainbow charts, or decorative charts without an operational question.
+- No pure red, blue, or yellow as primary colors.
+- No glossy gradients, glassmorphism, blur-heavy panels, neon glow, or decorative radial backgrounds.
+- No icons heavier than 1.5 px stroke.
+- No pill-shaped buttons; reserve compact rounded shapes for semantic status badges only.
+- No playful/cartoon elements, emoji decoration, gratuitous animation, oversized empty KPI tiles, or rainbow charts.
+- No inconsistent font families for technical values, and no tiny low-contrast table typography.
 - No status communicated by color alone; no fake live indicators or unverified uptime claims.
