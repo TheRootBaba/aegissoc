@@ -7,7 +7,8 @@ Phase 1.29 separates outbound connector polling from API request handling and ma
 - `api`: authenticated HTTP APIs and dashboard.
 - `scheduler`: recurring detection execution.
 - `retention-worker`: bounded cleanup and retention work.
-- `integration-worker`: outbound event and threat-feed polling.
+- `integration-worker`: outbound event, Wazuh, MISP and OpenCTI polling.
+- `response-worker`: approved response webhook delivery and receiver reconciliation.
 
 The integration worker uses persisted runtime state and leases. PostgreSQL workers claim due work with `FOR UPDATE SKIP LOCKED`; the lease expires if a process dies. Failures use bounded exponential backoff and persist exception classes, not potentially sensitive exception strings. Connector execution history is queryable for operational review.
 
@@ -15,7 +16,7 @@ The integration worker uses persisted runtime state and leases. PostgreSQL worke
 
 A single poll is limited to a 15-second request timeout, a 5 MiB response, and 1,000 records. Scanner imports are limited to 500 assets and 5,000 findings. Sigma execution is limited to a bounded event sample and lookback window. These are deliberate admission limits; increase them only with measurements and load tests.
 
-Run more than one integration worker only against PostgreSQL. SQLite is suitable for local development and isolated tests, not concurrent worker replicas. Horizontal worker scaling does not itself provide tenant isolation. Workspace/tenant authorization remains a separate security milestone and must not be inferred from connector keys or case identifiers.
+Run more than one integration worker only against PostgreSQL. SQLite is suitable for local development and isolated tests, not concurrent worker replicas. All workers enumerate active workspaces and set an explicit workspace context before processing tenant-owned records. PostgreSQL RLS is enforced with a separate `NOSUPERUSER NOBYPASSRLS` runtime role; worker code does not receive an RLS bypass. Workspace context is also applied to ORM operations so test environments can exercise query scoping, but SQLite is not a substitute for PostgreSQL RLS.
 
 ## Operations
 
