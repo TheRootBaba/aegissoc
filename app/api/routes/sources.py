@@ -21,9 +21,16 @@ STALE_AFTER_MINUTES = 15
 def _serialize(source: SourceRegistry) -> dict:
     """Derive stale/inactive states from observed activity without fabricating health."""
     now = datetime.now(timezone.utc)
-    if source.last_successful_event_at is None:
-        health = "failing" if source.health_status == "failing" else "inactive"
-    elif source.last_successful_event_at < now - timedelta(minutes=STALE_AFTER_MINUTES):
+    last_success = source.last_successful_event_at
+    # SQLite does not preserve timezone metadata on DateTime columns; treat
+    # its naive UTC values consistently with PostgreSQL's aware timestamps.
+    if last_success is not None and last_success.tzinfo is None:
+        last_success = last_success.replace(tzinfo=timezone.utc)
+    if source.health_status == "failing":
+        health = "failing"
+    elif last_success is None:
+        health = "inactive"
+    elif last_success < now - timedelta(minutes=STALE_AFTER_MINUTES):
         health = "stale"
     else:
         health = source.health_status
@@ -34,7 +41,7 @@ def _serialize(source: SourceRegistry) -> dict:
         "description": source.description,
         "health_status": health,
         "last_attempt_at": source.last_attempt_at,
-        "last_successful_event_at": source.last_successful_event_at,
+        "last_successful_event_at": last_success,
         "accepted_events": source.accepted_events,
         "duplicate_events": source.duplicate_events,
         "rejected_events": source.rejected_events,
