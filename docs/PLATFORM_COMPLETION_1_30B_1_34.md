@@ -39,7 +39,7 @@ This is not full Sigma specification compatibility. Unsupported modifiers, pipel
 - Streams receiver responses without buffering arbitrary response bodies, records response metadata and writes audit entries for attempts and terminal outcomes.
 - Adds a dedicated response worker that processes each workspace independently.
 
-Recovery is based on replaying the same idempotency key after an expired lease. A receiver-specific status-query/reconciliation API is not yet standardized; integrations must document their idempotency behavior before enabling automated actions.
+Recovery first queries an optional, same-allowlist HTTPS reconciliation endpoint using the stable idempotency key. A receiver reports a matching key and one of `succeeded`, `pending`, `failed` or `not_found`; confirmed completion prevents duplicate delivery, pending actions are deferred, and not-found actions may be retried with the original key. Reconciliation responses are bounded to 64 KiB. Receivers must implement this contract and idempotent POST handling before automated actions are enabled.
 
 ## 1.34 — SSO, secrets and production controls
 
