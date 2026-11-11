@@ -41,3 +41,10 @@ Semantic status colors are independent of the 60/30/10 brand composition: health
 - Respect reduced-motion preferences.
 - Avoid gradients, glass effects, neon, decorative color fields, low-contrast gray copy, and dense all-caps body text.
 - The interface must remain readable at 100% browser zoom and on 320px-wide screens.
+
+
+## Dashboard v3 implementation notes
+
+The rendered shell uses a deep blue-green navigation rail (#173746) against the mineral canvas (#F3F5F2), with teal (#0B8D83) reserved for primary actions and keyboard focus. The main reading area stays light; cards and tables use white surfaces, clear separators, and comfortable line-height. Inter is loaded at supported weights (400–800) for interface text; IBM Plex Mono is reserved for technical identifiers. Body copy is 15px / 1.7, with section headings around 25px / 1.32. The stylesheet and script use a versioned asset query so browsers do not retain stale pre-v3 files after an upgrade.
+
+Asset risk and response playbook workspaces follow the same spacing, typography, surface, and responsive rules. Long identifiers wrap rather than compressing surrounding text.
