@@ -40,3 +40,41 @@ def test_role_dependency_rejects_read_only_for_analyst_action():
     with pytest.raises(HTTPException) as error:
         dependency(SimpleNamespace(username="viewer", role="read_only"))
     assert error.value.status_code == 403
+
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+
+from app.core.security import verify_password
+from app.db.base import Base
+from app.models import User
+from scripts.reset_password import reset_password
+
+
+def test_password_reset_replaces_hash_and_allows_new_password():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        user = User(username="rotate-me", password_hash="old-hash", role="admin", is_active=True)
+        db.add(user)
+        db.commit()
+
+        assert reset_password(db, "rotate-me", "new-strong-password-2026")
+        db.refresh(user)
+        assert verify_password("new-strong-password-2026", user.password_hash)
+        assert not verify_password("old-password-value", user.password_hash)
+    engine.dispose()
+
+
+def test_password_reset_rejects_short_password_and_unknown_user():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        try:
+            reset_password(db, "missing-user", "short")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Short password should be rejected.")
+        assert not reset_password(db, "missing-user", "valid-password-2026")
+    engine.dispose()
