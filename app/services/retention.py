@@ -52,12 +52,6 @@ def run_retention_cleanup(
                     protected_ids.update(str(item) for item in (evidence_ids or []))
 
             cutoff = started - timedelta(days=event_policy.retention_days)
-            expired_ids = list(db.scalars(
-                select(SecurityEvent.id)
-                .where(SecurityEvent.timestamp < cutoff)
-                .order_by(SecurityEvent.timestamp.asc(), SecurityEvent.id.asc())
-                .limit(batch_size)
-            ).all())
             protected_uuid_ids = set()
             for value in protected_ids:
                 try:
