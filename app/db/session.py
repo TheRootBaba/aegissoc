@@ -68,7 +68,8 @@ def _apply_transaction_context(session, transaction, connection):
             "SELECT set_config('aegis.workspace_id', :workspace_id, true), "
             "set_config('aegis.user_id', :user_id, true), "
             "set_config('aegis.worker', :worker, true), "
-            "set_config('aegis.manage_memberships', :manage_memberships, true)"
+            "set_config('aegis.manage_memberships', :manage_memberships, true), "
+            "set_config('aegis.manage_workspaces', :manage_workspaces, true)"
         ),
         {
             "workspace_id": str(session.info.get("workspace_id") or ""),
