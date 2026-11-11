@@ -42,3 +42,15 @@ def test_dashboard_styles_include_responsive_and_reduced_motion_support():
     assert "@media(prefers-reduced-motion:reduce)" in styles
     assert ".auth-overlay.hidden" in styles
     assert ".team-section.visible" in styles
+
+
+def test_dashboard_uses_a_distinctive_signal_lime_visual_system():
+    html = (WEB / "index.html").read_text(encoding="utf-8")
+    styles = (WEB / "styles.css").read_text(encoding="utf-8")
+    assert "Space+Grotesk" in html
+    assert "IBM+Plex+Mono" in html
+    assert "Operational clarity." in html
+    assert "--cyan:#c7f36b" in styles
+    assert "--bg:#0b0e0c" in styles
+    assert ".page-intro h1{font-size:clamp(38px,4.2vw,59px)" in styles
+    assert "background-size:44px 44px,44px 44px,auto" in styles
