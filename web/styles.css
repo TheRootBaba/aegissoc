@@ -772,3 +772,19 @@ label { color: #40575E; font-size: 12px; line-height: 1.55; font-weight: 600; }
   .finding-row, .playbook-run li { align-items: flex-start; flex-direction: column; }
   .finding-actions { justify-content: flex-start; }
 }
+
+.workspace-switch { position: relative; }
+.workspace-switch-copy { flex: 1; min-width: 0; }
+.workspace-switch select {
+  width: 100%;
+  min-width: 0;
+  max-width: 138px;
+  padding: 3px 18px 3px 5px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--elevated);
+  color: var(--text);
+  font: 10px var(--mono);
+}
+.workspace-switch select:disabled { opacity: .55; cursor: default; }
+#oidc-login-button { margin-top: 9px; }
