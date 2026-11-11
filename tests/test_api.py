@@ -338,3 +338,103 @@ def test_analyst_dashboard_and_static_assets_are_served(client):
     assert script.status_code == 200
     assert "/api/v1/detections/run" in script.text
     assert stylesheet.status_code == 200
+
+
+def wazuh_alert(**overrides):
+    payload = {
+        "id": "1710000000.12345",
+        "timestamp": "2026-11-11T12:30:00Z",
+        "rule": {
+            "id": "5710",
+            "level": 10,
+            "description": "sshd: authentication failed",
+            "groups": ["authentication_failed", "sshd"],
+        },
+        "agent": {"id": "007", "name": "ubuntu-wazuh-01"},
+        "data": {"srcip": "198.51.100.24", "dstuser": "root"},
+        "full_log": "Nov 11 sshd[123]: Failed password for root from 198.51.100.24 port 22",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_wazuh_adapter_normalizes_native_alert_and_preserves_raw(client):
+    response = client.post("/api/v1/events/ingest/wazuh", json=wazuh_alert())
+    assert response.status_code == 201
+    event = response.json()
+    assert event["source"] == "wazuh"
+    assert event["external_id"] == "1710000000.12345"
+    assert event["event_type"] == "authentication.failure"
+    assert event["severity"] == "medium"
+    assert event["hostname"] == "ubuntu-wazuh-01"
+    assert event["source_ip"] == "198.51.100.24"
+    assert event["username"] == "root"
+    assert event["raw"]["rule"]["id"] == "5710"
+    assert event["raw"]["data"]["srcip"] == "198.51.100.24"
+
+
+def test_wazuh_ingestion_is_idempotent_for_replayed_alert_ids(client):
+    first = client.post("/api/v1/events/ingest/wazuh", json=wazuh_alert())
+    replay = client.post("/api/v1/events/ingest/wazuh", json=wazuh_alert())
+    listed = client.get("/api/v1/events?source=wazuh")
+    assert first.status_code == 201
+    assert replay.status_code == 200
+    assert replay.json()["id"] == first.json()["id"]
+    assert len(listed.json()) == 1
+
+
+@pytest.mark.parametrize(
+    ("level", "expected"),
+    [(0, "info"), (3, "info"), (4, "low"), (7, "low"), (8, "medium"), (11, "medium"), (12, "high"), (14, "high"), (15, "critical")],
+)
+def test_wazuh_rule_level_maps_to_canonical_severity(client, level, expected):
+    payload = wazuh_alert(id=f"wazuh-level-{level}")
+    payload["rule"]["level"] = level
+    response = client.post("/api/v1/events/ingest/wazuh", json=payload)
+    assert response.status_code == 201
+    assert response.json()["severity"] == expected
+
+
+def test_wazuh_non_ssh_alert_is_not_misclassified_as_ssh_authentication(client):
+    payload = wazuh_alert(id="wazuh-firewall-01")
+    payload["rule"]["description"] = "Firewall policy changed"
+    payload["rule"]["groups"] = ["firewall", "configuration_changed"]
+    payload["full_log"] = "Firewall policy was updated"
+    response = client.post("/api/v1/events/ingest/wazuh", json=payload)
+    assert response.status_code == 201
+    assert response.json()["event_type"] == "wazuh.alert"
+
+
+@pytest.mark.parametrize("level", [-1, 16, "urgent", None])
+def test_wazuh_invalid_rule_level_is_rejected(client, level):
+    payload = wazuh_alert(id=f"invalid-level-{level}")
+    payload["rule"]["level"] = level
+    response = client.post("/api/v1/events/ingest/wazuh", json=payload)
+    assert response.status_code == 422
+
+
+def test_wazuh_missing_timestamp_is_rejected(client):
+    payload = wazuh_alert(id="missing-timestamp")
+    payload.pop("timestamp")
+    response = client.post("/api/v1/events/ingest/wazuh", json=payload)
+    assert response.status_code == 422
+
+
+def test_detection_alerts_include_mitre_attack_mapping(client):
+    now = datetime.now(timezone.utc)
+    for attempt in range(5):
+        payload = sample_event(
+            timestamp=(now - timedelta(seconds=attempt)).isoformat(),
+            message=f"sshd: Failed password attempt {attempt + 1}",
+            username=f"account-{attempt}",
+        )
+        client.post("/api/v1/events", json=payload)
+    run = client.post("/api/v1/detections/run", json={"window_minutes": 10, "threshold": 5})
+    assert run.status_code == 200
+    mappings = {item["rule_id"]: item for item in run.json()["alerts"]}
+    assert mappings["AUTH-SSH-001"]["attack_tactic"] == "Credential Access"
+    assert mappings["AUTH-SSH-001"]["attack_technique_id"] == "T1110"
+    assert mappings["AUTH-SSH-001"]["attack_technique_name"] == "Brute Force"
+    assert mappings["AUTH-SSH-002"]["attack_technique_id"] == "T1110.003"
+    detail = client.get(f"/api/v1/alerts/{mappings['AUTH-SSH-002']['id']}")
+    assert detail.json()["attack_technique_id"] == "T1110.003"
