@@ -63,7 +63,7 @@ a { color: inherit; text-decoration: none; }
 .user-meta strong, .user-meta small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .user-meta strong { font-size: 11px; font-weight: 500; }
 .user-meta small { margin-top: 3px; color: var(--dim); font-size: 10px; text-transform: capitalize; }
-.main-content { min-height: 100vh; margin-left: 248px; padding: 0 32px 28px; }
+.main-content { width: auto; max-width: 1664px; min-height: 100vh; margin: 0 0 0 248px; padding: 0 32px 28px; }
 .topbar { position: sticky; z-index: 8; top: 0; display: flex; align-items: center; justify-content: space-between; height: 60px; margin: 0 -32px; padding: 0 32px; border-bottom: 1px solid var(--line); background: rgb(11 13 16 / 96%); }
 .breadcrumb { display: flex; align-items: center; gap: 10px; color: var(--dim); font: 10px var(--mono); }
 .breadcrumb strong { color: var(--muted); font: 500 11px var(--sans); }
