@@ -446,7 +446,7 @@ def test_secret_resolver_supports_environment_and_rejects_unmounted_files(monkey
 
 def test_nessus_export_endpoint_reconciles_only_known_assets(api_client):
     asset = api_client.post("/api/v1/asset-risk/assets", json={
-        "asset_key": "nessus-db-01", "hostname": "nessus-db-01.internal", "criticality": "critical",
+        "asset_key": "nessus-db-01.internal", "hostname": "nessus-db-01.internal", "criticality": "critical",
     })
     assert asset.status_code == 201
     response = api_client.post("/api/v1/asset-risk/scanner-imports/nessus", json={
