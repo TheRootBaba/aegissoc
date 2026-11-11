@@ -1,5 +1,7 @@
 # Workspace identity and isolation
 
+> Related product captures: [AegisSOC screenshot gallery](SCREENSHOT_GALLERY.md).
+
 Workspace identity is now part of the request, persistence and worker model. This document describes the enforced boundary introduced by migrations `0015_workspace_identity` and `0016_tenant_isolation`.
 
 ## Identity model
