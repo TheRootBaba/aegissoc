@@ -27,6 +27,7 @@ class IndicatorUpdate(BaseModel):
     expires_at: datetime | None = None
 
 class IndicatorRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     id: UUID
     indicator_type: IndicatorType
     value: str
