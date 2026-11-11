@@ -75,6 +75,7 @@ def upgrade() -> None:
     op.bulk_insert(policies, [
         {"id": uuid.uuid4(), "data_kind": "events", "retention_days": 90, "enabled": True, "preserve_active_evidence": True, "updated_by": "system", "updated_at": now},
         {"id": uuid.uuid4(), "data_kind": "executions", "retention_days": 180, "enabled": True, "preserve_active_evidence": True, "updated_by": "system", "updated_at": now},
+        {"id": uuid.uuid4(), "data_kind": "jobs", "retention_days": 90, "enabled": True, "preserve_active_evidence": False, "updated_by": "system", "updated_at": now},
     ])
 
 
