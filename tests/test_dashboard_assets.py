@@ -49,13 +49,16 @@ def test_dashboard_styles_include_responsive_and_reduced_motion_support():
 def test_dashboard_uses_a_premium_midnight_cyan_visual_system():
     html = (WEB / "index.html").read_text(encoding="utf-8")
     styles = (WEB / "styles.css").read_text(encoding="utf-8")
-    assert "Manrope" in html
-    assert "DM+Mono" in html
+    assert "Geist" in html
+    assert "Geist+Mono" in html
     assert "Security operations." in html
-    assert "--cyan:#62dfd0" in styles
-    assert "--bg:#080e1b" in styles
+    assert "--bg: #0B0D10" in styles
+    assert "--surface: #11151A" in styles
+    assert "--green: #3C9B76" in styles
     assert ".metrics-grid" in styles
     assert ".source-layout" in styles
+    assert "linear-gradient" not in styles
+    assert "backdrop-filter" not in styles
 
 
 def test_dashboard_exposes_investigation_workbench_controls():
@@ -98,3 +101,33 @@ def test_dashboard_exposes_audit_integrity_controls():
     assert 'api("/api/v1/audit?limit=10")' in script
     assert 'api("/api/v1/audit/verify")' in script
     assert "function renderAudit()" in script
+
+
+
+def test_dashboard_exposes_retention_operations_and_connector_workspaces():
+    html = (WEB / "index.html").read_text(encoding="utf-8")
+    script = (WEB / "app.js").read_text(encoding="utf-8")
+    for element_id in (
+        "operations", "operations-status", "ops-events-hour", "ops-events-day",
+        "ops-detection-failures", "ops-ingest-rejected", "retention-policies",
+        "run-retention", "operations-jobs", "connectors", "connector-create-form",
+        "connector-list", "connector-config", "connector-credential-ref",
+    ):
+        assert f'id="{element_id}"' in html
+    assert 'api("/api/v1/operations/health")' in script
+    assert 'api("/api/v1/operations/metrics")' in script
+    assert 'api("/api/v1/operations/retention")' in script
+    assert 'api("/api/v1/connectors")' in script
+    assert "function renderOperations()" in script
+    assert "function renderConnectors()" in script
+
+
+def test_dashboard_uses_sharp_matte_surfaces_and_geist_typography():
+    html = (WEB / "index.html").read_text(encoding="utf-8")
+    styles = (WEB / "styles.css").read_text(encoding="utf-8")
+    assert "Geist" in html
+    assert "Geist+Mono" in html
+    assert "border-radius: 6px" in styles
+    assert "--line: #242B33" in styles
+    assert "--focus: #6B9A9A" in styles
+    assert "box-shadow: var(--shadow-float)" in styles
