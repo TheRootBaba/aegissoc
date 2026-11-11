@@ -174,7 +174,7 @@ def run_due_connectors_once(db: Session, *, now: datetime | None = None, batch_s
         ConnectorConfig, ConnectorConfig.id == ConnectorRuntimeState.connector_id
     ).where(
         ConnectorConfig.enabled.is_(True),
-        ConnectorConfig.connector_type.in_(("http_poll", "threat_feed")),
+        ConnectorConfig.connector_type.in_(("http_poll", "threat_feed", "wazuh_manager", "misp", "opencti")),
         ConnectorRuntimeState.next_run_at <= run_at,
         or_(ConnectorRuntimeState.locked_until.is_(None), ConnectorRuntimeState.locked_until <= run_at),
     ).order_by(ConnectorRuntimeState.next_run_at.asc()).limit(batch_size)
