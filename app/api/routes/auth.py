@@ -29,7 +29,15 @@ def who_am_i(user: User = Depends(get_current_user)):
 
 @router.get("/users", response_model=list[UserRead])
 def list_users(_admin: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
-    return list(db.scalars(select(User).order_by(User.username.asc())).all())
+    workspace_id = db.info.get("workspace_id")
+    if workspace_id is None:
+        raise HTTPException(status_code=400, detail="An active workspace is required")
+    return list(db.scalars(
+        select(User)
+        .join(WorkspaceMembership, WorkspaceMembership.user_id == User.id)
+        .where(WorkspaceMembership.workspace_id == workspace_id, WorkspaceMembership.is_active.is_(True))
+        .order_by(User.username.asc())
+    ).all())
 
 @router.post("/users", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 def create_user(payload: UserCreate, _admin: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
