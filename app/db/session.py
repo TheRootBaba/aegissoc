@@ -16,9 +16,9 @@ def set_workspace_context(db: Session, workspace_id: UUID | str | None, *,
                           user_id: UUID | str | None = None, worker: bool = False) -> None:
     """Bind the current transaction and future transactions to one workspace."""
     if workspace_id is not None:
-        db.info["workspace_id"] = str(workspace_id)
+        db.info["workspace_id"] = UUID(str(workspace_id))
     if user_id is not None:
-        db.info["user_id"] = str(user_id)
+        db.info["user_id"] = UUID(str(user_id))
     if worker:
         db.info["worker"] = True
     if db.get_bind().dialect.name == "postgresql":
@@ -29,8 +29,8 @@ def set_workspace_context(db: Session, workspace_id: UUID | str | None, *,
                 "set_config('aegis.worker', :worker, true)"
             ),
             {
-                "workspace_id": db.info.get("workspace_id", ""),
-                "user_id": db.info.get("user_id", ""),
+                "workspace_id": str(db.info.get("workspace_id") or ""),
+                "user_id": str(db.info.get("user_id") or ""),
                 "worker": "on" if db.info.get("worker") else "off",
             },
         )
@@ -62,8 +62,8 @@ def _apply_transaction_context(session, transaction, connection):
             "set_config('aegis.worker', :worker, true)"
         ),
         {
-            "workspace_id": session.info.get("workspace_id", ""),
-            "user_id": session.info.get("user_id", ""),
+            "workspace_id": str(session.info.get("workspace_id") or ""),
+            "user_id": str(session.info.get("user_id") or ""),
             "worker": "on" if session.info.get("worker") else "off",
         },
     )
