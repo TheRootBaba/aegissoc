@@ -1,0 +1,181 @@
+from datetime import datetime, timezone
+from types import SimpleNamespace
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+from app import models
+from app.core.security import get_current_user
+from app.db.base import Base
+from app.db.session import get_db
+from app.main import app
+from app.models import ConnectorConfig, ManagedAsset, SecurityEvent, ThreatIndicator
+from app.services.integrations import get_adapter
+from app.services.sigma_engine import parse_sigma_document, rule_matches
+
+@pytest.fixture
+def isolated_db():
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    Base.metadata.create_all(bind=engine)
+    session = factory()
+    yield session
+    session.close()
+    Base.metadata.drop_all(bind=engine)
+    engine.dispose()
+
+@pytest.fixture
+def api_client(isolated_db):
+    def override_db():
+        yield isolated_db
+    app.dependency_overrides[get_db] = override_db
+    with TestClient(app) as client:
+        yield client
+    app.dependency_overrides.pop(get_db, None)
+
+def test_http_poll_adapter_requires_explicit_host_allowlist():
+    adapter = get_adapter("http_poll")
+    valid = {"endpoint": "https://collector.example/events", "allowed_hosts": ["collector.example"], "interval_seconds": 60}
+    assert adapter.validate_config(valid).valid
+    assert not adapter.validate_config({**valid, "allowed_hosts": ["other.example"]}).valid
+    assert not adapter.validate_config({**valid, "endpoint": "http://collector.example/events"}).valid
+    assert not adapter.validate_config({**valid, "endpoint": "https://user:pass@collector.example/events"}).valid
+
+def test_sigma_subset_parses_and_matches_nested_event_fields():
+    source = """title: Suspicious PowerShell
+id: test-powershell-001
+status: test
+description: Detects encoded PowerShell command lines.
+logsource:
+  product: windows
+  category: process_creation
+detection:
+  selection:
+    event_type: process.started
+    CommandLine|contains: -EncodedCommand
+  condition: selection
+level: high
+tags:
+  - attack.execution
+"""
+    parsed = parse_sigma_document(source)
+    rule = SimpleNamespace(**parsed, enabled=True)
+    event = SimpleNamespace(
+        source="edr", event_type="process.started", severity="medium",
+        hostname="workstation-01", source_ip=None, username="analyst",
+        message="powershell launched", raw={"CommandLine": "powershell.exe -EncodedCommand abc"},
+    )
+    assert rule_matches(event, rule)
+    event.raw = {"CommandLine": "powershell.exe -NoProfile"}
+    assert not rule_matches(event, rule)
+    with pytest.raises(ValueError):
+        parse_sigma_document("title: broken\\nlevel: critical\\n")
+
+def test_scanner_import_reconciles_assets_and_is_idempotent(api_client):
+    asset = api_client.post("/api/v1/asset-risk/assets", json={
+        "asset_key": "scan-host-01", "hostname": "scan-host-01.internal", "criticality": "high",
+    })
+    assert asset.status_code == 201
+    payload = {
+        "scanner_name": "lab-scanner", "scan_id": "scan-2026-11-11-001",
+        "assets": [
+            {"asset_key": "scan-host-01", "hostname": "scan-host-01.internal", "findings": [
+                {"vulnerability_id": "CVE-2026-12345", "title": "Example RCE", "severity": "critical"},
+            ]},
+            {"asset_key": "unknown-host", "hostname": "unknown", "findings": [
+                {"vulnerability_id": "CVE-2026-12346", "title": "Unknown asset finding", "severity": "high"},
+            ]},
+        ],
+    }
+    first = api_client.post("/api/v1/asset-risk/scanner-imports", json=payload)
+    assert first.status_code == 200
+    assert first.json()["findings_created"] == 1
+    assert first.json()["findings_rejected"] == 1
+    replay = api_client.post("/api/v1/asset-risk/scanner-imports", json=payload)
+    assert replay.status_code == 200
+    assert replay.json() == first.json()
+    findings = api_client.get(f"/api/v1/asset-risk/assets/{asset.json()['id']}/findings")
+    assert len(findings.json()) == 1
+
+def test_threat_feed_connector_poll_updates_indicator(isolated_db, monkeypatch):
+    from app.services import connector_runtime
+    connector = ConnectorConfig(
+        connector_key="test-feed", connector_type="threat_feed", display_name="Test Feed",
+        config={"endpoint": "https://feed.example/iocs", "allowed_hosts": ["feed.example"],
+                "interval_seconds": 60, "records_path": "items"},
+        enabled=True, health_status="unverified",
+    )
+    isolated_db.add(connector)
+    isolated_db.commit()
+    monkeypatch.setattr(connector_runtime, "_read_response", lambda url, headers: {
+        "items": [{"type": "ip", "value": "203.0.113.77", "confidence": 90, "severity": "high"}]
+    })
+    assert connector_runtime.run_due_connectors_once(isolated_db, batch_size=1) == 1
+    indicator = isolated_db.query(ThreatIndicator).filter_by(value="203.0.113.77").one()
+    assert indicator.confidence == 90
+    assert connector_runtime.run_due_connectors_once(isolated_db, batch_size=1) == 0
+
+def test_sigma_api_import_test_and_enable(api_client):
+    source = """title: SSH Authentication Failure
+id: test-ssh-failure
+status: test
+description: Test SSH failures.
+logsource:
+  product: linux
+detection:
+  selection:
+    event_type: authentication.failure
+    message|contains: failed
+  condition: selection
+level: medium
+"""
+    imported = api_client.post("/api/v1/sigma/rules/import", json={"sigma_yaml": source, "enabled": False})
+    assert imported.status_code == 201
+    tested = api_client.post("/api/v1/sigma/rules/test", json={
+        "event": {"event_type": "authentication.failure", "message": "SSH failed password"},
+    },)
+    # Rule-specific test is exercised after import using its stable ID.
+    tested = api_client.post("/api/v1/sigma/rules/test-ssh-failure/test", json={
+        "event": {"event_type": "authentication.failure", "message": "SSH failed password"},
+    })
+    assert tested.status_code == 200
+    assert tested.json()["matched"] is True
+    enabled = api_client.patch("/api/v1/sigma/rules/test-ssh-failure/enabled?enabled=true")
+    assert enabled.status_code == 200
+    assert enabled.json()["enabled"] is True
+
+def test_response_action_requires_separate_approval_and_explicit_execution(api_client, monkeypatch):
+    from app.api.routes import response_actions
+    connector = api_client.post("/api/v1/connectors", json={
+        "connector_key": "approved-webhook", "connector_type": "response_webhook",
+        "display_name": "Approved response receiver",
+        "config": {"endpoint": "https://response.example/actions", "allowed_hosts": ["response.example"]},
+        "enabled": True,
+    })
+    assert connector.status_code == 201
+    request = api_client.post("/api/v1/response-actions", json={
+        "connector_key": "approved-webhook", "action_type": "block_ip", "target": "203.0.113.9",
+        "parameters": {"duration_minutes": 30},
+    })
+    assert request.status_code == 201
+    request_id = request.json()["id"]
+    self_approval = api_client.post(f"/api/v1/response-actions/{request_id}/approve", json={"note": "Approve"})
+    assert self_approval.status_code == 403
+
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
+        id="second-admin", username="second-admin", role="admin", is_active=True
+    )
+    approved = api_client.post(f"/api/v1/response-actions/{request_id}/approve", json={"note": "Reviewed change window"})
+    assert approved.status_code == 200
+    class FakeResponse:
+        status_code = 202
+    class FakeClient:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def post(self, *args, **kwargs): return FakeResponse()
+    monkeypatch.setattr(response_actions.httpx, "Client", lambda **kwargs: FakeClient())
+    executed = api_client.post(f"/api/v1/response-actions/{request_id}/execute")
+    assert executed.status_code == 200
+    assert executed.json()["status"] == "succeeded"
+    app.dependency_overrides.pop(get_current_user, None)
