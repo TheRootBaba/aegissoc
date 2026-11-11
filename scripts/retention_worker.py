@@ -17,7 +17,7 @@ def main() -> None:
     while True:
         db = SessionLocal()
         try:
-            db.execute(text("SELECT 1 FROM retention_policies LIMIT 1"))
+            db.execute(text("SELECT 1 FROM alembic_version LIMIT 1"))
             break
         except Exception:
             logger.info("retention_worker_waiting_for_schema")
