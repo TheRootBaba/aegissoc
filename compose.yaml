@@ -32,5 +32,21 @@ services:
     restart: unless-stopped
     mem_limit: 1g
 
+  scheduler:
+    build: .
+    command: ["python", "-m", "scripts.detection_scheduler"]
+    environment:
+      APP_NAME: ${APP_NAME:-AegisSOC API}
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:-dev-only-change-this-aegissoc-secret-key}
+      ACCESS_TOKEN_MINUTES: ${ACCESS_TOKEN_MINUTES:-30}
+      DATABASE_URL: postgresql+psycopg://aegis:${POSTGRES_PASSWORD:-aegis_dev_password}@db:5432/aegissoc
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 512m
+
 volumes:
   aegis_postgres_data:
