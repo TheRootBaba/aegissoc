@@ -53,7 +53,7 @@ def _path_value(document, path: str):
     return value
 
 def _records(document, config: dict, connector_type: str = "http_poll") -> list:
-    default_path = {"misp": "response.Attribute", "opencti": "data.indicators.edges"}.get(connector_type, "items")
+    default_path = {"misp": "response.Attribute", "opencti": "data.indicators.edges", "wazuh_indexer": "hits.hits"}.get(connector_type, "items")
     value = _path_value(document, config.get("records_path", default_path))
     if value is None and isinstance(document, list):
         value = document
@@ -83,7 +83,13 @@ def _poll_url(connector: ConnectorConfig) -> str:
         header = config.get("auth_header", "X-MISP-Auth" if connector.connector_type == "misp" else "Authorization")
         if header.lower() not in {"authorization", "x-api-key", "x-misp-auth", "x-apikeys"}:
             raise ValueError("auth_header must be Authorization or X-API-Key")
-        headers[header] = ("Bearer " + secret) if header.lower() == "authorization" else secret
+        if header.lower() == "authorization" and config.get("auth_scheme") == "basic":
+            import base64
+            if ":" not in secret:
+                raise ValueError("Basic Auth secret must contain username:password")
+            headers[header] = "Basic " + base64.b64encode(secret.encode()).decode("ascii")
+        else:
+            headers[header] = ("Bearer " + secret) if header.lower() == "authorization" else secret
     return url, headers
 
 def _ingest_event_records(db: Session, connector: ConnectorConfig, records: list) -> tuple[int, int, int]:
@@ -141,7 +147,7 @@ def _ingest_indicators(db: Session, connector: ConnectorConfig, records: list) -
 def ensure_connector_states(db: Session, now: datetime | None = None) -> int:
     run_at = now or datetime.now(timezone.utc)
     connectors = db.scalars(select(ConnectorConfig).where(
-        ConnectorConfig.enabled.is_(True), ConnectorConfig.connector_type.in_(("http_poll", "threat_feed", "wazuh_manager", "misp", "opencti"))
+        ConnectorConfig.enabled.is_(True), ConnectorConfig.connector_type.in_(("http_poll", "threat_feed", "wazuh_manager", "wazuh_indexer", "misp", "opencti"))
     )).all()
     created = 0
     for connector in connectors:
@@ -165,7 +171,7 @@ def run_due_connectors_once(db: Session, *, now: datetime | None = None, batch_s
         ConnectorConfig, ConnectorConfig.id == ConnectorRuntimeState.connector_id
     ).where(
         ConnectorConfig.enabled.is_(True),
-        ConnectorConfig.connector_type.in_(("http_poll", "threat_feed", "wazuh_manager", "misp", "opencti")),
+        ConnectorConfig.connector_type.in_(("http_poll", "threat_feed", "wazuh_manager", "wazuh_indexer", "misp", "opencti")),
         ConnectorRuntimeState.next_run_at <= run_at,
         or_(ConnectorRuntimeState.locked_until.is_(None), ConnectorRuntimeState.locked_until <= run_at),
     ).order_by(ConnectorRuntimeState.next_run_at.asc()).limit(batch_size)
