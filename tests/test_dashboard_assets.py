@@ -131,3 +131,38 @@ def test_dashboard_uses_sharp_matte_surfaces_and_geist_typography():
     assert "--line: #242B33" in styles
     assert "--focus: #6B9A9A" in styles
     assert "box-shadow: var(--shadow-float)" in styles
+
+
+def test_dashboard_exposes_case_management_and_rule_governance_workspaces():
+    html = (WEB / "index.html").read_text(encoding="utf-8")
+    script = (WEB / "app.js").read_text(encoding="utf-8")
+    for element_id in (
+        "cases", "case-create-form", "case-list", "case-detail",
+        "detection-rules", "detection-rule-list", "case-create-toggle",
+    ):
+        assert f'id="{element_id}"' in html
+    assert 'data-nav="cases"' in html
+    assert 'data-nav="detection-rules"' in html
+    assert 'api("/api/v1/cases")' in script
+    assert 'api("/api/v1/detection-rules")' in script
+    assert "function renderCases()" in script
+    assert "function renderDetectionRules()" in script
+    assert "function selectCase(" in script
+
+
+def test_dashboard_visual_system_v2_refines_type_scale_spacing_and_graphite_palette():
+    styles = (WEB / "styles.css").read_text(encoding="utf-8")
+    assert "--bg: #090C10" in styles
+    assert "--surface: #10151B" in styles
+    assert "--elevated: #161D25" in styles
+    assert "--text: #E9EDF2" in styles
+    assert "--muted: #A0AAB6" in styles
+    assert "--green: #4B9B7A" in styles
+    assert "--amber: #C4934E" in styles
+    assert "--red: #C77780" in styles
+    assert "--blue: #7699BB" in styles
+    assert "font-size: 34px" in styles
+    assert "min-height: 38px" in styles
+    assert ".case-layout" in styles
+    assert ".detection-rule-list" in styles
+    assert "}\\n@media" not in styles
