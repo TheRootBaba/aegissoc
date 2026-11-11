@@ -132,10 +132,6 @@ level: medium
 """
     imported = api_client.post("/api/v1/sigma/rules/import", json={"sigma_yaml": source, "enabled": False})
     assert imported.status_code == 201
-    tested = api_client.post("/api/v1/sigma/rules/test", json={
-        "event": {"event_type": "authentication.failure", "message": "SSH failed password"},
-    },)
-    # Rule-specific test is exercised after import using its stable ID.
     tested = api_client.post("/api/v1/sigma/rules/test-ssh-failure/test", json={
         "event": {"event_type": "authentication.failure", "message": "SSH failed password"},
     })
