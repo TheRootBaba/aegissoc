@@ -44,6 +44,14 @@ The uploaded working copy also contains a Docker Desktop capture and two local r
 
 The API reference itself is served by the running application at `/docs`. A recording demonstrates the API browser; it does not replace endpoint schemas or versioned API behavior.
 
+## Release-candidate capture status
+
+The images above are genuine captures from a running dashboard, but this repository does not currently tie them to the release-candidate SHA. They must not be represented as release-build acceptance evidence until recaptured from the exact candidate build and entered in a capture manifest.
+
+The following release-candidate views remain to be captured and reviewed: connector/source health, event detail, alert evidence, case timeline, scanner export job and imported findings, Sigma validation and correlation alert, response approval and reconciliation, workspace access enforcement, audit verification, and operations/backup health.
+
+No release-build video files are currently committed or linked from this gallery. Follow [Release demo runbook](RELEASE_DEMO_RUNBOOK.md) to create the eight real walkthroughs and store large files as Git LFS objects or GitHub Release assets. The editable architecture diagrams are in [Architecture](ARCHITECTURE.md).
+
 ## Capture and maintenance
 
-For repeatable captures from a signed-in local dashboard, see [Demo capture](DEMO_CAPTURE.md). Keep the original captures and replace them only with a newer recording from a known application revision. Add a caption and a link to the relevant engineering guide whenever a new screen is added.
+For repeatable captures from a signed-in local dashboard, see [Demo capture](DEMO_CAPTURE.md). Keep the original captures and replace them only with a newer recording from a known application revision. Add a caption and a link to the relevant engineering guide whenever a new screen is added. Record the release SHA, UTC time, environment, synthetic fixture version, redaction review and SHA-256 checksum for every release-candidate capture.
