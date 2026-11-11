@@ -4,12 +4,14 @@ This runbook is for the local Docker Compose deployment. Adapt credentials, stor
 
 ## First deployment of the retention and backup workers
 
-The API container does not automatically run Alembic migrations. Apply the schema before starting the retention worker or invoking the backup profile:
+The API container applies Alembic migrations with the migration-owner connection, provisions a separate non-owner runtime role, and then starts Uvicorn with the runtime connection. Preserve the database volume and ensure `POSTGRES_PASSWORD` in `.env` matches the existing `aegis` database role when reusing an initialized volume.
 
 ```powershell
 docker compose up --build -d db api
-docker compose exec api alembic upgrade head
-docker compose up -d scheduler retention-worker integration-worker
+docker compose ps
+docker compose exec api alembic current
+docker compose up -d scheduler retention-worker response-worker integration-worker response-worker
+docker compose ps
 ```
 
 Wait for the API health check to pass before running the backup profile. The retention worker also waits for the `retention_policies` table, but that guard is a startup safety net—not a replacement for explicitly applying migrations.
@@ -19,7 +21,7 @@ Wait for the API health check to pass before running the backup profile. The ret
 1. Check API liveness and database readiness:
    `curl http://localhost:8000/health/live` and `curl http://localhost:8000/health/ready`.
 2. Sign in and inspect `GET /api/v1/operations/health` and `GET /api/v1/operations/metrics`.
-3. Inspect worker logs with `docker compose logs --since=30m api scheduler retention-worker integration-worker`.
+3. Inspect worker logs with `docker compose logs --since=30m api scheduler retention-worker integration-worker response-worker`.
 4. Check source freshness and rejection counters in the Sources workspace. A stale source is not equivalent to a healthy source.
 5. Review failed schedule executions and the security audit chain before making corrective changes.
 
