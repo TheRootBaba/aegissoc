@@ -78,6 +78,22 @@ services:
     restart: unless-stopped
     mem_limit: 512m
 
+  response-worker:
+    build: .
+    command: ["python", "-m", "scripts.response_worker"]
+    environment:
+      APP_NAME: ${APP_NAME:-AegisSOC API}
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: postgresql+psycopg://aegis_runtime:${RUNTIME_DB_PASSWORD:-aegis_runtime_dev_password}@db:5432/aegissoc
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 256m
+
   backup:
     build:
       context: .
