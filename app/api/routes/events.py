@@ -112,8 +112,12 @@ def ingest_normalized_event(payload: dict[str, Any], response: Response,
     try:
         normalized = normalize_wazuh_alert(payload) if source.lower() == "wazuh" else normalize_event(payload, source=source)
     except ValidationError as exc:
+        record_ingestion(db, source, accepted=0, duplicates=0, rejected=1)
+        db.commit()
         raise RequestValidationError(exc.errors()) from exc
     except (ValueError, TypeError) as exc:
+        record_ingestion(db, source, accepted=0, duplicates=0, rejected=1)
+        db.commit()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     outcome, event_id = _persist_event(db, normalized)
     record_ingestion(db, source, accepted=int(outcome == "accepted"), duplicates=int(outcome == "duplicate"), rejected=0, event_timestamp=normalized.timestamp)
