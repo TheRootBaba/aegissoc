@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -12,6 +12,7 @@ from app.db.session import get_db
 from app.models import SecurityEvent
 from app.schemas.events import SecurityEventCreate, SecurityEventRead
 from app.services.event_normalizer import normalize_event
+from app.services.wazuh_adapter import normalize_wazuh_alert
 
 router = APIRouter(prefix="/api/v1/events", tags=["events"])
 
@@ -27,8 +28,16 @@ def _require_aware(value: datetime | None, parameter: str) -> datetime | None:
 
 
 @router.post("", response_model=SecurityEventRead, status_code=status.HTTP_201_CREATED)
-def ingest_event(payload: SecurityEventCreate, db: Session = Depends(get_db)):
-    """Persist one validated security event."""
+def ingest_event(payload: SecurityEventCreate, response: Response, db: Session = Depends(get_db)):
+    """Persist one validated security event; return an existing source ID on replay."""
+    if payload.external_id:
+        existing = db.scalar(select(SecurityEvent).where(
+            SecurityEvent.source == payload.source,
+            SecurityEvent.external_id == payload.external_id,
+        ))
+        if existing is not None:
+            response.status_code = status.HTTP_200_OK
+            return existing
     event = SecurityEvent(**payload.model_dump())
     db.add(event)
     db.commit()
@@ -39,15 +48,24 @@ def ingest_event(payload: SecurityEventCreate, db: Session = Depends(get_db)):
 @router.post("/ingest/{source}", response_model=SecurityEventRead, status_code=status.HTTP_201_CREATED)
 def ingest_normalized_event(
     payload: dict[str, Any],
+    response: Response,
     source: str = Path(min_length=1, max_length=80),
     db: Session = Depends(get_db),
 ):
     """Normalize a source-specific JSON event, then persist the canonical event."""
     try:
-        normalized = normalize_event(payload, source=source)
+        normalized = normalize_wazuh_alert(payload) if source.lower() == "wazuh" else normalize_event(payload, source=source)
     except ValidationError as exc:
         # Treat source-payload validation like normal FastAPI request validation.
         raise RequestValidationError(exc.errors()) from exc
+    if normalized.external_id:
+        existing = db.scalar(select(SecurityEvent).where(
+            SecurityEvent.source == normalized.source,
+            SecurityEvent.external_id == normalized.external_id,
+        ))
+        if existing is not None:
+            response.status_code = status.HTTP_200_OK
+            return existing
     event = SecurityEvent(**normalized.model_dump())
     db.add(event)
     db.commit()
