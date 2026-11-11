@@ -745,3 +745,29 @@ def test_response_action_cancel_endpoint_stops_queued_delivery(api_client):
     assert canceled.json()["status"] == "canceled"
     assert canceled.json()["execution_status"] == "canceled"
     app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_builtin_sigma_pack_rules_parse_and_unsupported_syntax_is_rejected():
+    from pathlib import Path
+    from app.services.sigma_engine import parse_sigma_document
+
+    pack = Path(__file__).resolve().parents[1] / "rules" / "sigma"
+    rule_files = sorted(pack.glob("*.yml"))
+    assert len(rule_files) >= 3
+    parsed = [parse_sigma_document(path.read_text(encoding="utf-8")) for path in rule_files]
+    assert {rule["rule_id"] for rule in parsed} == {
+        "AEGIS-WIN-PS-001", "AEGIS-LNX-SSH-001", "AEGIS-WIN-SVC-001"
+    }
+    unsupported = """title: Unsupported pipeline
+id: unsupported-pipeline-001
+status: test
+logsource:
+  product: windows
+detection:
+  selection:
+    event_type: process.started
+  condition: selection | count() by hostname
+level: high
+"""
+    with pytest.raises(ValueError):
+        parse_sigma_document(unsupported)
