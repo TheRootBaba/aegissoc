@@ -159,11 +159,11 @@ $alertId = "<alert-id>"
 Invoke-RestMethod "http://localhost:8000/api/v1/alerts/$alertId"
 
 # Assign and acknowledge it
-$update = @{ actor = "analyst-01"; assigned_to = "analyst-01"; status = "acknowledged" } | ConvertTo-Json
+$update = @{ assigned_to = "analyst-01"; status = "acknowledged" } | ConvertTo-Json
 Invoke-RestMethod -Method Patch -Uri "http://localhost:8000/api/v1/alerts/$alertId" -ContentType "application/json" -Body $update
 
 # Add an investigation note
-$note = @{ author = "analyst-01"; body = "Validated source IP against the synthetic lab timeline." } | ConvertTo-Json
+$note = @{ body = "Validated source IP against the synthetic lab timeline." } | ConvertTo-Json
 Invoke-RestMethod -Method Post -Uri "http://localhost:8000/api/v1/alerts/$alertId/notes" -ContentType "application/json" -Body $note
 
 # Review notes and the audit trail
@@ -171,7 +171,7 @@ Invoke-RestMethod "http://localhost:8000/api/v1/alerts/$alertId/notes"
 Invoke-RestMethod "http://localhost:8000/api/v1/alerts/$alertId/history"
 
 # Resolve after investigation
-$resolve = @{ actor = "analyst-01"; status = "resolved" } | ConvertTo-Json
+$resolve = @{ status = "resolved" } | ConvertTo-Json
 Invoke-RestMethod -Method Patch -Uri "http://localhost:8000/api/v1/alerts/$alertId" -ContentType "application/json" -Body $resolve
 ```
 
@@ -271,9 +271,24 @@ For local non-container development, run `python -m scripts.create_admin` after 
 - Set `AUTH_SECRET_KEY` to a unique random value of at least 32 characters in production. Startup rejects the development placeholder.
 - `ACCESS_TOKEN_MINUTES` controls token lifetime (5–1440 minutes; default 30).
 - Login attempts are throttled to five per client IP per rolling minute in each API process. This is defense-in-depth for a single-instance lab; production multi-instance deployments also need shared rate limiting at the reverse proxy or API gateway.
-- The dashboard keeps the bearer token in session storage for the current browser tab. Use HTTPS outside localhost and deploy a hardened reverse proxy, secure headers, secret management, backups, and monitoring before production.
+- The dashboard keeps the bearer token in session storage for the current browser tab. Sign-out clears the current tab session; expired or rejected tokens return the interface to sign-in. Use HTTPS outside localhost and deploy a hardened reverse proxy, secure headers, secret management, backups, and monitoring before production.
 - Wazuh ingestion is protected like other event ingestion endpoints. Use a dedicated least-privilege analyst account until service identities are implemented.
 
 ## Roadmap update
 
 Phase 1.7 delivers local authentication, RBAC, trusted analyst identities, login throttling, and production secret guardrails. Distributed rate limiting, tamper-evident audit chaining, dedicated event-producer service identities, and full production deployment hardening remain future work.
+
+
+## Phase 1.8 — analyst experience overhaul
+
+The dashboard now has a redesigned responsive SOC workspace with a persistent operations sidebar, clearer security metrics, a searchable/filterable detection queue, an evidence-led investigation panel, and a normalized telemetry table. The visual system uses a restrained midnight palette, high-contrast typography, severity/status treatments, and responsive layouts for smaller screens.
+
+Authentication and session handling are implemented as explicit UI states: sign-in validates the bearer token before revealing the workspace, API requests preserve the Authorization header when request options are merged, expired sessions return to sign-in, and both sign-out controls clear the tab session. Read-only users cannot see mutation controls. Administrators get a Team & Access view to create accounts and inspect provisioned users.
+
+The CI workflow runs `node --check web/app.js` alongside PostgreSQL migrations and the Python API test suite. The dashboard uses the existing API contracts; no frontend framework or build tool is required.
+
+Open the dashboard at http://localhost:8000/dashboard. After updating the branch, rebuild the API container so its static assets are refreshed:
+
+```powershell
+docker compose up --build -d
+```
