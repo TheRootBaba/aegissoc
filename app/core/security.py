@@ -138,12 +138,13 @@ def get_current_user(
             raise HTTPException(status_code=400, detail="X-Workspace-ID is required when the user belongs to multiple workspaces")
         selected = memberships[0]
 
-    set_workspace_context(db, selected.workspace_id, user_id=user.id, manage_memberships=(user.role == 'admin'))
+    set_workspace_context(db, selected.workspace_id, user_id=user.id, manage_memberships=(selected.role == 'admin'))
+    user.workspace_role = selected.role
     return user
 
 def require_roles(*roles: str):
     def dependency(user: User = Depends(get_current_user)) -> User:
-        if user.role not in roles:
+        if getattr(user, 'workspace_role', user.role) not in roles:
             raise HTTPException(status_code=403, detail="Insufficient role for this operation")
         return user
     return dependency
