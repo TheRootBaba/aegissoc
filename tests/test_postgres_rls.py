@@ -49,6 +49,10 @@ def test_runtime_role_cannot_read_or_mutate_another_workspace():
             connection.execute(text("SELECT set_config('aegis.workspace_id', :value, true)"), {"value": str(workspace_one)})
             assert connection.execute(text("SELECT count(*) FROM workspaces")).scalar_one() == 1
             assert connection.execute(text("SELECT count(*) FROM workspace_memberships")).scalar_one() == 1
+            connection.execute(text("SELECT set_config('aegis.manage_workspaces', 'on', true)"))
+            assert connection.execute(text("SELECT count(*) FROM workspace_memberships")).scalar_one() == 1
+            assert connection.execute(text("SELECT count(*) FROM workspaces")).scalar_one() == 1
+            connection.execute(text("SELECT set_config('aegis.manage_workspaces', 'off', true)"))
 
             event_values = {
                 "source": "rls-fixture", "event_type": "test.event", "severity": "low",
