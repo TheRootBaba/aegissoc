@@ -11,6 +11,7 @@ from app.models import DetectionAlert, SecurityEvent
 
 
 SSH_BRUTE_FORCE_RULE_ID = "AUTH-SSH-001"
+SSH_PASSWORD_SPRAY_RULE_ID = "AUTH-SSH-002"
 SSH_FAILURE_TYPES = {
     "authentication.failure",
     "ssh.authentication.failure",
@@ -25,6 +26,47 @@ def _as_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def _upsert_alert(db, *, rule_id, title, source_ip, hostname, events, usernames, window_minutes, severity):
+    """Persist one rule/source/target alert, refreshing evidence on later runs."""
+    fingerprint_input = f"{rule_id}:{source_ip}:{hostname or ''}"
+    fingerprint = hashlib.sha256(fingerprint_input.encode("utf-8")).hexdigest()
+    description = (
+        f"{len(events)} SSH authentication failures from {source_ip} "
+        f"targeting {hostname or 'an unspecified host'} within {window_minutes} minutes."
+    )
+    evidence_ids = [str(event.id) for event in events]
+    alert = db.scalar(select(DetectionAlert).where(DetectionAlert.fingerprint == fingerprint))
+    created = alert is None
+
+    if created:
+        alert = DetectionAlert(
+            rule_id=rule_id,
+            fingerprint=fingerprint,
+            title=title,
+            description=description,
+            severity=severity,
+            status="open",
+            source_ip=source_ip,
+            hostname=hostname,
+            username=", ".join(usernames)[:255] or None,
+            event_count=len(events),
+            first_seen=_as_utc(events[0].timestamp),
+            last_seen=_as_utc(events[-1].timestamp),
+            evidence_event_ids=evidence_ids,
+        )
+        db.add(alert)
+    else:
+        alert.event_count = len(events)
+        alert.last_seen = _as_utc(events[-1].timestamp)
+        alert.evidence_event_ids = evidence_ids
+        alert.username = ", ".join(usernames)[:255] or None
+        alert.description = description
+        if severity == "high":
+            alert.severity = "high"
+
+    return alert, created
+
+
 def run_ssh_brute_force_detection(
     db: Session,
     *,
@@ -32,7 +74,7 @@ def run_ssh_brute_force_detection(
     threshold: int = 5,
     now: datetime | None = None,
 ) -> dict:
-    """Create or refresh one alert per source IP and target host."""
+    """Run SSH brute-force and password-spray rules over a rolling window."""
     if not 1 <= window_minutes <= 1440:
         raise ValueError("window_minutes must be between 1 and 1440")
     if not 2 <= threshold <= 100:
@@ -61,54 +103,42 @@ def run_ssh_brute_force_detection(
 
     created = 0
     updated = 0
-    matched_alerts: list[DetectionAlert] = []
+    matched_alerts = []
 
     for (source_ip, hostname), events in groups.items():
-        if len(events) < threshold:
-            continue
-
-        fingerprint_input = f"{SSH_BRUTE_FORCE_RULE_ID}:{source_ip}:{hostname or ''}"
-        fingerprint = hashlib.sha256(fingerprint_input.encode("utf-8")).hexdigest()
-        evidence_ids = [str(event.id) for event in events]
         usernames = sorted({event.username for event in events if event.username})
-        alert = db.scalar(
-            select(DetectionAlert).where(DetectionAlert.fingerprint == fingerprint)
-        )
 
-        if alert is None:
-            alert = DetectionAlert(
+        if len(events) >= threshold:
+            alert, is_new = _upsert_alert(
+                db,
                 rule_id=SSH_BRUTE_FORCE_RULE_ID,
-                fingerprint=fingerprint,
                 title="SSH brute-force activity detected",
-                description=(
-                    f"{len(events)} SSH authentication failures from {source_ip} "
-                    f"targeting {hostname or 'an unspecified host'} within "
-                    f"{window_minutes} minutes."
-                ),
-                severity="high" if len(events) >= threshold * 2 else "medium",
-                status="open",
                 source_ip=source_ip,
                 hostname=hostname,
-                username=", ".join(usernames)[:255] or None,
-                event_count=len(events),
-                first_seen=_as_utc(events[0].timestamp),
-                last_seen=_as_utc(events[-1].timestamp),
-                evidence_event_ids=evidence_ids,
+                events=events,
+                usernames=usernames,
+                window_minutes=window_minutes,
+                severity="high" if len(events) >= threshold * 2 else "medium",
             )
-            db.add(alert)
-            created += 1
-        else:
-            alert.event_count = len(events)
-            alert.last_seen = _as_utc(events[-1].timestamp)
-            alert.evidence_event_ids = evidence_ids
-            alert.username = ", ".join(usernames)[:255] or None
-            alert.description = (
-                f"{len(events)} SSH authentication failures from {source_ip} "
-                f"targeting {hostname or 'an unspecified host'} within "
-                f"{window_minutes} minutes."
+            matched_alerts.append(alert)
+            created += int(is_new)
+            updated += int(not is_new)
+
+        if len(usernames) >= threshold:
+            alert, is_new = _upsert_alert(
+                db,
+                rule_id=SSH_PASSWORD_SPRAY_RULE_ID,
+                title="SSH password-spray activity detected",
+                source_ip=source_ip,
+                hostname=hostname,
+                events=events,
+                usernames=usernames,
+                window_minutes=window_minutes,
+                severity="high",
             )
-            updated += 1
-        matched_alerts.append(alert)
+            matched_alerts.append(alert)
+            created += int(is_new)
+            updated += int(not is_new)
 
     db.commit()
     for alert in matched_alerts:
@@ -116,6 +146,7 @@ def run_ssh_brute_force_detection(
 
     return {
         "rule_id": SSH_BRUTE_FORCE_RULE_ID,
+        "rules_evaluated": [SSH_BRUTE_FORCE_RULE_ID, SSH_PASSWORD_SPRAY_RULE_ID],
         "window_minutes": window_minutes,
         "threshold": threshold,
         "events_evaluated": len(candidates),
