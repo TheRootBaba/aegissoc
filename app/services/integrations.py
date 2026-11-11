@@ -213,6 +213,34 @@ class OpenCTIAdapter(HttpPollAdapter):
             "expires_at": item.get("valid_until"),
         }
 
+class VulnerabilityScannerAdapter(HttpPollAdapter):
+    """Authenticated vendor export-job API contract; credentials stay in secret storage."""
+    provider = "scanner"
+    def validate_config(self, config: dict) -> AdapterCheck:
+        result = super().validate_config(config)
+        if not result.valid:
+            return result
+        if not config.get("credential_ref"):
+            return AdapterCheck(False, "Scanner connector requires an external credential_ref.")
+        if urlsplit(config["endpoint"]).scheme != "https":
+            return AdapterCheck(False, "Vulnerability scanner APIs require HTTPS.")
+        if not isinstance(config.get("interval_seconds", 300), int) or not 60 <= config.get("interval_seconds", 300) <= 86400:
+            return AdapterCheck(False, "Scanner interval_seconds must be between 60 and 86400.")
+        return AdapterCheck(True, "Scanner API endpoint, TLS, host allowlist, and external credential reference are valid.")
+
+
+class NessusAdapter(VulnerabilityScannerAdapter):
+    connector_type = "nessus"
+
+
+class TenableAdapter(VulnerabilityScannerAdapter):
+    connector_type = "tenable"
+
+
+class QualysAdapter(VulnerabilityScannerAdapter):
+    connector_type = "qualys"
+
+
 class ResponseWebhookAdapter(IntegrationAdapter):
     connector_type = "response_webhook"
     def validate_config(self, config: dict) -> AdapterCheck:
@@ -239,7 +267,7 @@ class ResponseWebhookAdapter(IntegrationAdapter):
 
 ADAPTERS = {item.connector_type: item for item in (
     IntegrationAdapter(), WazuhAdapter(), SyslogAdapter(), HttpEventAdapter(),
-    HttpPollAdapter(), ThreatFeedAdapter(), WazuhManagerAdapter(), WazuhIndexerAdapter(), MISPAdapter(), OpenCTIAdapter(), ResponseWebhookAdapter(),
+    HttpPollAdapter(), ThreatFeedAdapter(), WazuhManagerAdapter(), WazuhIndexerAdapter(), MISPAdapter(), OpenCTIAdapter(), NessusAdapter(), TenableAdapter(), QualysAdapter(), ResponseWebhookAdapter(),
 )}
 
 def get_adapter(connector_type: str) -> IntegrationAdapter:
