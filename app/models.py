@@ -250,7 +250,7 @@ class CaseNote(Base):
 
 class DetectionRuleConfig(Base):
     __tablename__ = "detection_rule_configs"
-    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True, primary_key=True)
     rule_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=true())
     severity_override: Mapped[str | None] = mapped_column(String(16), nullable=True)
@@ -360,7 +360,7 @@ class ConnectorExecution(Base):
 
 class SigmaRule(Base):
     __tablename__ = "sigma_rules"
-    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True, primary_key=True)
     rule_id: Mapped[str] = mapped_column(String(160), primary_key=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
