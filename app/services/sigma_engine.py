@@ -48,11 +48,14 @@ def parse_sigma_document(source: str) -> dict:
                 raise ValueError("Unsupported Sigma field modifier")
             if not isinstance(expected, (str, int, float, bool, list)):
                 raise ValueError("Sigma field values must be scalar or a list")
+    rule_id = str(document.get("id") or hashlib.sha256(source.encode()).hexdigest()[:32])
+    if not rule_id or len(rule_id) > 58:
+        raise ValueError("Sigma rule ID must be between 1 and 58 characters")
     tags = document.get("tags", [])
     if not isinstance(tags, list):
         raise ValueError("Sigma tags must be a list")
     return {
-        "rule_id": str(document.get("id") or hashlib.sha256(source.encode()).hexdigest()[:32]),
+        "rule_id": rule_id,
         "title": document["title"].strip()[:255],
         "description": str(document.get("description") or "")[:4000],
         "level": level,
