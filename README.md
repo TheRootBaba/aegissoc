@@ -264,7 +264,7 @@ There is no public self-registration or default account. Create the first admini
 docker compose exec api python -m scripts.create_admin
 ```
 
-For local non-container development, run `python -m scripts.create_admin` after `alembic upgrade head`. User provisioning is administrator-only through `POST /api/v1/auth/users`. Passwords require at least 12 characters and are stored as salted PBKDF2-HMAC-SHA256 hashes. Analyst identity in alert updates, notes, and audit entries comes from the verified token; client-supplied actor labels are ignored.
+For local non-container development, run `python -m scripts.create_admin` after `alembic upgrade head`. Rotate an existing account password interactively with `docker compose exec api python -m scripts.reset_password` (or `python -m scripts.reset_password` outside Docker). User provisioning is administrator-only through `POST /api/v1/auth/users`. Passwords require at least 12 characters and are stored as salted PBKDF2-HMAC-SHA256 hashes. Analyst identity in alert updates, notes, and audit entries comes from the verified token; client-supplied actor labels are ignored.
 
 ### Security configuration
 
@@ -292,3 +292,14 @@ Open the dashboard at http://localhost:8000/dashboard. After updating the branch
 ```powershell
 docker compose up --build -d
 ```
+
+
+### Emergency local password rotation
+
+If an administrator password was shared, pasted into a terminal recording, or otherwise exposed, rotate it immediately:
+
+```powershell
+docker compose exec api python -m scripts.reset_password
+```
+
+The command prompts for the account and the new password without echoing the password. Existing bearer tokens remain valid only until their configured expiry; sign out active browser tabs after rotation.
