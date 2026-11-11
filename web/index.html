@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0b0e0c">
+  <meta name="theme-color" content="#0a1020">
   <meta name="description" content="AegisSOC security operations and incident response workspace">
   <title>AegisSOC — Security Operations</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
   <script src="/static/app.js" defer></script>
 </head>
@@ -23,6 +23,7 @@
       <div class="nav-caption">OPERATIONS</div>
       <nav class="nav-group" aria-label="Main navigation">
         <a class="nav-link active" href="#overview" data-nav="overview"><span class="nav-icon">◫</span>Overview</a>
+        <a class="nav-link" href="#sources" data-nav="sources"><span class="nav-icon">⌘</span>Data sources<span class="nav-count" id="nav-source-count">0</span></a>
         <a class="nav-link" href="#alerts" data-nav="alerts"><span class="nav-icon">◎</span>Alert queue<span class="nav-count" id="nav-alert-count">0</span></a>
         <a class="nav-link" href="#events" data-nav="events"><span class="nav-icon">⌁</span>Event telemetry</a>
         <a class="nav-link admin-nav" href="#team" data-nav="team" id="team-nav"><span class="nav-icon">♙</span>Team & access</a>
@@ -46,7 +47,7 @@
       </header>
 
       <section class="page-intro" id="overview">
-        <div><div class="eyebrow"><span class="eyebrow-line"></span> SECURITY OPERATIONS CENTER <span class="eyebrow-tag">LOCAL LAB</span></div><h1>Operational clarity.<br><span>At incident speed.</span></h1><p class="intro-copy">A live operating picture of detections, telemetry, and analyst response. Find the signal. Understand the impact. Move the incident forward.</p></div>
+        <div><div class="eyebrow"><span class="eyebrow-line"></span> SECURITY OPERATIONS CENTER <span class="eyebrow-tag">LOCAL LAB</span></div><h1>Security operations.<br><span>Under control.</span></h1><p class="intro-copy">One operational view of detection, telemetry, and response. Prioritize the signals that matter and move investigations forward with context.</p></div>
         <div class="intro-meta"><span class="live-pulse"></span><span><strong>LIVE WORKSPACE</strong><small id="last-updated">Waiting for first sync</small></span></div>
       </section>
 
@@ -57,8 +58,25 @@
         <article class="metric-card"><div class="metric-top"><span>IN INVESTIGATION</span><span class="metric-icon icon-green">◷</span></div><div class="metric-number" id="metric-progress">—</div><div class="metric-bottom"><span class="metric-dot dot-green"></span>Assigned or actively reviewed</div></article>
       </section>
 
+      <section class="section-block" id="sources">
+        <div class="section-heading"><div><div class="section-kicker">01 / INGESTION & COVERAGE</div><h2>Data source health</h2><p>Observed producer activity, ingestion outcomes, and source freshness.</p></div><div class="section-heading-side"><span class="data-chip" id="source-health-summary">Awaiting source telemetry</span><span class="result-count" id="source-count">0 sources</span></div></div>
+        <div class="source-layout">
+          <div class="source-grid" id="source-grid"><div class="source-empty">Loading registered and observed sources…</div></div>
+          <aside class="surface-card source-register" id="source-register-panel">
+            <div class="card-toolbar"><div class="toolbar-title"><span class="toolbar-mark">＋</span><span><strong>Register a source</strong><small>Track a producer before its first event</small></span></div></div>
+            <form id="source-create-form" class="source-create-form">
+              <label for="source-name">SOURCE IDENTIFIER</label><input id="source-name" name="source_name" maxlength="80" pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,79}" placeholder="e.g. wazuh-prod" required>
+              <label for="source-display-name">DISPLAY NAME</label><input id="source-display-name" name="display_name" maxlength="120" placeholder="Production Wazuh Manager" required>
+              <label for="source-type">SOURCE TYPE</label><select id="source-type" name="source_type"><option value="generic">Generic</option><option value="wazuh">Wazuh</option><option value="syslog">Syslog</option><option value="endpoint">Endpoint</option><option value="cloud">Cloud</option><option value="network">Network</option></select>
+              <button class="button button-primary" type="submit" id="source-create-button">Register source <span>→</span></button>
+              <p class="form-feedback" id="source-create-feedback" role="status"></p>
+            </form>
+          </aside>
+        </div>
+      </section>
+
       <section class="section-block" id="alerts">
-        <div class="section-heading"><div><div class="section-kicker">01 / DETECTION & RESPONSE</div><h2>Alert intelligence</h2><p>Prioritize active threats and manage investigations.</p></div><div class="section-heading-side"><span class="data-chip"><span class="status-orb"></span> Detection engine</span><span class="result-count" id="alert-count">0 alerts</span></div></div>
+        <div class="section-heading"><div><div class="section-kicker">02 / DETECTION & RESPONSE</div><h2>Alert intelligence</h2><p>Prioritize active threats and manage investigations.</p></div><div class="section-heading-side"><span class="data-chip"><span class="status-orb"></span> Detection engine</span><span class="result-count" id="alert-count">0 alerts</span></div></div>
         <div class="alert-workspace">
           <div class="surface-card alert-list-card">
             <div class="card-toolbar"><div class="toolbar-title"><span class="toolbar-mark">◈</span><span><strong>Detection queue</strong><small>Latest signals · newest first</small></span></div><div class="filter-controls"><label class="sr-only" for="alert-search">Search alerts</label><input id="alert-search" class="search-input" type="search" placeholder="Search alerts…"><label class="sr-only" for="severity-filter">Filter severity</label><select id="severity-filter"><option value="">All severity</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="info">Info</option></select><label class="sr-only" for="attack-filter">Filter ATT&CK technique</label><select id="attack-filter"><option value="">All techniques</option><option value="T1110">T1110 · Brute Force</option><option value="T1110.003">T1110.003 · Password Spraying</option></select></div></div>
@@ -70,7 +88,7 @@
       </section>
 
       <section class="section-block" id="events">
-        <div class="section-heading"><div><div class="section-kicker">02 / SECURITY TELEMETRY</div><h2>Event stream</h2><p>Normalized activity collected from connected sources.</p></div><span class="result-count" id="event-count">0 events</span></div>
+        <div class="section-heading"><div><div class="section-kicker">03 / SECURITY TELEMETRY</div><h2>Event stream</h2><p>Normalized activity collected from connected sources.</p></div><span class="result-count" id="event-count">0 events</span></div>
         <div class="surface-card event-card">
           <div class="card-toolbar"><div class="toolbar-title"><span class="toolbar-mark blue-mark">⌁</span><span><strong>Recent events</strong><small>Canonical event records · latest 25</small></span></div><span class="data-chip">INGESTION FEED</span></div>
           <div class="table-wrap"><table class="data-table"><thead><tr><th>EVENT TYPE</th><th>SEVERITY</th><th>HOST</th><th>SOURCE IP</th><th>TIMESTAMP</th></tr></thead><tbody id="events-body"><tr><td colspan="5" class="table-empty">Loading event telemetry…</td></tr></tbody></table></div>
@@ -79,7 +97,7 @@
       </section>
 
       <section class="section-block team-section" id="team">
-        <div class="section-heading"><div><div class="section-kicker">03 / ACCESS GOVERNANCE</div><h2>Team & access</h2><p>Provision analyst accounts and control workspace permissions.</p></div><span class="data-chip">ADMINISTRATOR ONLY</span></div>
+        <div class="section-heading"><div><div class="section-kicker">04 / ACCESS GOVERNANCE</div><h2>Team & access</h2><p>Provision analyst accounts and control workspace permissions.</p></div><span class="data-chip">ADMINISTRATOR ONLY</span></div>
         <div class="team-grid">
           <div class="surface-card team-create-card"><div class="card-toolbar"><div class="toolbar-title"><span class="toolbar-mark violet-mark">＋</span><span><strong>Create an account</strong><small>Provision a new SOC operator</small></span></div></div>
             <form id="create-user-form" class="create-user-form">
@@ -93,7 +111,7 @@
         </div>
       </section>
 
-      <footer class="app-footer"><span>© AEGISSOC <b>·</b> THREAT OPERATIONS PLATFORM</span><span>LOCAL-FIRST SECURITY WORKSPACE <i></i> VISUAL SYSTEM 01</span></footer>
+      <footer class="app-footer"><span>© AEGISSOC <b>·</b> THREAT OPERATIONS PLATFORM</span><span>LOCAL-FIRST SECURITY WORKSPACE <i></i> ANALYST WORKSPACE</span></footer>
     </main>
   </div>
 
