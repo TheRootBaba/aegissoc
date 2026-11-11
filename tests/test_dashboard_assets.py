@@ -56,3 +56,19 @@ def test_dashboard_uses_a_premium_midnight_cyan_visual_system():
     assert "--bg:#080e1b" in styles
     assert ".metrics-grid" in styles
     assert ".source-layout" in styles
+
+
+def test_dashboard_exposes_investigation_workbench_controls():
+    html = (WEB / "index.html").read_text(encoding="utf-8")
+    script = (WEB / "app.js").read_text(encoding="utf-8")
+    for element_id in (
+        "event-query-text", "event-query-severity", "event-query-source",
+        "event-query-time", "event-query-group", "saved-query-select",
+        "saved-query-name", "saved-query-shared", "run-event-query",
+        "reset-event-query", "save-event-query", "query-aggregations",
+    ):
+        assert f'id="{element_id}"' in html
+    assert 'api("/api/v1/events/query"' in script
+    assert 'api("/api/v1/events/saved-queries"' in script
+    assert 'api("/api/v1/events/fields"' in script
+    assert "function renderQueryAggregations()" in script
