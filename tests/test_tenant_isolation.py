@@ -5,7 +5,7 @@ from sqlalchemy import create_engine, delete, select, update
 from sqlalchemy.orm import Session
 
 from app.db.base import Base
-from app.models import SecurityEvent, Workspace
+from app.models import DetectionRuleConfig, SecurityEvent, SigmaRule, Workspace
 
 
 def _event(source: str, message: str) -> SecurityEvent:
@@ -55,4 +55,48 @@ def test_workspace_context_scopes_reads_updates_and_deletes():
         other = db.get(SecurityEvent, second_id)
         assert other is not None
         assert other.message == "second workspace"
+    engine.dispose()
+
+
+
+def test_detection_governance_and_sigma_rule_ids_are_workspace_scoped():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        first = Workspace(slug="rules-one", name="Rules One")
+        second = Workspace(slug="rules-two", name="Rules Two")
+        db.add_all([first, second])
+        db.flush()
+        for workspace in (first, second):
+            db.add(SigmaRule(
+                workspace_id=workspace.id,
+                rule_id="shared-rule-id",
+                title="Workspace-local rule",
+                description="",
+                level="medium",
+                status="test",
+                enabled=False,
+                detection={"selection": {"event_type": "test.event"}},
+                condition="selection",
+                logsource={},
+                tags=[],
+                sigma_yaml="title: Workspace-local rule",
+                created_by="test",
+            ))
+            db.add(DetectionRuleConfig(
+                workspace_id=workspace.id,
+                rule_id="shared-detection-id",
+                enabled=True,
+                updated_by="test",
+            ))
+        db.commit()
+        first_id = first.id
+        second_id = second.id
+
+    with Session(engine) as db:
+        db.info["workspace_id"] = first_id
+        assert len(list(db.scalars(select(SigmaRule)).all())) == 1
+        assert len(list(db.scalars(select(DetectionRuleConfig)).all())) == 1
+        assert db.get(SigmaRule, (second_id, "shared-rule-id")) is None
+        assert db.get(DetectionRuleConfig, (second_id, "shared-detection-id")) is None
     engine.dispose()
