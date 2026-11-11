@@ -6,6 +6,7 @@ from app.core.security import check_login_rate_limit, clear_login_rate_limit, cl
 from app.db.session import get_db
 from app.models import User
 from app.schemas.auth import CurrentUserRead, LoginRequest, TokenResponse, UserCreate, UserRead
+from app.services.audit_chain import append_audit_entry
 
 router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
 
@@ -36,6 +37,7 @@ def create_user(payload: UserCreate, _admin: User = Depends(require_roles("admin
     user = User(username=payload.username, password_hash=hash_password(payload.password),
                 role=payload.role, is_active=True)
     db.add(user)
+    append_audit_entry(db, actor=_admin.username, action="user.created", resource_type="user", resource_id=user.username, details={"role": user.role})
     db.commit()
     db.refresh(user)
     return user
