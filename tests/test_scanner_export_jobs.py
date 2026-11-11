@@ -23,12 +23,13 @@ def test_qualys_basic_auth_and_invalid_credentials(monkeypatch):
         scanner_headers("qualys", "secret://qualys")
 
 
-def test_scanner_job_cursor_and_host_validation():
+def test_scanner_job_cursor_and_host_validation(monkeypatch):
+    monkeypatch.setattr('app.services.scanner_export_jobs.resolve_secret_reference', lambda ref: 'access:private')
     config = {"endpoint": "https://cloud.example", "allowed_hosts": ["cloud.example"],
               "start_path": "/scans/42/export", "status_path": "/exports/{job_id}",
               "scan_id": "42", "start_payload": {"format": "nessus"}}
     url, headers, method, body, state = scanner_job_request(
-        "nessus", config, {}, "secret://scanner")
+        "nessus", config, {}, "env://SCANNER_API_KEYS")
     assert url == "https://cloud.example/scans/42/export"
     assert method == "POST" and body == {"format": "nessus"} and state == "starting"
     url, _, method, body, state = scanner_job_request(
