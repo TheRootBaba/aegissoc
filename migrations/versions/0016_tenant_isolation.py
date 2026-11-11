@@ -19,6 +19,11 @@ TENANT_TABLES = (
     "sigma_rules", "response_action_requests", "scanner_import_runs",
 )
 
+SCOPED_PRIMARY_KEYS = (
+    ("detection_rule_configs", "pk_detection_rule_configs_workspace_rule", ["workspace_id", "rule_id"]),
+    ("sigma_rules", "pk_sigma_rules_workspace_rule", ["workspace_id", "rule_id"]),
+)
+
 SCOPED_UNIQUES = (
     ("security_events", "uq_security_events_workspace_source_external_id", ["workspace_id", "source", "external_id"]),
     ("detection_alerts", "uq_detection_alerts_workspace_fingerprint", ["workspace_id", "fingerprint"]),
@@ -68,6 +73,12 @@ def upgrade() -> None:
     # Audit-chain sequence numbers are now independent within each workspace.
     op.drop_constraint("audit_chain_state_pkey", "audit_chain_state", type_="primary")
     op.create_primary_key("pk_audit_chain_state", "audit_chain_state", ["id", "workspace_id"])
+
+    for table, name, columns in SCOPED_PRIMARY_KEYS:
+        primary_key = sa.inspect(bind).get_pk_constraint(table)
+        if primary_key.get("name"):
+            op.drop_constraint(primary_key["name"], table, type_="primary")
+        op.create_primary_key(name, table, columns)
 
     for table, _, columns in SCOPED_UNIQUES:
         old_columns = [column for column in columns if column != "workspace_id"]
