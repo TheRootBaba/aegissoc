@@ -29,6 +29,10 @@ class ResponseActionRead(BaseModel):
     execution_status: str | None
     response_code: int | None
     result_summary: str | None
+    execution_attempts: int
+    next_attempt_at: datetime | None
+    last_error_type: str | None
+    external_reference: str | None
     idempotency_key: str
     created_at: datetime
     decided_at: datetime | None
