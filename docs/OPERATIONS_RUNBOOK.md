@@ -37,8 +37,8 @@ docker compose exec db psql -U aegis -d aegissoc
 At the `psql` prompt:
 
 ```sql
-\\password aegis
-\\q
+\password aegis
+\q
 ```
 
 Enter the intended password at the hidden prompts; do not put it in a shell command or paste it into a support conversation. Recreate the API container and check its health:
