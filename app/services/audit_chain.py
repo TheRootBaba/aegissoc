@@ -75,15 +75,22 @@ def append_audit_entry(
 
 def verify_audit_chain(db: Session) -> dict:
     """Recompute every hash and compare the records with the persisted head."""
-    state = db.get(AuditChainState, 1)
-    records = list(db.scalars(
+    state_statement = select(AuditChainState).where(AuditChainState.id == 1)
+    if db.get_bind().dialect.name == "postgresql":
+        # Hold the head row so a concurrent append cannot race the verification.
+        state_statement = state_statement.with_for_update()
+    state = db.scalar(state_statement)
+    records = db.scalars(
         select(SecurityAuditEntry).order_by(SecurityAuditEntry.sequence.asc())
-    ).all())
+        .execution_options(yield_per=1000)
+    )
     previous_hash = GENESIS_HASH
     expected_sequence = 1
+    record_count = 0
     first_invalid = None
 
     for entry in records:
+        record_count += 1
         occurred_at = entry.occurred_at
         if occurred_at.tzinfo is None or occurred_at.utcoffset() is None:
             occurred_at = occurred_at.replace(tzinfo=timezone.utc)
@@ -117,7 +124,7 @@ def verify_audit_chain(db: Session) -> dict:
     valid = first_invalid is None
     return {
         "valid": valid,
-        "checked_entries": len(records) if valid else max(0, (first_invalid or 1) - 1),
+        "checked_entries": record_count if valid else max(0, (first_invalid or 1) - 1),
         "head_sequence": state.head_sequence if state else 0,
         "head_hash": state.head_hash if state else GENESIS_HASH,
         "first_invalid_sequence": first_invalid,
