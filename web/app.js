@@ -8,7 +8,9 @@ const state = {
   operationsHealth: {}, operationsMetrics: {}, retentionPolicies: [], operationJobs: [], connectors: [],
   indicators: [], indicatorMatches: [], entities: [], assets: [], playbooks: [], findings: [],
   selectedId: null, token: null, user: null, toastTimer: null,
+  workspaces: [], workspaceId: null,
 };
+const currentRole = () => state.user?.workspace_role || currentRole() || "read_only";
 const esc = (value) => String(value ?? "—").replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
 }[char]));
@@ -45,6 +47,11 @@ function clearSession() {
   sessionStorage.removeItem("aegis_token");
   state.token = null;
   state.user = null;
+  state.workspaceId = null;
+  state.workspaces = [];
+  localStorage.removeItem("aegis_workspace_id");
+  if ($("workspace-name")) $("workspace-name").textContent = "No active workspace";
+  if ($("workspace-select")) $("workspace-select").innerHTML = '<option value="">Select workspace</option>';
   state.alerts = [];
   state.events = [];
   state.sources = [];
@@ -101,6 +108,7 @@ async function api(path, options = {}) {
     Accept: "application/json",
     ...(options.body ? { "Content-Type": "application/json" } : {}),
     ...(state.token ? { Authorization: "Bearer " + state.token } : {}),
+    ...(state.workspaceId ? { "X-Workspace-ID": state.workspaceId } : {}),
     ...(options.headers || {}),
   };
   const response = await fetch(path, { ...options, headers });
@@ -295,7 +303,7 @@ function renderSources() {
 
 function renderSchedules() {
   const schedules = state.schedules || [];
-  const isAdmin = state.user?.role === "admin";
+  const isAdmin = currentRole() === "admin";
   $("schedule-create-panel").hidden = !isAdmin;
   $("schedule-count").textContent = count(schedules.length) + " schedules";
   $("schedules-grid").innerHTML = schedules.length ? schedules.map((schedule) => {
@@ -394,7 +402,7 @@ async function handleScheduleAction(event) {
 function renderAudit() {
   const entries = state.auditEntries || [];
   $("audit-count").textContent = count(entries.length) + " recent records";
-  $("verify-audit").hidden = state.user?.role !== "admin";
+  $("verify-audit").hidden = currentRole() !== "admin";
   const verification = state.auditVerification;
   const status = $("audit-status");
   status.classList.toggle("audit-valid", Boolean(verification?.valid));
@@ -449,7 +457,7 @@ async function loadInvestigation(id) {
       api("/api/v1/alerts/" + encodeURIComponent(id) + "/notes"),
       api("/api/v1/alerts/" + encodeURIComponent(id) + "/history"),
     ]);
-    const readOnly = state.user?.role === "read_only";
+    const readOnly = currentRole() === "read_only";
     panel.innerHTML =
       '<div class="detail-head"><div><div class="section-kicker">' + esc(alert.rule_id) +
       '</div><h3>' + esc(alert.title) + '</h3><div class="detail-meta">' + esc(alert.id) +
@@ -606,12 +614,53 @@ async function refreshDashboard() {
   }
 }
 async function refreshUsers() {
-  if (state.user?.role !== "admin") return;
+  if (currentRole() !== "admin") return;
   try {
     state.users = await api("/api/v1/auth/users");
     renderUsers();
   } catch (error) {
     $("users-list").innerHTML = '<div class="table-empty">' + esc(error.message) + "</div>";
+  }
+}
+function renderWorkspaceSwitcher() {
+  const select = $("workspace-select");
+  if (!select) return;
+  select.innerHTML = state.workspaces.map((workspace) =>
+    '<option value="' + esc(workspace.id) + '">' + esc(workspace.name) + " · " +
+    esc(workspace.role.replaceAll("_", " ")) + "</option>"
+  ).join("");
+  select.value = state.workspaceId || "";
+  const active = state.workspaces.find((workspace) => workspace.id === state.workspaceId);
+  $("workspace-name").textContent = active?.name || "No active workspace";
+  $("workspace-avatar").textContent = active?.name?.slice(0, 1).toUpperCase() || "W";
+  select.disabled = state.workspaces.length < 2;
+}
+function applyCurrentUser() {
+  const role = currentRole();
+  $("sidebar-username").textContent = state.user.username;
+  $("sidebar-role").textContent = role.replaceAll("_", " ");
+  $("sidebar-avatar").textContent = state.user.username.slice(0, 1).toUpperCase();
+  $("team-nav").hidden = role !== "admin";
+  $("source-register-panel").hidden = role !== "admin";
+  $("team").classList.toggle("visible", role === "admin");
+  $("run-detections").hidden = role === "read_only";
+  $("signout-button").hidden = false;
+  $("sidebar-signout").hidden = false;
+}
+async function switchWorkspace(workspaceId) {
+  const selected = state.workspaces.find((workspace) => workspace.id === workspaceId);
+  if (!selected || selected.id === state.workspaceId) return;
+  state.workspaceId = selected.id;
+  localStorage.setItem("aegis_workspace_id", selected.id);
+  renderWorkspaceSwitcher();
+  try {
+    state.user = await api("/api/v1/auth/me");
+    applyCurrentUser();
+    await refreshDashboard();
+    await refreshUsers();
+    showToast("Switched to " + selected.name + ".");
+  } catch (error) {
+    showToast(error.message, "error");
   }
 }
 async function bootstrap() {
@@ -623,22 +672,22 @@ async function bootstrap() {
   }
   state.token = token;
   try {
+    state.workspaces = await api("/api/v1/workspaces");
+    const savedWorkspaceId = localStorage.getItem("aegis_workspace_id");
+    const selected = state.workspaces.find((item) => item.id === savedWorkspaceId) ||
+      state.workspaces.find((item) => item.slug === "default") || state.workspaces[0];
+    if (!selected) throw new Error("Your account is not a member of an active AegisSOC workspace. Ask an administrator for access.");
+    state.workspaceId = selected.id;
+    localStorage.setItem("aegis_workspace_id", selected.id);
+    renderWorkspaceSwitcher();
     state.user = await api("/api/v1/auth/me");
     $("auth-overlay").classList.add("hidden");
-    $("sidebar-username").textContent = state.user.username;
-    $("sidebar-role").textContent = state.user.role.replaceAll("_", " ");
-    $("sidebar-avatar").textContent = state.user.username.slice(0, 1).toUpperCase();
-    $("team-nav").hidden = state.user.role !== "admin";
-    $("source-register-panel").hidden = state.user.role !== "admin";
-    $("team").classList.toggle("visible", state.user.role === "admin");
-    $("run-detections").hidden = state.user.role === "read_only";
-    $("signout-button").hidden = false;
-    $("sidebar-signout").hidden = false;
+    applyCurrentUser();
     await refreshDashboard();
     await refreshUsers();
   } catch (error) {
-    if (state.token) clearSession();
-    showAuth("Your session could not be validated. Please sign in again.");
+    if (state.token && error.message.includes("401")) clearSession();
+    showAuth(error.message || "Your session could not be validated. Please sign in again.");
   }
 }
 async function signIn(event) {
@@ -736,8 +785,8 @@ function renderOperations() {
   const status = health.status || "unknown";
   $("operations-status").textContent = status.replaceAll("_", " ");
   $("operations-status").className = "data-chip " + (status === "operational" ? "status-healthy" : "status-warning");
-  $("run-retention").hidden = state.user?.role !== "admin";
-  const admin = state.user?.role === "admin";
+  $("run-retention").hidden = currentRole() !== "admin";
+  const admin = currentRole() === "admin";
   $("retention-policies").innerHTML = state.retentionPolicies.length
     ? state.retentionPolicies.map((policy) => {
       const editable = admin
@@ -758,7 +807,7 @@ function renderOperations() {
 }
 
 function renderConnectors() {
-  const admin = state.user?.role === "admin";
+  const admin = currentRole() === "admin";
   $("connector-create-panel").hidden = !admin;
   $("connector-count").textContent = count(state.connectors.length) + " connectors";
   $("connector-list").innerHTML = state.connectors.length
@@ -859,7 +908,7 @@ async function handleConnectorAction(event) {
 
 
 function renderCases() {
-  const editable = state.user?.role !== "read_only";
+  const editable = currentRole() !== "read_only";
   $("case-create-toggle").hidden = !editable;
   $("case-count").textContent = count(state.cases.length) + " cases";
   $("case-list").innerHTML = state.cases.length ? state.cases.map((item) =>
@@ -878,7 +927,7 @@ async function selectCase(id) {
   panel.innerHTML = '<div class="table-empty">Loading case evidence and timeline…</div>';
   try {
     const item = await api("/api/v1/cases/" + encodeURIComponent(id));
-    const editable = state.user?.role !== "read_only";
+    const editable = currentRole() !== "read_only";
     panel.innerHTML =
       '<div class="section-kicker">' + esc(item.case_number) + ' · INCIDENT RESPONSE</div>' +
       '<h3>' + esc(item.title) + '</h3>' +
@@ -995,7 +1044,7 @@ async function addCaseNote(event) {
 }
 
 function renderDetectionRules() {
-  const admin = state.user?.role === "admin";
+  const admin = currentRole() === "admin";
   $("rule-count").textContent = count(state.detectionRules.length) + " rules";
   $("detection-rule-list").innerHTML = state.detectionRules.length ? state.detectionRules.map((rule) =>
     '<article class="detection-rule-card">' +
@@ -1037,7 +1086,7 @@ async function saveDetectionRule(ruleId) {
 }
 
 function renderThreatIntel() {
-  $("indicator-form").hidden = state.user?.role === "read_only";
+  $("indicator-form").hidden = currentRole() === "read_only";
   $("indicator-count").textContent = count(state.indicators.length) + " indicators";
   $("indicator-match-count").textContent = count(state.indicatorMatches.length) + " matches";
   $("indicator-list").innerHTML = state.indicators.length ? state.indicators.map((item) =>
@@ -1046,7 +1095,7 @@ function renderThreatIntel() {
     ' · Confidence ' + count(item.confidence) + '% · ' + esc(item.severity) + ' · ' + esc(item.status) +
     (item.expires_at ? ' · Expires ' + esc(date(item.expires_at)) : '') + '</div></div>' +
     '<div class="indicator-actions">' + pill(item.status, item.status === "active" ? "status-resolved" : "status-open") +
-    (item.status === "active" && state.user?.role !== "read_only" ? '<button class="button button-quiet" type="button" data-indicator-revoke="' + esc(item.id) + '">Revoke</button>' : '') +
+    (item.status === "active" && currentRole() !== "read_only" ? '<button class="button button-quiet" type="button" data-indicator-revoke="' + esc(item.id) + '">Revoke</button>' : '') +
     '</div></article>'
   ).join("") : '<div class="source-empty">No indicators registered. Add an IP, domain or file hash to begin building a local intelligence set.</div>';
   $("indicator-matches").innerHTML = state.indicatorMatches.length ? state.indicatorMatches.slice(0, 20).map((match) =>
