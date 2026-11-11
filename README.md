@@ -112,7 +112,19 @@ Invoke-RestMethod -Method Post -Uri "http://localhost:8000/api/v1/events" `
   -Headers $headers -ContentType "application/json" -Body $body
 ```
 
-The example assumes `$headers` contains a valid bearer token. The API contract and source-specific examples are documented in the OpenAPI page and integration guides.
+First obtain a token (use your local lab account; do not hard-code or commit a real password):
+
+```powershell
+$username = Read-Host "AegisSOC username"
+$securePassword = Read-Host "AegisSOC password" -AsSecureString
+$password = [System.Net.NetworkCredential]::new("", $securePassword).Password
+$loginBody = @{ username = $username; password = $password } | ConvertTo-Json
+$login = Invoke-RestMethod -Method Post -Uri "http://localhost:8000/api/v1/auth/login" -ContentType "application/json" -Body $loginBody
+$headers = @{ Authorization = "Bearer $($login.access_token)" }
+Remove-Variable password, loginBody, securePassword
+```
+
+Then run the event-ingestion example above. The API contract and source-specific examples are documented in the OpenAPI page and integration guides.
 
 For a reviewer walkthrough and screenshots captured from the real application, follow [Demo and screenshot capture](docs/DEMO_CAPTURE.md). Do not use generated UI mockups or screenshots containing customer data as product evidence.
 
