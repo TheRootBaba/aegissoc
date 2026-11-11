@@ -168,15 +168,17 @@ def cancel_request(request_id: UUID, payload: ResponseActionDecision,
 def compensate_request(request_id: UUID, payload: ResponseActionDecision,
                        db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Ask an explicitly capable receiver to compensate a previously delivered action."""
-    from app.services.response_compensation import post_compensation
+    from app.services.response_compensation import post_compensation, reconcile_compensation
 
     request = db.scalar(select(ResponseActionRequest).where(
         ResponseActionRequest.id == request_id
     ).with_for_update())
     if request is None:
         raise HTTPException(404, "Response action request not found")
-    if request.status != "succeeded" or request.execution_status not in {"delivered", "reconciled"}:
-        raise HTTPException(409, "Only a confirmed delivered action can be compensated")
+    if request.status != "succeeded" or request.execution_status not in {
+        "delivered", "reconciled", "compensation_pending"
+    }:
+        raise HTTPException(409, "Only a confirmed delivered action or pending compensation can be processed")
     if not request.external_reference:
         raise HTTPException(409, "Receiver did not provide an external action reference")
     connector = db.scalar(select(ConnectorConfig).where(
@@ -187,7 +189,10 @@ def compensate_request(request_id: UUID, payload: ResponseActionDecision,
     if connector is None:
         raise HTTPException(409, "The original response receiver is unavailable")
     try:
-        outcome = post_compensation(connector, request, reason=payload.note.strip())
+        if request.execution_status == "compensation_pending":
+            outcome = reconcile_compensation(connector, request)
+        else:
+            outcome = post_compensation(connector, request, reason=payload.note.strip())
     except (ValueError, OSError, httpx.HTTPError) as exc:
         raise HTTPException(502, "Receiver compensation could not be confirmed: " + type(exc).__name__) from exc
     request.execution_status = "compensated" if outcome["status"] == "compensated" else (
