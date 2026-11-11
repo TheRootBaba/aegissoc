@@ -2,6 +2,7 @@ from typing import Literal
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 
 class Settings(BaseSettings):
@@ -25,6 +26,9 @@ class Settings(BaseSettings):
         if self.app_env == "production":
             if len(self.auth_secret_key) < 32 or self.auth_secret_key == "dev-only-change-this-aegissoc-secret-key":
                 raise ValueError("Production requires a unique AUTH_SECRET_KEY of at least 32 characters")
+            database = make_url(self.database_url)
+            if database.get_backend_name() != "postgresql" or database.username in {"aegis", "postgres", None}:
+                raise ValueError("Production must use a dedicated non-owner PostgreSQL runtime role")
         if self.oidc_enabled:
             required = (self.oidc_issuer_url, self.oidc_client_id, self.oidc_client_secret, self.oidc_redirect_url)
             if not all(required):
