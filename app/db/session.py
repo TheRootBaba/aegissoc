@@ -16,7 +16,13 @@ def set_workspace_context(db: Session, workspace_id: UUID | str | None, *,
                           user_id: UUID | str | None = None, worker: bool = False, manage_memberships: bool = False, manage_workspaces: bool = False) -> None:
     """Bind the current transaction and future transactions to one workspace."""
     if workspace_id is not None:
-        db.info["workspace_id"] = UUID(str(workspace_id))
+        selected_workspace = UUID(str(workspace_id))
+        previous_workspace = db.info.get("workspace_id")
+        if previous_workspace is not None and UUID(str(previous_workspace)) != selected_workspace:
+            if db.new or db.dirty or db.deleted:
+                raise RuntimeError("Cannot switch workspace context while the session has pending changes")
+            db.expire_all()
+        db.info["workspace_id"] = selected_workspace
     if user_id is not None:
         db.info["user_id"] = UUID(str(user_id))
     if worker:
@@ -84,10 +90,17 @@ def _apply_transaction_context(session, transaction, connection):
 @event.listens_for(Session, "before_flush")
 def _assign_workspace_to_new_records(session, flush_context, instances):
     from app.models import Workspace
+    selected = session.info.get("workspace_id")
+    selected = UUID(str(selected)) if selected is not None else None
     for instance in session.new:
-        if not hasattr(instance, "workspace_id") or getattr(instance, "workspace_id", None) is not None:
+        if not hasattr(instance, "workspace_id"):
             continue
-        value = session.info.get("workspace_id")
+        current = getattr(instance, "workspace_id", None)
+        if selected is not None and current is not None and UUID(str(current)) != selected:
+            raise RuntimeError("Refusing to create tenant-owned data for a different workspace")
+        if current is not None:
+            continue
+        value = selected
         if value is None:
             if session.get_bind().dialect.name == "postgresql":
                 raise RuntimeError("Refusing to create tenant-owned data without a workspace context")
@@ -98,6 +111,12 @@ def _assign_workspace_to_new_records(session, flush_context, instances):
                 raise RuntimeError("A unique active default workspace is required for unscoped test writes")
             value = ids[0]
         instance.workspace_id = UUID(str(value))
+
+    for instance in list(session.dirty) + list(session.deleted):
+        if selected is not None and hasattr(instance, "workspace_id"):
+            current = getattr(instance, "workspace_id", None)
+            if current is None or UUID(str(current)) != selected:
+                raise RuntimeError("Refusing to mutate tenant-owned data outside the active workspace")
 
 
 @event.listens_for(Session, "do_orm_execute")
