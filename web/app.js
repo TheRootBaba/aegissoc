@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const state = { alerts: [], events: [], selectedId: null };
+const state = { alerts: [], events: [], eventStats: {}, alertStats: {}, selectedId: null };
 const esc = (value) => String(value ?? "—").replace(/[&<>"']/g, (char) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
 const date = (value) => value ? new Date(value).toLocaleString() : "—";
 const pill = (value, prefix="") => '<span class="pill '+prefix+esc(value)+'">'+esc(String(value).replaceAll("_"," "))+'</span>';
@@ -11,11 +11,11 @@ async function api(path, options={}) {
 }
 function toast(message) { const el=$("toast"); el.textContent=message; el.classList.add("show"); setTimeout(()=>el.classList.remove("show"),2800); }
 function renderMetrics() {
-  const open=state.alerts.filter(a=>a.status==="open").length;
-  const high=state.alerts.filter(a=>["high","critical"].includes(a.severity)).length;
-  const progress=state.alerts.filter(a=>["acknowledged","in_progress"].includes(a.status)).length;
+  const open=state.alertStats.by_status?.open||0;
+  const high=(state.alertStats.by_severity?.high||0)+(state.alertStats.by_severity?.critical||0);
+  const progress=(state.alertStats.by_status?.acknowledged||0)+(state.alertStats.by_status?.in_progress||0);
   $("metric-open").textContent=open; $("metric-high").textContent=high;
-  $("metric-events").textContent=state.events.length; $("metric-progress").textContent=progress;
+  $("metric-events").textContent=state.eventStats.total_events??state.events.length; $("metric-progress").textContent=progress;
   $("nav-alert-count").textContent=open; $("alert-count").textContent=state.alerts.length+" alerts";
   $("event-count").textContent=state.events.length+" events";
 }
@@ -23,7 +23,7 @@ function renderAlerts() {
   const filter=$("severity-filter").value;
   const attack=$("attack-filter").value;
   const rows=state.alerts.filter(a=>(!filter||a.severity===filter)&&(!attack||a.attack_technique_id===attack));
-  $("alerts-body").innerHTML=rows.length?rows.map(a=>'<tr class="alert-row '+(a.id===state.selectedId?"selected":"")+'" data-id="'+esc(a.id)+'"><td><div class="title-cell">'+esc(a.title)+'</div><div class="sub-cell">'+esc(a.rule_id)+' · '+esc(a.hostname)+'</div></td><td>'+pill(a.severity,"sev-")+'</td><td>'+pill(a.status,"status-")+'</td><td>'+esc(a.source_ip)+'</td><td>'+esc(date(a.last_seen))+'</td></tr>').join(""):'<tr><td colspan="5" class="empty">No alerts match this filter.</td></tr>';
+  $("alerts-body").innerHTML=rows.length?rows.map(a=>'<tr class="alert-row '+(a.id===state.selectedId?"selected":"")+'" data-id="'+esc(a.id)+'"><td><div class="title-cell">'+esc(a.title)+'</div><div class="sub-cell">'+esc(a.rule_id)+' · '+esc(a.attack_technique_id||"Unmapped")+' · '+esc(a.hostname)+'</div></td><td>'+pill(a.severity,"sev-")+'</td><td>'+pill(a.status,"status-")+'</td><td>'+esc(a.source_ip)+'</td><td>'+esc(date(a.last_seen))+'</td></tr>').join(""):'<tr><td colspan="5" class="empty">No alerts match this filter.</td></tr>';
   document.querySelectorAll(".alert-row").forEach(row=>row.addEventListener("click",()=>selectAlert(row.dataset.id)));
 }
 function renderEvents() {
@@ -31,8 +31,8 @@ function renderEvents() {
 }
 async function refresh() {
   try {
-    const [alerts,events,health]=await Promise.all([api("/api/v1/alerts?limit=200"),api("/api/v1/events?limit=25"),api("/health/ready")]);
-    state.alerts=alerts; state.events=events;
+    const [alerts,events,eventStats,alertStats]=await Promise.all([api("/api/v1/alerts?limit=200"),api("/api/v1/events?limit=25"),api("/api/v1/events/stats"),api("/api/v1/alerts/stats")]);
+    state.alerts=alerts; state.events=events; state.eventStats=eventStats; state.alertStats=alertStats;
     $("health-pill").classList.remove("offline"); $("health-pill").innerHTML="<i></i> API operational";
     renderMetrics();renderAlerts();renderEvents();
     if(state.selectedId && state.alerts.some(a=>a.id===state.selectedId)) await selectAlert(state.selectedId,false);
