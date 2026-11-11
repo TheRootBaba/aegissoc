@@ -19,7 +19,7 @@ The configured endpoint must return JSON containing an array (by default under `
 }
 ```
 
-Supported types are IP address, domain and MD5/SHA-1/SHA-256 hash. Invalid records are counted as rejected; valid records continue through the batch. Repeated values update the existing record rather than creating a second IOC. Feed confidence never lowers an existing confidence score during automatic synchronization; analysts retain control over lifecycle and provenance review.
+Supported types are IP address, domain and MD5/SHA-1/SHA-256 hash. Invalid records are counted as rejected; valid records continue through the batch. Repeated values update the existing record rather than creating a second IOC. Feed confidence never lowers an existing confidence score during automatic synchronization. A feed update does not reactivate an indicator an analyst has revoked; the connector provenance is added as a feed tag while the original source field remains intact.
 
 The feed worker records aggregate synchronization results in the audit chain. The existing lookup and event matching APIs continue to exclude revoked and expired indicators.
 
