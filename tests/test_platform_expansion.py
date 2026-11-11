@@ -516,3 +516,48 @@ def test_response_worker_retries_transient_receiver_failure_with_stable_idempote
     assert request.status == "succeeded"
     assert request.execution_attempts == 2
     assert request.idempotency_key == original_key
+
+def test_wazuh_indexer_connector_uses_basic_auth_search_and_native_alert_normalization(isolated_db, monkeypatch):
+    from app.services import connector_runtime
+
+    monkeypatch.setenv("WAZUH_INDEXER_FIXTURE", "fixture-user:fixture-password")
+    connector = ConnectorConfig(
+        connector_key="wazuh-indexer-prod",
+        connector_type="wazuh_indexer",
+        display_name="Wazuh Indexer production",
+        config={
+            "endpoint": "https://indexer.example.internal:9200/wazuh-alerts-*/_search",
+            "allowed_hosts": ["indexer.example.internal"],
+            "auth_scheme": "basic",
+            "page_size": 100,
+            "interval_seconds": 60,
+        },
+        credential_ref="env://WAZUH_INDEXER_FIXTURE",
+        enabled=True,
+        health_status="unverified",
+    )
+    isolated_db.add(connector)
+    isolated_db.commit()
+    calls = []
+    def fake_read(url, headers, **kwargs):
+        calls.append((url, headers, kwargs))
+        return {"hits": {"hits": [{
+            "_id": "wazuh-hit-001",
+            "_source": {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "rule": {"level": 8, "description": "sshd authentication failed", "groups": ["sshd"]},
+                "agent": {"name": "linux-prod-01"},
+                "data": {"srcip": "192.0.2.33", "srcuser": "root"},
+                "full_log": "sshd: Failed password for root",
+            },
+            "sort": [1, "wazuh-hit-001"],
+        }]}}
+    monkeypatch.setattr(connector_runtime, "_read_response", fake_read)
+    assert connector_runtime.run_due_connectors_once(isolated_db, batch_size=1) == 1
+    event = isolated_db.query(SecurityEvent).filter_by(external_id="wazuh-hit-001").one()
+    assert event.source == "wazuh-indexer-prod"
+    assert event.event_type == "authentication.failure"
+    assert event.hostname == "linux-prod-01"
+    assert calls[0][1]["Authorization"].startswith("Basic ")
+    assert calls[0][2]["method"] == "POST"
+    assert calls[0][2]["json_body"]["size"] == 100
