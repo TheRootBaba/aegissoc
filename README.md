@@ -275,6 +275,35 @@ aegissoc/
 
 Only ingest events from systems you own or are explicitly authorized to monitor. Use synthetic data during development. Local authentication and role-based authorization are implemented, but AegisSOC is still a controlled lab build rather than a production SIEM. Shared rate limiting, token revocation, tamper-evident audit chaining, retention controls, alerting, and hardened production deployment remain future work.
 
+
+
+## Phase 1.11 — source inventory and ingestion health
+
+AegisSOC now maintains a persistent source registry. Sources can be registered by an administrator before telemetry arrives, or discovered automatically when a producer submits its first event. The inventory records source type and display name, last ingestion attempt, last successfully accepted event timestamp, and cumulative accepted, duplicate, and rejected record counts.
+
+The observed health state is intentionally distinct from registration metadata:
+- **healthy** — a recent ingestion request accepted a new event or safely recognized a replay.
+- **failing** — the latest observed request contained only rejected records and no successful or duplicate outcomes.
+- **stale** — the last accepted event timestamp is older than 15 minutes.
+- **inactive** — the source has not yet delivered a successfully accepted event.
+
+The stale threshold is currently a fixed 15-minute operational default. Health is derived from observed timestamps and ingestion outcomes; registering a source does not mark it healthy.
+
+Authenticated endpoints:
+- `GET /api/v1/sources` — list the inventory and observed health.
+- `GET /api/v1/sources/{source_name}` — inspect one source.
+- `POST /api/v1/sources` — administrator-only registration using `source_name`, `display_name`, optional `source_type`, and optional `description`.
+
+Single-event and bulk ingestion update source counters in the same database transaction as event persistence. PostgreSQL and SQLite use atomic upserts for concurrent counter increments. The dashboard now includes a Data Source Health workspace with per-source status, counters, last activity, administrator registration, and a 60-second refresh cadence. No source status is fabricated when there is no telemetry.
+
+Run the new migration and restart the API after updating:
+
+```powershell
+docker compose up --build -d
+docker compose exec api alembic upgrade head
+```
+
+
 ## Roadmap
 
 1. Phase 1.1: migration discipline, validated configuration, request correlation, structured logs, bounded event queries.
@@ -284,6 +313,9 @@ Only ingest events from systems you own or are explicitly authorized to monitor.
 5. Phase 1.5: alert lifecycle, analyst workflow, and local analyst dashboard.
 6. Phase 1.6: native Wazuh ingestion, replay-safe source event IDs, MITRE ATT&CK technique mapping, and aggregate dashboard metrics.
 7. Phase 1.7: authentication, role-based access control, trusted analyst identities, login throttling, and production secret guardrails.
+8. Phase 1.8–1.9: analyst workspace, access management, and visual identity iterations.
+9. Phase 1.10: bounded bulk ingestion and database-backed replay protection.
+10. Phase 1.11: persistent source inventory, ingestion health, and analyst dashboard source coverage.
 
 
 ## Phase 1.7 — authentication and access control
