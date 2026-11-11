@@ -53,7 +53,7 @@ def _path_value(document, path: str):
     return value
 
 def _records(document, config: dict, connector_type: str = "http_poll") -> list:
-    default_path = {"misp": "response.Attribute", "opencti": "data.indicators.edges", "wazuh_indexer": "hits.hits"}.get(connector_type, "items")
+    default_path = {"misp": "response.Attribute", "opencti": "data.indicators.edges", "wazuh_manager": "data.affected_items", "wazuh_indexer": "hits.hits"}.get(connector_type, "items")
     value = _path_value(document, config.get("records_path", default_path))
     if value is None and isinstance(document, list):
         value = document
