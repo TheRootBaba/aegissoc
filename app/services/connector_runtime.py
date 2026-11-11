@@ -220,6 +220,18 @@ def run_due_connectors_once(db: Session, *, now: datetime | None = None, batch_s
                     url, headers, method="POST",
                     json_body={"query": query, "variables": {"after": (state.cursor or {}).get("after")}},
                 )
+            elif connector.connector_type == "wazuh_indexer":
+                page_size = int(config.get("page_size", 500))
+                if not 1 <= page_size <= MAX_BATCH_RECORDS:
+                    raise ValueError("Wazuh Indexer page_size must be between 1 and 1000")
+                body = {
+                    "size": page_size,
+                    "sort": [{"@timestamp": "asc"}, {"_id": "asc"}],
+                    "query": {"range": {"@timestamp": {"gte": config.get("lookback", "now-7d")}}},
+                }
+                if (state.cursor or {}).get("search_after"):
+                    body["search_after"] = state.cursor["search_after"]
+                document = _read_response(url, headers, method="POST", json_body=body)
             elif connector.connector_type == "misp":
                 page_size = int(config.get("page_size", 1000))
                 if not 1 <= page_size <= MAX_BATCH_RECORDS:
@@ -242,6 +254,9 @@ def run_due_connectors_once(db: Session, *, now: datetime | None = None, batch_s
             if connector.connector_type == "opencti":
                 page_info = (((document.get("data") or {}).get("indicators") or {}).get("pageInfo") or {})
                 state.cursor = {"after": page_info.get("endCursor")} if page_info.get("hasNextPage") else {}
+            elif connector.connector_type == "wazuh_indexer":
+                if records and isinstance(records[-1], dict) and isinstance(records[-1].get("sort"), list):
+                    state.cursor = {"search_after": records[-1]["sort"]}
             elif connector.connector_type == "misp":
                 page = int((state.cursor or {}).get("page", 1))
                 page_size = int(config.get("page_size", 1000))
