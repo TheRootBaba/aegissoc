@@ -130,10 +130,10 @@ def _ingest_indicators(db: Session, connector: ConnectorConfig, records: list) -
                 db.add(ThreatIndicator(
                     indicator_type=kind, value=value,
                     confidence=min(100, max(0, int(item.get("confidence", 50)))),
-                    severity=item.get("severity", "medium"), status="active",
+                    severity=(item.get("severity", "medium") if item.get("severity", "medium") in {"low", "medium", "high", "critical"} else "medium"), status="active",
                     source=str(item.get("source") or connector.display_name)[:120],
                     description=str(item.get("description") or "")[:500],
-                    tags=[str(tag)[:64] for tag in item.get("tags", [])[:20]],
+                    tags=[str(tag)[:64] for tag in (item.get("tags", []) if isinstance(item.get("tags", []), list) else [])[:20]],
                     expires_at=expiry, created_by="connector-runtime",
                 ))
                 accepted += 1
