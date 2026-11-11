@@ -496,3 +496,35 @@ def test_alert_search_filters_by_attack_technique_and_status(client):
     wrong = client.get("/api/v1/alerts", params={"attack_technique_id": "T1110.003", "rule_id": "AUTH-SSH-001"})
     assert wrong.status_code == 200
     assert wrong.json() == []
+
+
+def test_aggregate_stats_report_all_events_and_alerts(client):
+    now = datetime.now(timezone.utc)
+    for attempt in range(5):
+        client.post(
+            "/api/v1/events",
+            json=sample_event(
+                timestamp=(now - timedelta(seconds=attempt)).isoformat(),
+                username=f"stats-user-{attempt}",
+                message=f"sshd: Failed password attempt {attempt}",
+            ),
+        )
+    client.post("/api/v1/detections/run", json={"window_minutes": 10, "threshold": 5})
+
+    event_stats = client.get("/api/v1/events/stats")
+    alert_stats = client.get("/api/v1/alerts/stats")
+    assert event_stats.status_code == 200
+    assert event_stats.json()["total_events"] == 5
+    assert event_stats.json()["by_severity"]["medium"] == 5
+    assert alert_stats.status_code == 200
+    assert alert_stats.json()["total_alerts"] == 2
+    assert alert_stats.json()["by_status"]["open"] == 2
+    assert alert_stats.json()["by_severity"]["high"] == 1
+
+
+def test_event_search_can_filter_by_external_source_identifier(client):
+    client.post("/api/v1/events", json=sample_event(external_id="wazuh-alert-lookup"))
+    response = client.get("/api/v1/events", params={"external_id": "wazuh-alert-lookup"})
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+    assert response.json()[0]["external_id"] == "wazuh-alert-lookup"
