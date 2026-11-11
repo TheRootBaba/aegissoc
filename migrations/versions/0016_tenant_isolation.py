@@ -77,9 +77,9 @@ def upgrade() -> None:
         op.create_unique_constraint(name, table, columns)
 
     # The workspace registry is visible only through active membership.
+    op.execute("ALTER TABLE workspaces ENABLE ROW LEVEL SECURITY")
+    op.execute("ALTER TABLE workspaces FORCE ROW LEVEL SECURITY")
     op.execute("""
-        ALTER TABLE workspaces ENABLE ROW LEVEL SECURITY;
-        ALTER TABLE workspaces FORCE ROW LEVEL SECURITY;
         CREATE POLICY workspace_membership_read ON workspaces
         USING (
             current_setting('aegis.worker', true) = 'on'
@@ -93,9 +93,11 @@ def upgrade() -> None:
         WITH CHECK (
             current_setting('aegis.worker', true) = 'on'
             OR current_setting('aegis.manage_workspaces', true) = 'on'
-        );
-        ALTER TABLE workspace_memberships ENABLE ROW LEVEL SECURITY;
-        ALTER TABLE workspace_memberships FORCE ROW LEVEL SECURITY;
+        )
+    """)
+    op.execute("ALTER TABLE workspace_memberships ENABLE ROW LEVEL SECURITY")
+    op.execute("ALTER TABLE workspace_memberships FORCE ROW LEVEL SECURITY")
+    op.execute("""
         CREATE POLICY membership_owner_read ON workspace_memberships
         USING (
             current_setting('aegis.worker', true) = 'on'
@@ -113,7 +115,7 @@ def upgrade() -> None:
                 AND workspace_id = NULLIF(current_setting('aegis.workspace_id', true), '')::uuid
             )
             OR current_setting('aegis.manage_workspaces', true) = 'on'
-        );
+        )
     """)
 
     # Database-level parent checks prevent a tenant from attaching child rows to another tenant's records.
@@ -138,49 +140,34 @@ def upgrade() -> None:
             END IF;
             RETURN NEW;
         END;
-        $aegis$;
-        CREATE TRIGGER trg_alert_notes_workspace_ref
-            BEFORE INSERT OR UPDATE ON alert_notes FOR EACH ROW
-            EXECUTE FUNCTION aegis_enforce_workspace_reference('detection_alerts', 'alert_id');
-        CREATE TRIGGER trg_alert_audit_workspace_ref
-            BEFORE INSERT OR UPDATE ON alert_audit_logs FOR EACH ROW
-            EXECUTE FUNCTION aegis_enforce_workspace_reference('detection_alerts', 'alert_id');
-        CREATE TRIGGER trg_case_notes_workspace_ref
-            BEFORE INSERT OR UPDATE ON case_notes FOR EACH ROW
-            EXECUTE FUNCTION aegis_enforce_workspace_reference('incident_cases', 'case_id');
-        CREATE TRIGGER trg_case_alert_case_workspace_ref
-            BEFORE INSERT OR UPDATE ON case_alert_links FOR EACH ROW
-            EXECUTE FUNCTION aegis_enforce_workspace_reference('incident_cases', 'case_id');
-        CREATE TRIGGER trg_case_alert_alert_workspace_ref
-            BEFORE INSERT OR UPDATE ON case_alert_links FOR EACH ROW
-            EXECUTE FUNCTION aegis_enforce_workspace_reference('detection_alerts', 'alert_id');
-        CREATE TRIGGER trg_detection_execution_workspace_ref
-            BEFORE INSERT OR UPDATE ON detection_executions FOR EACH ROW
-            EXECUTE FUNCTION aegis_enforce_workspace_reference('detection_schedules', 'schedule_id');
-        CREATE TRIGGER trg_vulnerability_asset_workspace_ref
-            BEFORE INSERT OR UPDATE ON vulnerability_findings FOR EACH ROW
-            EXECUTE FUNCTION aegis_enforce_workspace_reference('managed_assets', 'asset_id');
-        CREATE TRIGGER trg_response_playbook_workspace_ref
-            BEFORE INSERT OR UPDATE ON response_playbook_runs FOR EACH ROW
-            EXECUTE FUNCTION aegis_enforce_workspace_reference('incident_cases', 'case_id');
-        CREATE TRIGGER trg_connector_state_workspace_ref
-            BEFORE INSERT OR UPDATE ON connector_runtime_states FOR EACH ROW
-            EXECUTE FUNCTION aegis_enforce_workspace_reference('connector_configs', 'connector_id');
-        CREATE TRIGGER trg_connector_execution_workspace_ref
-            BEFORE INSERT OR UPDATE ON connector_executions FOR EACH ROW
-            EXECUTE FUNCTION aegis_enforce_workspace_reference('connector_configs', 'connector_id');
-        CREATE TRIGGER trg_response_action_workspace_ref
-            BEFORE INSERT OR UPDATE ON response_action_requests FOR EACH ROW
-            EXECUTE FUNCTION aegis_enforce_workspace_reference('incident_cases', 'case_id');
+        $aegis$
     """)
+    trigger_specs = (
+        ("trg_alert_notes_workspace_ref", "alert_notes", "detection_alerts", "alert_id"),
+        ("trg_alert_audit_workspace_ref", "alert_audit_logs", "detection_alerts", "alert_id"),
+        ("trg_case_notes_workspace_ref", "case_notes", "incident_cases", "case_id"),
+        ("trg_case_alert_case_workspace_ref", "case_alert_links", "incident_cases", "case_id"),
+        ("trg_case_alert_alert_workspace_ref", "case_alert_links", "detection_alerts", "alert_id"),
+        ("trg_detection_execution_workspace_ref", "detection_executions", "detection_schedules", "schedule_id"),
+        ("trg_vulnerability_asset_workspace_ref", "vulnerability_findings", "managed_assets", "asset_id"),
+        ("trg_response_playbook_workspace_ref", "response_playbook_runs", "incident_cases", "case_id"),
+        ("trg_connector_state_workspace_ref", "connector_runtime_states", "connector_configs", "connector_id"),
+        ("trg_connector_execution_workspace_ref", "connector_executions", "connector_configs", "connector_id"),
+        ("trg_response_action_workspace_ref", "response_action_requests", "incident_cases", "case_id"),
+    )
+    for trigger_name, child_table, parent_table, parent_column in trigger_specs:
+        op.execute(sa.text(
+            f"CREATE TRIGGER {trigger_name} BEFORE INSERT OR UPDATE ON {child_table} "
+            "FOR EACH ROW EXECUTE FUNCTION aegis_enforce_workspace_reference(:parent_table, :parent_column)"
+        ).bindparams(parent_table=parent_table, parent_column=parent_column))
 
     for table in TENANT_TABLES:
+        op.execute(f'ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY')
+        op.execute(f'ALTER TABLE "{table}" FORCE ROW LEVEL SECURITY')
         op.execute(f"""
-            ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY;
-            ALTER TABLE "{table}" FORCE ROW LEVEL SECURITY;
             CREATE POLICY tenant_workspace_isolation ON "{table}"
             USING (workspace_id = NULLIF(current_setting('aegis.workspace_id', true), '')::uuid)
-            WITH CHECK (workspace_id = NULLIF(current_setting('aegis.workspace_id', true), '')::uuid);
+            WITH CHECK (workspace_id = NULLIF(current_setting('aegis.workspace_id', true), '')::uuid)
         """)
 
 
