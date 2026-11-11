@@ -56,6 +56,22 @@ services:
     restart: unless-stopped
     mem_limit: 256m
 
+  integration-worker:
+    build: .
+    command: ["python", "-m", "scripts.run_worker"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://aegis:${POSTGRES_PASSWORD:-aegis_dev_password}@db:5432/aegissoc
+      WORKER_POLL_SECONDS: ${WORKER_POLL_SECONDS:-5}
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 512m
+
   backup:
     build:
       context: .
