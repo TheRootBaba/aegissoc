@@ -113,6 +113,29 @@ class WazuhManagerAdapter(HttpPollAdapter):
         return dict(source)
 
 
+class WazuhIndexerAdapter(HttpPollAdapter):
+    connector_type = "wazuh_indexer"
+
+    def validate_config(self, config: dict) -> AdapterCheck:
+        result = super().validate_config(config)
+        if not result.valid:
+            return result
+        if urlsplit(config["endpoint"]).scheme != "https":
+            return AdapterCheck(False, "Wazuh Indexer polling requires HTTPS.")
+        if not config.get("credential_ref"):
+            return AdapterCheck(False, "Wazuh Indexer requires a mounted or environment Basic Auth credential reference.")
+        if config.get("auth_scheme", "basic") != "basic":
+            return AdapterCheck(False, "Wazuh Indexer supports Basic Auth credentials.")
+        return AdapterCheck(True, "Wazuh Indexer endpoint, TLS, allowlist, and Basic Auth reference are valid.")
+
+    def normalize_payload(self, payload: dict) -> dict:
+        source = payload.get("_source") if isinstance(payload.get("_source"), dict) else payload
+        normalized = dict(source)
+        if not normalized.get("id") and payload.get("_id"):
+            normalized["id"] = payload["_id"]
+        return normalized
+
+
 class MISPAdapter(HttpPollAdapter):
     connector_type = "misp"
     def validate_config(self, config: dict) -> AdapterCheck:
@@ -207,7 +230,7 @@ class ResponseWebhookAdapter(IntegrationAdapter):
 
 ADAPTERS = {item.connector_type: item for item in (
     IntegrationAdapter(), WazuhAdapter(), SyslogAdapter(), HttpEventAdapter(),
-    HttpPollAdapter(), ThreatFeedAdapter(), WazuhManagerAdapter(), MISPAdapter(), OpenCTIAdapter(), ResponseWebhookAdapter(),
+    HttpPollAdapter(), ThreatFeedAdapter(), WazuhManagerAdapter(), WazuhIndexerAdapter(), MISPAdapter(), OpenCTIAdapter(), ResponseWebhookAdapter(),
 )}
 
 def get_adapter(connector_type: str) -> IntegrationAdapter:
