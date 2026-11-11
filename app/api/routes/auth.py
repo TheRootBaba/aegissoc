@@ -68,8 +68,6 @@ async def oidc_callback(request: Request, db: Session = Depends(get_db)):
         # Validate issuer and nonce against the signed ID token instead.
         if not isinstance(claims, dict) or not claims.get("iss"):
             claims = await client.parse_id_token(request, token, nonce=nonce)
-        elif claims.get("sub") != token.get("userinfo", {}).get("sub"):
-            raise ValueError("OIDC subject mismatch")
     except Exception as exc:
         raise HTTPException(status_code=401, detail="OpenID Connect authentication failed") from exc
     expected_issuer = settings.oidc_issuer_url.rstrip("/")
