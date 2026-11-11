@@ -472,3 +472,27 @@ def test_wazuh_missing_rule_level_is_rejected(client):
     payload["rule"].pop("level")
     response = client.post("/api/v1/events/ingest/wazuh", json=payload)
     assert response.status_code == 422
+
+
+def test_alert_search_filters_by_attack_technique_and_status(client):
+    now = datetime.now(timezone.utc)
+    for attempt in range(5):
+        client.post(
+            "/api/v1/events",
+            json=sample_event(
+                timestamp=(now - timedelta(seconds=attempt)).isoformat(),
+                username=f"filter-user-{attempt}",
+                message=f"sshd: Failed password attempt {attempt}",
+            ),
+        )
+    run = client.post("/api/v1/detections/run", json={"window_minutes": 10, "threshold": 5})
+    brute = next(a for a in run.json()["alerts"] if a["rule_id"] == "AUTH-SSH-001")
+    spray = next(a for a in run.json()["alerts"] if a["rule_id"] == "AUTH-SSH-002")
+
+    filtered = client.get("/api/v1/alerts", params={"attack_technique_id": "T1110", "status": "open"})
+    assert filtered.status_code == 200
+    assert [a["id"] for a in filtered.json()] == [brute["id"]]
+
+    wrong = client.get("/api/v1/alerts", params={"attack_technique_id": "T1110.003", "rule_id": "AUTH-SSH-001"})
+    assert wrong.status_code == 200
+    assert wrong.json() == []
