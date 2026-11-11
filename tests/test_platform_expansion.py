@@ -396,3 +396,50 @@ level: high
     assert len(alerts) == 1
     assert alerts[0].event_count == 3
     assert len(alerts[0].evidence_event_ids) == 3
+
+def test_misp_connector_poll_uses_native_attribute_normalization(isolated_db, monkeypatch):
+    from app.services import connector_runtime
+
+    monkeypatch.setenv("MISP_RUNTIME_KEY", "fixture-misp-key")
+    connector = ConnectorConfig(
+        connector_key="misp-native",
+        connector_type="misp",
+        display_name="MISP fixture",
+        config={
+            "endpoint": "https://misp.example/attributes/restSearch",
+            "allowed_hosts": ["misp.example"],
+            "interval_seconds": 60,
+            "page_size": 100,
+        },
+        credential_ref="env://MISP_RUNTIME_KEY",
+        enabled=True,
+        health_status="unverified",
+    )
+    isolated_db.add(connector)
+    isolated_db.commit()
+    calls = []
+    def fake_read(url, headers, **kwargs):
+        calls.append((url, headers, kwargs))
+        return {"response": {"Attribute": [{
+            "type": "ip-src|port", "value": "203.0.113.121|443",
+            "to_ids": True, "comment": "synthetic MISP fixture",
+        }]}}
+    monkeypatch.setattr(connector_runtime, "_read_response", fake_read)
+    assert connector_runtime.run_due_connectors_once(isolated_db, batch_size=1) == 1
+    indicator = isolated_db.query(ThreatIndicator).filter_by(value="203.0.113.121").one()
+    assert indicator.indicator_type == "ip"
+    assert indicator.confidence == 80
+    assert calls[0][1]["X-MISP-Auth"] == "fixture-misp-key"
+    assert calls[0][2]["method"] == "POST"
+    assert calls[0][2]["json_body"]["returnFormat"] == "json"
+
+
+def test_secret_resolver_supports_environment_and_rejects_unmounted_files(monkeypatch):
+    from app.services.secrets import resolve_secret_reference
+
+    monkeypatch.setenv("AEGIS_SECRET_FIXTURE", "secret-value")
+    assert resolve_secret_reference("env://AEGIS_SECRET_FIXTURE") == "secret-value"
+    with pytest.raises(ValueError):
+        resolve_secret_reference("file:///tmp/aegis-secret")
+    with pytest.raises(ValueError):
+        resolve_secret_reference("https://example.invalid/secret")
