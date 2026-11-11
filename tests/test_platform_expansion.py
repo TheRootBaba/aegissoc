@@ -670,7 +670,7 @@ def test_response_worker_dry_run_never_contacts_receiver(isolated_db, monkeypatc
         connector_key="receiver-not-required", action_type="isolate_host",
         target="lab-host-01", parameters={}, dry_run=True,
         status="approved", execution_status="queued",
-        next_attempt_at=datetime.now(timezone.utc), requested_by="analyst",
+        next_attempt_at=datetime.now(timezone.utc) - __import__("datetime").timedelta(minutes=1), requested_by="analyst",
         approved_by="admin", idempotency_key="d" * 64,
     )
     isolated_db.add(request)
@@ -735,7 +735,7 @@ def test_response_action_cancel_endpoint_stops_queued_delivery(api_client):
         "connector_key": "cancel-webhook", "action_type": "notify",
         "target": "soc@example.invalid",
     })
-    assert created.status_code == 201
+    assert created.status_code == 201, created.text
     request_id = created.json()["id"]
     canceled = api_client.post(
         f"/api/v1/response-actions/{request_id}/cancel",
