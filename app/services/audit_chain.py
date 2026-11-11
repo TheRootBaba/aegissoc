@@ -112,13 +112,13 @@ def verify_audit_chain(db: Session) -> dict:
         expected_sequence += 1
         verified_count += 1
 
-    if first_invalid is None and records and (
+    if first_invalid is None and record_count > 0 and (
         state is None
-        or state.head_sequence != len(records)
+        or state.head_sequence != record_count
         or not hmac.compare_digest(state.head_hash, previous_hash)
     ):
         first_invalid = expected_sequence
-    if first_invalid is None and not records and state is not None and (
+    if first_invalid is None and record_count == 0 and state is not None and (
         state.head_sequence != 0 or not hmac.compare_digest(state.head_hash, GENESIS_HASH)
     ):
         first_invalid = 1
