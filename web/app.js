@@ -472,7 +472,7 @@ async function loadInvestigation(id) {
 }
 async function refreshDashboard() {
   try {
-    const [alerts, events, eventStats, alertStats, sources, savedQueries, queryFields] = await Promise.all([
+    const [alerts, events, eventStats, alertStats, sources, savedQueries, queryFields, schedules] = await Promise.all([
       api("/api/v1/alerts?limit=200"),
       api("/api/v1/events?limit=25"),
       api("/api/v1/events/stats"),
@@ -480,12 +480,14 @@ async function refreshDashboard() {
       api("/api/v1/sources"),
       api("/api/v1/events/saved-queries"),
       api("/api/v1/events/fields"),
+      api("/api/v1/detection-schedules"),
     ]);
     state.alerts = alerts;
     state.events = events;
     state.eventStats = eventStats;
     state.alertStats = alertStats;
     state.sources = sources;
+    state.schedules = schedules;
     state.savedQueries = savedQueries;
     state.queryFields = queryFields.fields || [];
     setHealth(true, "API operational");
@@ -494,6 +496,7 @@ async function refreshDashboard() {
     renderAlerts();
     renderEvents();
     renderSources();
+    renderSchedules();
     renderSavedQueries();
     if (state.selectedId && state.alerts.some((alert) => alert.id === state.selectedId)) {
       await loadInvestigation(state.selectedId);
@@ -631,7 +634,7 @@ function setActiveNav() {
   });
   $("page-breadcrumb").textContent = current === "team" ? "Team & access" :
     current === "alerts" ? "Alert queue" : current === "events" ? "Event telemetry" :
-    current === "sources" ? "Data source health" : "Overview";
+    current === "sources" ? "Data source health" : current === "schedules" ? "Detection schedules" : "Overview";
 }
 
 $("login-form").addEventListener("submit", signIn);
@@ -671,7 +674,10 @@ $("run-detections").addEventListener("click", async () => {
   }
 });
 $("create-user-form").addEventListener("submit", createUser);
-$("source-create-form").addEventListener("submit", registerSource);\n$("schedule-create-form").addEventListener("submit", createDetectionSchedule);\n$("schedules-grid").addEventListener("click", handleScheduleAction);\n$("schedule-history").addEventListener("click", handleScheduleAction);
+$("source-create-form").addEventListener("submit", registerSource);
+$("schedule-create-form").addEventListener("submit", createDetectionSchedule);
+$("schedules-grid").addEventListener("click", handleScheduleAction);
+$("schedule-history").addEventListener("click", handleScheduleAction);
 $("run-event-query").addEventListener("click", () => runEventQuery());
 $("reset-event-query").addEventListener("click", () => {
   $("event-query-text").value = "";
