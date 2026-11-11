@@ -282,12 +282,12 @@ Only ingest events from systems you own or are explicitly authorized to monitor.
 AegisSOC now maintains a persistent source registry. Sources can be registered by an administrator before telemetry arrives, or discovered automatically when a producer submits its first event. The inventory records source type and display name, last ingestion attempt, last successfully accepted event timestamp, and cumulative accepted, duplicate, and rejected record counts.
 
 The observed health state is intentionally distinct from registration metadata:
-- **healthy** — a recent ingestion request accepted a new event or safely recognized a replay.
+- **healthy** — a recent accepted event is within the freshness window and the latest ingestion attempt did not fail completely.
 - **failing** — the latest observed request contained only rejected records and no successful or duplicate outcomes.
-- **stale** — the last accepted event timestamp is older than 15 minutes.
+- **stale** — the last accepted event timestamp is older than 15 minutes, even if a later request only replayed an old event.
 - **inactive** — the source has not yet delivered a successfully accepted event.
 
-The stale threshold is currently a fixed 15-minute operational default. Health is derived from observed timestamps and ingestion outcomes; registering a source does not mark it healthy.
+The stale threshold is currently a fixed 15-minute operational default. A fully rejected latest attempt takes precedence and reports failing; otherwise health is derived from the last accepted event timestamp. Registering a source does not mark it healthy.
 
 Authenticated endpoints:
 - `GET /api/v1/sources` — list the inventory and observed health.
