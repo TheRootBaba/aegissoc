@@ -1,9 +1,12 @@
 import logging
+from pathlib import Path
 from contextlib import asynccontextmanager
 from time import perf_counter
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import alert_workflow, detections, events, health
 from app.core.config import settings
@@ -12,6 +15,7 @@ from app.core.logging_config import configure_logging, request_id_var
 
 configure_logging(settings.log_level)
 logger = logging.getLogger("aegissoc.http")
+WEB_DIR = Path(__file__).resolve().parents[1] / "web"
 
 
 @asynccontextmanager
@@ -56,6 +60,13 @@ app.include_router(health.router)
 app.include_router(events.router)
 app.include_router(detections.router)
 app.include_router(alert_workflow.router)
+app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
+
+
+@app.get("/dashboard", include_in_schema=False)
+def dashboard():
+    """Serve the local analyst dashboard."""
+    return FileResponse(WEB_DIR / "index.html")
 
 
 @app.get("/")
