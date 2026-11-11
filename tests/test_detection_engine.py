@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base
-from app.models import DetectionAlert, SecurityEvent
+from app.models import DetectionAlert, SecurityEvent, Workspace
 from app.services.detection_engine import run_ssh_brute_force_detection
 
 
@@ -16,7 +16,13 @@ def _session():
         poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
-    return sessionmaker(bind=engine)()
+    factory = sessionmaker(bind=engine)
+    db = factory()
+    workspace = Workspace(slug='default', name='Default Workspace', is_active=True)
+    db.add(workspace)
+    db.commit()
+    db.info['workspace_id'] = str(workspace.id)
+    return db
 
 
 def _event(db, *, now, source_ip="192.0.2.50", hostname="ssh-lab", username="root",
