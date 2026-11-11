@@ -80,7 +80,7 @@ def _poll_url(connector: ConnectorConfig) -> str:
     headers = {"Accept": "application/json"}
     secret = _credential(connector)
     if secret:
-        header = config.get("auth_header", "Authorization")
+        header = config.get("auth_header", "X-MISP-Auth" if connector.connector_type == "misp" else "Authorization")
         if header.lower() not in {"authorization", "x-api-key", "x-misp-auth", "x-apikeys"}:
             raise ValueError("auth_header must be Authorization or X-API-Key")
         headers[header] = ("Bearer " + secret) if header.lower() == "authorization" else secret
@@ -213,6 +213,14 @@ def run_due_connectors_once(db: Session, *, now: datetime | None = None, batch_s
                     url, headers, method="POST",
                     json_body={"query": query, "variables": {"after": (state.cursor or {}).get("after")}},
                 )
+            elif connector.connector_type == "misp":
+                page_size = int(config.get("page_size", 1000))
+                if not 1 <= page_size <= MAX_BATCH_RECORDS:
+                    raise ValueError("MISP page_size must be between 1 and 1000")
+                document = _read_response(
+                    url, headers, method="POST",
+                    json_body={"returnFormat": "json", "page": int((state.cursor or {}).get("page", 1)), "limit": page_size},
+                )
             else:
                 document = _read_response(url, headers)
             records = _records(document, config, connector.connector_type)
@@ -227,6 +235,10 @@ def run_due_connectors_once(db: Session, *, now: datetime | None = None, batch_s
             if connector.connector_type == "opencti":
                 page_info = (((document.get("data") or {}).get("indicators") or {}).get("pageInfo") or {})
                 state.cursor = {"after": page_info.get("endCursor")} if page_info.get("hasNextPage") else {}
+            elif connector.connector_type == "misp":
+                page = int((state.cursor or {}).get("page", 1))
+                page_size = int(config.get("page_size", 1000))
+                state.cursor = {"page": page + 1} if len(records) == page_size else {"page": 1}
             state.consecutive_failures = 0
             state.locked_until = None
             connector.health_status = "observed" if accepted + duplicates else ("degraded" if rejected else "observed")
