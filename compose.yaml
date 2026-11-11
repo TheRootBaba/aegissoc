@@ -70,7 +70,7 @@ services:
       db:
         condition: service_healthy
       api:
-        condition: service_started
+        condition: service_healthy
     mem_limit: 512m
 
   scheduler:
