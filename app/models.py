@@ -366,3 +366,14 @@ class ResponseActionRequest(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ScannerImportRun(Base):
+    __tablename__ = "scanner_import_runs"
+    __table_args__ = (UniqueConstraint("scanner_name", "scan_id", name="uq_scanner_import_runs_scanner_scan"),)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    scanner_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    scan_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_by: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
