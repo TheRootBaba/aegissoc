@@ -29,7 +29,7 @@
         <a class="nav-link admin-nav" href="#team" data-nav="team" id="team-nav"><span class="nav-icon">♙</span>Team & access</a>
       </nav>
       <div class="sidebar-bottom">
-        <div class="system-status"><span class="status-orb"></span><span><strong>All systems nominal</strong><small>API and database monitored</small></span></div>
+        <div class="system-status"><span class="status-orb"></span><span><strong>Workspace services</strong><small>Connection state shown above</small></span></div>
         <div class="sidebar-user"><span class="user-avatar" id="sidebar-avatar">A</span><span class="user-meta"><strong id="sidebar-username">Analyst</strong><small id="sidebar-role">Signed out</small></span><button class="icon-button" id="sidebar-signout" title="Sign out" aria-label="Sign out" hidden>↗</button></div>
       </div>
     </aside>
@@ -62,7 +62,7 @@
         <div class="section-heading"><div><div class="section-kicker">01 / INGESTION & COVERAGE</div><h2>Data source health</h2><p>Observed producer activity, ingestion outcomes, and source freshness.</p></div><div class="section-heading-side"><span class="data-chip" id="source-health-summary">Awaiting source telemetry</span><span class="result-count" id="source-count">0 sources</span></div></div>
         <div class="source-layout">
           <div class="source-grid" id="source-grid"><div class="source-empty">Loading registered and observed sources…</div></div>
-          <aside class="surface-card source-register" id="source-register-panel">
+          <aside class="surface-card source-register" id="source-register-panel" hidden>
             <div class="card-toolbar"><div class="toolbar-title"><span class="toolbar-mark">＋</span><span><strong>Register a source</strong><small>Track a producer before its first event</small></span></div></div>
             <form id="source-create-form" class="source-create-form">
               <label for="source-name">SOURCE IDENTIFIER</label><input id="source-name" name="source_name" maxlength="80" pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,79}" placeholder="e.g. wazuh-prod" required>
