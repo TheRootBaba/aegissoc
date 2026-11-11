@@ -105,3 +105,19 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=true())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class SavedEventQuery(Base):
+    """Reusable analyst investigation query with owner or workspace visibility."""
+
+    __tablename__ = "saved_event_queries"
+    __table_args__ = (UniqueConstraint("created_by", "name", name="uq_saved_event_queries_owner_name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    query: Mapped[dict] = mapped_column(JSON, nullable=False)
+    is_shared: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=true())
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.username", ondelete="CASCADE"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
