@@ -358,6 +358,7 @@ class ResponseActionRequest(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
     requested_by: Mapped[str] = mapped_column(String(64), nullable=False)
     approved_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    decided_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
     decision_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
     execution_status: Mapped[str | None] = mapped_column(String(24), nullable=True)
     response_code: Mapped[int | None] = mapped_column(nullable=True)
