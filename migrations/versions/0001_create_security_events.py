@@ -3,10 +3,14 @@
 Revision ID: 0001_security_events
 Revises:
 Create Date: 2026-11-11
+
+This is a baseline migration. Existing Phase 1 installations may already have
+this table from SQLAlchemy create_all(), so the upgrade is intentionally
+idempotent for that table. The baseline is not downgraded because doing so
+could destroy events in databases that predate Alembic.
 """
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 
 revision = "0001_security_events"
 down_revision = None
@@ -15,6 +19,10 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    if sa.inspect(bind).has_table("security_events"):
+        return
+
     op.create_table(
         "security_events",
         sa.Column("id", sa.Uuid(as_uuid=True), nullable=False),
@@ -35,6 +43,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    for column in ("username", "source_ip", "hostname", "timestamp", "severity", "event_type", "source"):
-        op.drop_index(f"ix_security_events_{column}", table_name="security_events")
-    op.drop_table("security_events")
+    raise RuntimeError(
+        "The initial schema baseline is intentionally irreversible. "
+        "Back up and migrate data explicitly before changing the baseline."
+    )
