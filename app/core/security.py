@@ -109,7 +109,7 @@ def get_current_user(
 
     # Membership visibility is bound to the authenticated subject before resolving a workspace.
     set_workspace_context(db, None, user_id=user.id)
-    if request.url.path.startswith("/api/v1/workspaces") and request.method.upper() == "GET":
+    if request.method.upper() == "GET" and (request.url.path == "/api/v1/workspaces" or (request.url.path.startswith("/api/v1/workspaces/") and request.url.path.count("/") == 4)):
         return user
 
     memberships = db.execute(
