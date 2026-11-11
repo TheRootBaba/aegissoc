@@ -52,6 +52,7 @@ def create_schedule(payload: DetectionScheduleCreate, db: Session = Depends(get_
         created_by=current_user.username,
     )
     db.add(schedule)
+    db.flush()
     append_audit_entry(db, actor=current_user.username, action="detection.schedule_created", resource_type="detection_schedule", resource_id=str(schedule.id), details={
         "name": schedule.name, "interval_seconds": schedule.interval_seconds,
         "window_minutes": schedule.window_minutes, "threshold": schedule.threshold,
