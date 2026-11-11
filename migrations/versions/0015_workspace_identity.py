@@ -44,12 +44,22 @@ def upgrade() -> None:
     workspace_id = uuid.uuid4()
     now = datetime.now(timezone.utc)
     bind = op.get_bind()
+    workspaces = sa.table(
+        "workspaces",
+        sa.column("id", sa.Uuid(as_uuid=True)),
+        sa.column("slug", sa.String(80)),
+        sa.column("name", sa.String(160)),
+        sa.column("is_active", sa.Boolean()),
+        sa.column("created_at", sa.DateTime(timezone=True)),
+    )
     bind.execute(
-        sa.text(
-            "INSERT INTO workspaces (id, slug, name, is_active, created_at) "
-            "VALUES (:id, :slug, :name, :is_active, :created_at)"
-        ),
-        {"id": workspace_id, "slug": "default", "name": "Default Workspace", "is_active": True, "created_at": now},
+        workspaces.insert().values(
+            id=workspace_id,
+            slug="default",
+            name="Default Workspace",
+            is_active=True,
+            created_at=now,
+        )
     )
 
     users = sa.table(
