@@ -15,7 +15,7 @@ from sqlalchemy.engine import make_url
 
 REQUIRED_TABLES = {
     "alembic_version", "security_events", "detection_alerts",
-    "security_audit_entries", "source_registry",
+    "security_audit_entries", "source_registry", "workspaces", "workspace_memberships",
 }
 
 
@@ -43,11 +43,15 @@ def _record_job(url, *, status: str, started_at: datetime, error_type: str | Non
         "password": url.password, "dbname": url.database,
     }
     with psycopg.connect(**connection_kwargs) as connection:
+        workspace_id = connection.execute(
+            "SELECT id FROM workspaces WHERE slug = 'default' ORDER BY created_at LIMIT 1"
+        ).fetchone()[0]
         connection.execute(
             """INSERT INTO operational_job_runs
-               (id, job_name, status, started_at, completed_at, records_affected, error_type, details)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
-            (uuid.uuid4(), "database_backup", status, started_at,
+               (id, workspace_id, job_name, status, started_at, completed_at,
+                records_affected, error_type, details)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            (uuid.uuid4(), workspace_id, "database_backup", status, started_at,
              datetime.now(timezone.utc), 0, error_type, Json(details)),
         )
 
