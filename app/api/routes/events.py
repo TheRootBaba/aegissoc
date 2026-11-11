@@ -122,7 +122,7 @@ def _normalize_source_event(db: Session, source: str, payload: dict[str, Any]) -
     normalized_payload = adapter.normalize_payload(payload)
     normalized = (
         normalize_wazuh_alert(normalized_payload)
-        if connector.connector_type in {"wazuh", "wazuh_manager"}
+        if connector.connector_type in {"wazuh", "wazuh_manager", "wazuh_indexer"}
         else normalize_event(normalized_payload, source=source)
     )
     normalized.source = source
