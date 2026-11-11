@@ -117,6 +117,64 @@ def upgrade() -> None:
         );
     """)
 
+    # Database-level parent checks prevent a tenant from attaching child rows to another tenant's records.
+    op.execute("""
+        CREATE OR REPLACE FUNCTION aegis_enforce_workspace_reference()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $aegis$
+        DECLARE
+            parent_workspace uuid;
+            parent_id_text text;
+        BEGIN
+            parent_id_text := to_jsonb(NEW) ->> TG_ARGV[1];
+            IF parent_id_text IS NULL THEN
+                RETURN NEW;
+            END IF;
+            EXECUTE format('SELECT workspace_id FROM %I WHERE id = $1', TG_ARGV[0])
+                INTO parent_workspace USING parent_id_text::uuid;
+            IF parent_workspace IS DISTINCT FROM NEW.workspace_id THEN
+                RAISE EXCEPTION 'cross-workspace reference is not allowed'
+                    USING ERRCODE = '23514';
+            END IF;
+            RETURN NEW;
+        END;
+        $aegis$;
+        CREATE TRIGGER trg_alert_notes_workspace_ref
+            BEFORE INSERT OR UPDATE ON alert_notes FOR EACH ROW
+            EXECUTE FUNCTION aegis_enforce_workspace_reference('detection_alerts', 'alert_id');
+        CREATE TRIGGER trg_alert_audit_workspace_ref
+            BEFORE INSERT OR UPDATE ON alert_audit_logs FOR EACH ROW
+            EXECUTE FUNCTION aegis_enforce_workspace_reference('detection_alerts', 'alert_id');
+        CREATE TRIGGER trg_case_notes_workspace_ref
+            BEFORE INSERT OR UPDATE ON case_notes FOR EACH ROW
+            EXECUTE FUNCTION aegis_enforce_workspace_reference('incident_cases', 'case_id');
+        CREATE TRIGGER trg_case_alert_case_workspace_ref
+            BEFORE INSERT OR UPDATE ON case_alert_links FOR EACH ROW
+            EXECUTE FUNCTION aegis_enforce_workspace_reference('incident_cases', 'case_id');
+        CREATE TRIGGER trg_case_alert_alert_workspace_ref
+            BEFORE INSERT OR UPDATE ON case_alert_links FOR EACH ROW
+            EXECUTE FUNCTION aegis_enforce_workspace_reference('detection_alerts', 'alert_id');
+        CREATE TRIGGER trg_detection_execution_workspace_ref
+            BEFORE INSERT OR UPDATE ON detection_executions FOR EACH ROW
+            EXECUTE FUNCTION aegis_enforce_workspace_reference('detection_schedules', 'schedule_id');
+        CREATE TRIGGER trg_vulnerability_asset_workspace_ref
+            BEFORE INSERT OR UPDATE ON vulnerability_findings FOR EACH ROW
+            EXECUTE FUNCTION aegis_enforce_workspace_reference('managed_assets', 'asset_id');
+        CREATE TRIGGER trg_response_playbook_workspace_ref
+            BEFORE INSERT OR UPDATE ON response_playbook_runs FOR EACH ROW
+            EXECUTE FUNCTION aegis_enforce_workspace_reference('incident_cases', 'case_id');
+        CREATE TRIGGER trg_connector_state_workspace_ref
+            BEFORE INSERT OR UPDATE ON connector_runtime_states FOR EACH ROW
+            EXECUTE FUNCTION aegis_enforce_workspace_reference('connector_configs', 'connector_id');
+        CREATE TRIGGER trg_connector_execution_workspace_ref
+            BEFORE INSERT OR UPDATE ON connector_executions FOR EACH ROW
+            EXECUTE FUNCTION aegis_enforce_workspace_reference('connector_configs', 'connector_id');
+        CREATE TRIGGER trg_response_action_workspace_ref
+            BEFORE INSERT OR UPDATE ON response_action_requests FOR EACH ROW
+            EXECUTE FUNCTION aegis_enforce_workspace_reference('incident_cases', 'case_id');
+    """)
+
     for table in TENANT_TABLES:
         op.execute(f"""
             ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY;
