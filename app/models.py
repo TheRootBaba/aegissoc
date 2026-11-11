@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
@@ -23,9 +23,7 @@ class SecurityEvent(Base):
     external_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     message: Mapped[str] = mapped_column(Text)
     raw: Mapped[dict] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 class DetectionAlert(Base):
@@ -44,9 +42,7 @@ class DetectionAlert(Base):
     assigned_to: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
-    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     source_ip: Mapped[str | None] = mapped_column(String(45), nullable=True, index=True)
     hostname: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     username: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -54,35 +50,38 @@ class DetectionAlert(Base):
     first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     evidence_event_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 class AlertNote(Base):
     __tablename__ = "alert_notes"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    alert_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("detection_alerts.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    alert_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("detection_alerts.id", ondelete="CASCADE"), nullable=False, index=True)
     author: Mapped[str] = mapped_column(String(120), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 class AlertAuditLog(Base):
     __tablename__ = "alert_audit_logs"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    alert_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("detection_alerts.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    alert_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("detection_alerts.id", ondelete="CASCADE"), nullable=False, index=True)
     actor: Mapped[str] = mapped_column(String(120), nullable=False)
     action: Mapped[str] = mapped_column(String(64), nullable=False)
     details: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class User(Base):
+    __tablename__ = "users"
+    __table_args__ = (UniqueConstraint("username", name="uq_users_username"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    username: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(256), nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
