@@ -92,6 +92,7 @@ def upgrade() -> None:
     op.execute("ALTER TABLE workspaces FORCE ROW LEVEL SECURITY")
     op.execute("""
         CREATE POLICY workspace_membership_read ON workspaces
+        FOR SELECT
         USING (
             current_setting('aegis.worker', true) = 'on'
             OR EXISTS (
@@ -100,6 +101,22 @@ def upgrade() -> None:
                   AND membership.user_id = NULLIF(current_setting('aegis.user_id', true), '')::uuid
                   AND membership.is_active = true
             )
+        )
+    """)
+    op.execute("""
+        CREATE POLICY workspace_create ON workspaces
+        FOR INSERT
+        WITH CHECK (
+            current_setting('aegis.worker', true) = 'on'
+            OR current_setting('aegis.manage_workspaces', true) = 'on'
+        )
+    """)
+    op.execute("""
+        CREATE POLICY workspace_update ON workspaces
+        FOR UPDATE
+        USING (
+            current_setting('aegis.worker', true) = 'on'
+            OR current_setting('aegis.manage_workspaces', true) = 'on'
         )
         WITH CHECK (
             current_setting('aegis.worker', true) = 'on'
