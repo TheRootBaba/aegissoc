@@ -139,7 +139,9 @@ def execute(request_id: UUID, db: Session = Depends(get_db), user: User = Depend
 def cancel_request(request_id: UUID, payload: ResponseActionDecision,
                    db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Cancel an action only while it is still safe to prevent delivery."""
-    request = db.get(ResponseActionRequest, request_id)
+    request = db.scalar(select(ResponseActionRequest).where(
+        ResponseActionRequest.id == request_id
+    ).with_for_update())
     if request is None:
         raise HTTPException(404, "Response action request not found")
     if request.status not in {"pending", "approved"} or request.execution_status in {
