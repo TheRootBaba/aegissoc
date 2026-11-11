@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from time import perf_counter
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -72,22 +72,31 @@ def run_retention_cleanup(
         execution_policy = policies.get("executions")
         if execution_policy and execution_policy.enabled:
             cutoff = started - timedelta(days=execution_policy.retention_days)
-            # Preserve the most recent run by timestamp, not by UUID ordering.
-            latest_rows = db.execute(
-                select(DetectionExecution.schedule_id, func.max(DetectionExecution.completed_at))
+            # Exclude latest runs in SQL so protected rows cannot starve cleanup.
+            latest_by_schedule = (
+                select(
+                    DetectionExecution.schedule_id.label("schedule_id"),
+                    func.max(DetectionExecution.completed_at).label("latest_completed_at"),
+                )
                 .group_by(DetectionExecution.schedule_id)
-            ).all()
-            latest_pairs = {(schedule_id, completed_at) for schedule_id, completed_at in latest_rows}
-            candidates = db.scalars(
-                select(DetectionExecution)
-                .where(DetectionExecution.completed_at < cutoff)
+                .subquery()
+            )
+            latest_ids = select(DetectionExecution.id).join(
+                latest_by_schedule,
+                and_(
+                    DetectionExecution.schedule_id == latest_by_schedule.c.schedule_id,
+                    DetectionExecution.completed_at == latest_by_schedule.c.latest_completed_at,
+                ),
+            )
+            stale_ids = list(db.scalars(
+                select(DetectionExecution.id)
+                .where(
+                    DetectionExecution.completed_at < cutoff,
+                    DetectionExecution.id.not_in(latest_ids),
+                )
                 .order_by(DetectionExecution.completed_at.asc())
                 .limit(batch_size)
-            ).all()
-            stale_ids = [
-                run.id for run in candidates
-                if (run.schedule_id, run.completed_at) not in latest_pairs
-            ]
+            ).all())
             if stale_ids:
                 affected["executions"] = db.query(DetectionExecution).filter(
                     DetectionExecution.id.in_(stale_ids)
