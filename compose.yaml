@@ -17,6 +17,8 @@ services:
 
   api:
     build: .
+    env_file:
+      - .env
     environment:
       APP_NAME: ${APP_NAME:-AegisSOC API}
       APP_ENV: ${APP_ENV:-development}
