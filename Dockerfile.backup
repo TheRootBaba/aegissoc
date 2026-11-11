@@ -1,0 +1,8 @@
+FROM postgres:16-alpine
+
+RUN apk add --no-cache python3 py3-pip \
+    && pip install --break-system-packages "SQLAlchemy>=2.0,<3.0" "psycopg>=3.2,<4.0"
+
+WORKDIR /app
+COPY scripts/backup_database.py ./backup_database.py
+ENTRYPOINT ["python3", "/app/backup_database.py"]
