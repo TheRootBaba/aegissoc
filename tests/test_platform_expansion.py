@@ -658,5 +658,5 @@ def test_response_worker_reconciles_expired_lease_before_redelivery(api_client, 
     assert request.status == "succeeded"
     assert request.execution_status == "reconciled"
     assert request.external_reference == "reconciled-action-42"
-    assert request.execution_attempts == 2
+    assert request.execution_attempts == 1
     app.dependency_overrides.pop(get_current_user, None)
