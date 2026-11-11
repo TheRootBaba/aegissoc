@@ -19,7 +19,7 @@
         <span class="brand-symbol"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 3 34 9v10c0 9-5.7 14.8-14 18C11.7 33.8 6 28 6 19V9L20 3Z" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m13 20 4.5 4.5L27 15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
         <span class="brand-copy"><strong>AEGIS<span>SOC</span></strong><small>THREAT OPERATIONS</small></span>
       </a>
-      <div class="workspace-switch"><span class="workspace-avatar">L</span><span><small>WORKSPACE</small><strong>Local Security Lab</strong></span><span class="switch-chevron">⌄</span></div>
+      <div class="workspace-switch"><span class="workspace-avatar" id="workspace-avatar">W</span><span class="workspace-switch-copy"><small>WORKSPACE</small><strong id="workspace-name">Loading workspace</strong></span><select id="workspace-select" aria-label="Switch workspace" title="Switch workspace"><option value="">Select workspace</option></select></div>
       <div class="nav-caption">OPERATIONS</div>
       <nav class="nav-group" aria-label="Main navigation">
         <a class="nav-link active" href="#overview" data-nav="overview"><span class="nav-icon">◫</span>Overview</a>
@@ -115,8 +115,8 @@
             <form id="connector-create-form" class="connector-create-form">
               <label>Connector key<input id="connector-key" maxlength="80" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" placeholder="wazuh-prod" required></label>
               <label>Display name<input id="connector-display-name" maxlength="120" placeholder="Production Wazuh" required></label>
-              <label>Adapter<select id="connector-type"><option value="wazuh">Wazuh</option><option value="syslog">Syslog</option><option value="http_event">HTTP event source</option><option value="generic">Generic</option></select></label>
-              <label>External credential reference<input id="connector-credential-ref" maxlength="255" placeholder="vault://soc/wazuh-prod"></label>
+              <label>Adapter<select id="connector-type"><option value="wazuh">Wazuh inbound</option><option value="wazuh_manager">Wazuh Manager API</option><option value="misp">MISP</option><option value="opencti">OpenCTI</option><option value="syslog">Syslog</option><option value="http_event">HTTP event source</option><option value="generic">Generic</option><option value="response_webhook">Response webhook</option></select></label>
+              <label>External credential reference<input id="connector-credential-ref" maxlength="255" placeholder="env://WAZUH_API_TOKEN or file:///run/secrets/wazuh-token"></label>
               <label class="connector-config-label">Adapter configuration (JSON)<textarea id="connector-config" rows="3">{ "manager_url": "https://wazuh.example.internal" }</textarea></label>
               <button class="button button-primary" type="submit" id="connector-create-button">Register connector</button>
             </form>
@@ -338,6 +338,7 @@
       <label for="login-username">USERNAME</label><input id="login-username" name="username" minlength="3" maxlength="64" autocomplete="username" placeholder="Your username" required>
       <label for="login-password">PASSWORD</label><input id="login-password" name="password" type="password" minlength="12" maxlength="256" autocomplete="current-password" placeholder="Your password" required>
       <button class="button button-primary auth-submit" type="submit" id="login-button"><span>Sign in to workspace</span><b>→</b></button>
+      <button class="button button-secondary auth-submit" type="button" id="oidc-login-button" hidden>Sign in with organization SSO</button>
       <div class="auth-error" id="login-error" role="alert" aria-live="polite"></div>
       <div class="auth-foot"><span>AEGISSOC SECURITY</span><span>AUTHORIZED USERS ONLY</span></div>
     </form>
