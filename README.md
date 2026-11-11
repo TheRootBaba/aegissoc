@@ -303,3 +303,10 @@ docker compose exec api python -m scripts.reset_password
 ```
 
 The command prompts for the account and the new password without echoing the password. Existing bearer tokens remain valid only until their configured expiry; sign out active browser tabs after rotation.
+
+
+## Phase 1.9 — AegisSOC visual identity
+
+The analyst workspace now uses a distinct graphite-and-signal-lime visual language rather than a stock teal dashboard treatment. Space Grotesk provides the display and interface typography; IBM Plex Mono is reserved for operational metadata, identifiers, timestamps, and compact labels. The layout emphasizes a stronger editorial page introduction, high-contrast KPI hierarchy, quieter grid texture, restrained square-corner surfaces, and clearer separation between detection work and investigation detail. Severity colors remain semantically distinct from the brand accent.
+
+This is a visual-system milestone, not a claim that the analyst experience is complete. The next frontend increments should add richer time-series telemetry, event/alert drill-down, saved investigation context, pagination, and live update behavior against explicit API contracts. Verify the dashboard in a browser at desktop and mobile widths after rebuilding the container.
