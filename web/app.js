@@ -21,7 +21,8 @@ function renderMetrics() {
 }
 function renderAlerts() {
   const filter=$("severity-filter").value;
-  const rows=state.alerts.filter(a=>!filter||a.severity===filter);
+  const attack=$("attack-filter").value;
+  const rows=state.alerts.filter(a=>(!filter||a.severity===filter)&&(!attack||a.attack_technique_id===attack));
   $("alerts-body").innerHTML=rows.length?rows.map(a=>'<tr class="alert-row '+(a.id===state.selectedId?"selected":"")+'" data-id="'+esc(a.id)+'"><td><div class="title-cell">'+esc(a.title)+'</div><div class="sub-cell">'+esc(a.rule_id)+' · '+esc(a.hostname)+'</div></td><td>'+pill(a.severity,"sev-")+'</td><td>'+pill(a.status,"status-")+'</td><td>'+esc(a.source_ip)+'</td><td>'+esc(date(a.last_seen))+'</td></tr>').join(""):'<tr><td colspan="5" class="empty">No alerts match this filter.</td></tr>';
   document.querySelectorAll(".alert-row").forEach(row=>row.addEventListener("click",()=>selectAlert(row.dataset.id)));
 }
@@ -69,6 +70,7 @@ async function selectAlert(id,rerender=true) {
 }
 $("refresh-button").addEventListener("click",refresh);
 $("severity-filter").addEventListener("change",renderAlerts);
+$("attack-filter").addEventListener("change",renderAlerts);
 $("run-detections").addEventListener("click",async()=>{
   const button=$("run-detections");button.disabled=true;button.textContent="Running…";
   try{const result=await api("/api/v1/detections/run",{method:"POST",body:JSON.stringify({window_minutes:10,threshold:5})});toast("Detection run complete · "+result.alerts_created+" created · "+result.alerts_updated+" updated.");await refresh();}
