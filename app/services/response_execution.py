@@ -139,17 +139,23 @@ def run_due_response_actions_once(db: Session, *, now: datetime | None = None, b
     expired_query = select(ResponseActionRequest).where(
         ResponseActionRequest.status.in_(("pending", "approved")),
         ResponseActionRequest.expires_at.is_not(None),
-        ResponseActionRequest.expires_at <= run_at,
     ).limit(batch_size)
     if db.get_bind().dialect.name == "postgresql":
         expired_query = expired_query.with_for_update(skip_locked=True)
-    expired = list(db.scalars(expired_query).all())
-    for item in expired:
+    candidates = list(db.scalars(expired_query).all())
+    expired = []
+    for item in candidates:
+        expiry = item.expires_at
+        if expiry is not None and expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+        if expiry is None or expiry > run_at:
+            continue
         item.status = "expired"
         item.execution_status = "expired"
         item.next_attempt_at = None
         item.locked_until = None
         item.executed_at = run_at
+        expired.append(item)
         append_audit_entry(db, actor="response-worker", action="response_action.expired",
                            resource_type="response_action", resource_id=str(item.id),
                            details={"expired_at": item.expires_at.isoformat() if item.expires_at else None})
@@ -160,7 +166,6 @@ def run_due_response_actions_once(db: Session, *, now: datetime | None = None, b
             (ResponseActionRequest.status == "approved")
             & ResponseActionRequest.execution_status.in_(("queued", "retry_scheduled"))
             & (ResponseActionRequest.next_attempt_at <= run_at)
-            & ((ResponseActionRequest.expires_at.is_(None)) | (ResponseActionRequest.expires_at > run_at))
         ),
         (
             (ResponseActionRequest.status == "executing")
