@@ -166,3 +166,17 @@ def test_dashboard_visual_system_v2_refines_type_scale_spacing_and_graphite_pale
     assert ".case-layout" in styles
     assert ".detection-rule-list" in styles
     assert "}\\n@media" not in styles
+
+
+def test_dashboard_exposes_threat_intelligence_and_entity_correlation():
+    html = (WEB / "index.html").read_text(encoding="utf-8")
+    script = (WEB / "app.js").read_text(encoding="utf-8")
+    for element_id in ("threat-intel", "indicator-form", "indicator-list", "indicator-matches",
+                       "entity-correlation", "entity-type", "entity-search", "entities-body"):
+        assert f'id="{element_id}"' in html
+    assert 'data-nav="threat-intel"' in html
+    assert 'data-nav="entity-correlation"' in html
+    assert 'api("/api/v1/threat-intel/indicators?limit=200")' in script
+    assert 'api("/api/v1/threat-intel/entities?min_events=1&limit=200")' in script
+    assert "function renderThreatIntel()" in script
+    assert "function renderEntities()" in script
