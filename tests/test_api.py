@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import pytest
@@ -37,8 +37,8 @@ def client():
     Base.metadata.drop_all(bind=test_engine)
 
 
-def sample_event():
-    return {
+def sample_event(**overrides):
+    payload = {
         "source": "pytest",
         "event_type": "authentication.failure",
         "severity": "medium",
@@ -49,6 +49,8 @@ def sample_event():
         "message": "Synthetic failed login event",
         "raw": {"synthetic": True, "attempt": 1},
     }
+    payload.update(overrides)
+    return payload
 
 
 def test_liveness(client):
@@ -93,3 +95,48 @@ def test_reject_timestamp_without_timezone(client):
 def test_event_pagination_is_bounded(client):
     response = client.get("/api/v1/events?limit=201")
     assert response.status_code == 422
+
+
+def test_event_search_supports_exact_filters(client):
+    client.post("/api/v1/events", json=sample_event())
+    client.post(
+        "/api/v1/events",
+        json=sample_event(
+            source="wazuh-lab",
+            event_type="process.started",
+            severity="low",
+            hostname="workstation-02",
+            source_ip="192.0.2.20",
+        ),
+    )
+    response = client.get(
+        "/api/v1/events?source=wazuh-lab&event_type=process.started&hostname=workstation-02"
+    )
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+    assert response.json()[0]["source_ip"] == "192.0.2.20"
+
+
+def test_event_search_supports_inclusive_time_range(client):
+    now = datetime.now(timezone.utc)
+    client.post("/api/v1/events", json=sample_event(timestamp=(now - timedelta(hours=2)).isoformat()))
+    client.post("/api/v1/events", json=sample_event(timestamp=now.isoformat()))
+    client.post("/api/v1/events", json=sample_event(timestamp=(now + timedelta(hours=2)).isoformat()))
+    response = client.get(
+        "/api/v1/events",
+        params={
+            "start_time": (now - timedelta(minutes=1)).isoformat(),
+            "end_time": (now + timedelta(minutes=1)).isoformat(),
+        },
+    )
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+
+
+def test_event_search_rejects_naive_or_reversed_time_range(client):
+    naive = client.get("/api/v1/events?start_time=2026-01-01T10:00:00")
+    reversed_range = client.get(
+        "/api/v1/events?start_time=2026-01-02T10:00:00Z&end_time=2026-01-01T10:00:00Z"
+    )
+    assert naive.status_code == 422
+    assert reversed_range.status_code == 422
