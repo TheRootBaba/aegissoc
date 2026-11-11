@@ -226,7 +226,16 @@ class ResponseWebhookAdapter(IntegrationAdapter):
             return AdapterCheck(False, "HTTP response delivery requires explicit allow_http=true.")
         if not isinstance(hosts, list) or parsed.hostname.lower() not in [str(x).lower() for x in hosts]:
             return AdapterCheck(False, "endpoint hostname must appear in the explicit allowed_hosts list.")
-        return AdapterCheck(True, "Response endpoint and host allowlist are valid.")
+        reconciliation = config.get("reconciliation_endpoint")
+        if reconciliation:
+            status_url = urlsplit(reconciliation)
+            if status_url.scheme not in ("https", "http") or not status_url.hostname or status_url.username or status_url.password:
+                return AdapterCheck(False, "reconciliation_endpoint must be an HTTP(S) URL without embedded credentials.")
+            if status_url.scheme != "https" and config.get("allow_http") is not True:
+                return AdapterCheck(False, "HTTP reconciliation requires explicit allow_http=true.")
+            if status_url.hostname.lower() not in [str(x).lower() for x in hosts]:
+                return AdapterCheck(False, "reconciliation_endpoint hostname must appear in allowed_hosts.")
+        return AdapterCheck(True, "Response and optional reconciliation endpoints are allowlisted.")
 
 ADAPTERS = {item.connector_type: item for item in (
     IntegrationAdapter(), WazuhAdapter(), SyslogAdapter(), HttpEventAdapter(),
