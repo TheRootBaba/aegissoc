@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import psycopg
-from psycopg.types.json import Jsonb
+from psycopg.types.json import Json
 from sqlalchemy.engine import make_url
 
 
@@ -48,7 +48,7 @@ def _record_job(url, *, status: str, started_at: datetime, error_type: str | Non
                (id, job_name, status, started_at, completed_at, records_affected, error_type, details)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
             (uuid.uuid4(), "database_backup", status, started_at,
-             datetime.now(timezone.utc), 0, error_type, Jsonb(details)),
+             datetime.now(timezone.utc), 0, error_type, Json(details)),
         )
 
 
