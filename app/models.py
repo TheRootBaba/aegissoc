@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, JSON, String, Text, UniqueConstraint, false, true
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, JSON, String, Text, UniqueConstraint, false, true
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
@@ -173,7 +173,7 @@ class AuditChainState(Base):
     __tablename__ = "audit_chain_state"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    head_sequence: Mapped[int] = mapped_column(nullable=False, default=0)
+    head_sequence: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     head_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
@@ -185,7 +185,7 @@ class SecurityAuditEntry(Base):
     __table_args__ = (UniqueConstraint("sequence", name="uq_security_audit_entries_sequence"),)
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    sequence: Mapped[int] = mapped_column(nullable=False, index=True)
+    sequence: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     actor: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     action: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
