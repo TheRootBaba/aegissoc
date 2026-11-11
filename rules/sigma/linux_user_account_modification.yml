@@ -1,0 +1,18 @@
+title: Linux User Account Modification
+id: AEGIS-LNX-USER-001
+status: stable
+description: Detects commands that add or modify local user accounts.
+logsource:
+  product: linux
+  category: process_creation
+detection:
+  selection:
+    event_type: process.started
+    Image|endswith:
+      - useradd
+      - usermod
+  condition: selection
+level: high
+tags:
+  - attack.persistence
+  - attack.t1098
