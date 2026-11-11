@@ -45,6 +45,11 @@ function clearSession() {
   state.alerts = [];
   state.events = [];
   state.sources = [];
+  state.schedules = [];
+  state.savedQueries = [];
+  state.queryFields = [];
+  state.queryResult = null;
+  state.pendingSavedQuery = null;
   state.eventStats = {};
   state.alertStats = {};
   state.users = [];
@@ -61,6 +66,9 @@ function clearSession() {
   $("alerts-body").innerHTML = '<tr><td colspan="5" class="table-empty">Sign in to load alerts.</td></tr>';
   $("events-body").innerHTML = '<tr><td colspan="5" class="table-empty">Sign in to load telemetry.</td></tr>';
   $("source-grid").innerHTML = '<div class="source-empty">Sign in to inspect source health.</div>';
+  $("schedule-create-panel").hidden = true;
+  $("schedules-grid").innerHTML = '<div class="source-empty">Sign in to inspect detection schedules.</div>';
+  $("schedule-history").hidden = true;
   $("source-register-panel").hidden = true;
   $("detail-panel").innerHTML = '<div class="investigation-empty"><span class="empty-radar">◎</span><span class="section-kicker">INVESTIGATION WORKSPACE</span><h3>Nothing selected</h3><p>Sign in to inspect alerts and investigations.</p></div>';
   showAuth();
