@@ -216,6 +216,7 @@ def import_scanner_results(payload: ScannerImportRequest, db: Session = Depends(
     assets_seen = len(payload.assets)
     assets_matched = findings_seen = findings_created = findings_updated = findings_rejected = 0
     for scanned_asset in payload.assets:
+        findings_seen += len(scanned_asset.findings)
         asset = db.scalar(select(ManagedAsset).where(
             ManagedAsset.asset_key == scanned_asset.asset_key.strip().lower()
         ))
@@ -224,7 +225,6 @@ def import_scanner_results(payload: ScannerImportRequest, db: Session = Depends(
             continue
         assets_matched += 1
         for item in scanned_asset.findings:
-            findings_seen += 1
             vuln_id = item.vulnerability_id.strip().upper()
             finding = db.scalar(select(VulnerabilityFinding).where(
                 VulnerabilityFinding.asset_id == asset.id,
