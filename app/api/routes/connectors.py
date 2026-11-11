@@ -84,6 +84,12 @@ def update_connector(
     changes = payload.model_dump(exclude_unset=True)
     next_config = changes.get("config", connector.config)
     next_credential = changes.get("credential_ref", connector.credential_ref)
+    if "config" in changes and next_config is None:
+        raise HTTPException(status_code=422, detail="Connector config must be a JSON object")
+    if "display_name" in changes:
+        changes["display_name"] = changes["display_name"].strip()
+        if not changes["display_name"]:
+            raise HTTPException(status_code=422, detail="Connector display name cannot be blank")
     if next_config is not None:
         candidate = dict(next_config)
         if next_credential:
@@ -126,6 +132,7 @@ def check_connector(
         message = "Connector is disabled; no endpoint or credential was contacted."
     elif validation.valid:
         connector.health_status = "unverified"
+        connector.last_error_type = None
         message = validation.message + " This check validates configuration only; it does not claim endpoint connectivity."
     else:
         connector.health_status = "misconfigured"
