@@ -380,3 +380,38 @@ The command prompts for the account and the new password without echoing the pas
 The analyst workspace now uses a distinct graphite-and-signal-lime visual language rather than a stock teal dashboard treatment. Space Grotesk provides the display and interface typography; IBM Plex Mono is reserved for operational metadata, identifiers, timestamps, and compact labels. The layout emphasizes a stronger editorial page introduction, high-contrast KPI hierarchy, quieter grid texture, restrained square-corner surfaces, and clearer separation between detection work and investigation detail. Severity colors remain semantically distinct from the brand accent.
 
 This is a visual-system milestone, not a claim that the analyst experience is complete. The next frontend increments should add richer time-series telemetry, event/alert drill-down, saved investigation context, pagination, and live update behavior against explicit API contracts. Verify the dashboard in a browser at desktop and mobile widths after rebuilding the container.
+
+
+## Investigation query engine
+
+The event investigation API supports structured multi-condition searches without exposing arbitrary SQL or JSON paths:
+
+- `GET /api/v1/events/fields` — discover the supported fields, operators, and up to 20 most common values per keyword field.
+- `POST /api/v1/events/query` — combine a full-text search across canonical text fields, up to 20 structured filters, inclusive timezone-aware time bounds, bounded pagination (1–200), and an optional group-by aggregation (top 25 values).
+- `GET /api/v1/events/saved-queries` — list personal and workspace-shared searches.
+- `POST /api/v1/events/saved-queries` — save a validated query as an analyst or administrator. Names are unique per owner.
+- `DELETE /api/v1/events/saved-queries/{query_id}` — owners or administrators can delete saved queries.
+
+Supported filter fields are `source`, `event_type`, `severity`, `hostname`, `source_ip`, `username`, `external_id`, and `message`. Operators are `eq`, `neq`, `contains`, `starts_with`, `in`, and `exists`. Values are bound parameters; arbitrary field names, SQL fragments, and unbounded result sets are not accepted.
+
+Example PowerShell request:
+
+```powershell
+$query = @{
+  search = "failed password"
+  filters = @(
+    @{ field = "severity"; operator = "in"; value = @("high", "critical") },
+    @{ field = "source"; operator = "starts_with"; value = "wazuh" }
+  )
+  start_time = (Get-Date).ToUniversalTime().AddHours(-24).ToString("o")
+  end_time = (Get-Date).ToUniversalTime().ToString("o")
+  group_by = "event_type"
+  limit = 100
+  offset = 0
+} | ConvertTo-Json -Depth 8
+
+Invoke-RestMethod -Method Post -Uri "http://localhost:8000/api/v1/events/query" `
+  -Headers $headers -ContentType "application/json" -Body $query
+```
+
+Saved queries are stored in `saved_event_queries` by migration `0007_saved_event_queries`. Shared queries are visible to authenticated users; personal queries remain visible to their owner and administrators may delete any query.
