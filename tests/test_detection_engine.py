@@ -105,3 +105,35 @@ def test_ssh_rule_ignores_events_outside_rolling_window():
 
     assert result["alerts_created"] == 0
     db.close()
+
+
+def test_ssh_password_spray_rule_detects_distinct_usernames():
+    db = _session()
+    now = datetime.now(timezone.utc)
+    for index in range(5):
+        _event(db, now=now, username=f"user-{index}")
+    db.commit()
+
+    result = run_ssh_brute_force_detection(db, threshold=5, now=now)
+
+    rule_ids = {alert.rule_id for alert in result["alerts"]}
+    assert rule_ids == {"AUTH-SSH-001", "AUTH-SSH-002"}
+    spray = next(alert for alert in result["alerts"] if alert.rule_id == "AUTH-SSH-002")
+    assert spray.severity == "high"
+    assert spray.event_count == 5
+    assert len(spray.username.split(", ")) == 5
+    db.close()
+
+
+def test_ssh_brute_force_severity_escalates_at_double_threshold():
+    db = _session()
+    now = datetime.now(timezone.utc)
+    for _ in range(10):
+        _event(db, now=now)
+    db.commit()
+
+    result = run_ssh_brute_force_detection(db, threshold=5, now=now)
+
+    brute_force = next(alert for alert in result["alerts"] if alert.rule_id == "AUTH-SSH-001")
+    assert brute_force.severity == "high"
+    db.close()
