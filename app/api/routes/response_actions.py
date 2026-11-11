@@ -2,7 +2,7 @@ import hashlib
 import hmac
 import ipaddress
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
@@ -24,7 +24,7 @@ def _audit(db, user, action, request, details):
 
 @router.get("", response_model=list[ResponseActionRead])
 def list_requests(status_filter: str | None = Query(default=None, alias="status",
-        pattern="^(pending|approved|rejected|executing|succeeded|failed)$"),
+        pattern="^(pending|approved|rejected|executing|succeeded|failed|canceled|expired)$"),
         case_id: UUID | None = None, limit: int = Query(default=100, ge=1, le=200),
         db: Session = Depends(get_db)):
     statement = select(ResponseActionRequest)
@@ -62,7 +62,9 @@ def create_request(payload: ResponseActionCreate, db: Session = Depends(get_db),
     request = ResponseActionRequest(
         case_id=payload.case_id, connector_key=payload.connector_key,
         action_type=payload.action_type, target=payload.target.strip(),
-        parameters=payload.parameters, status="pending", requested_by=user.username,
+        parameters=payload.parameters, dry_run=payload.dry_run,
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=payload.expires_in_minutes),
+        status="pending", requested_by=user.username,
         idempotency_key=hashlib.sha256(str(uuid4()).encode()).hexdigest(),
     )
     db.add(request)
@@ -127,6 +129,32 @@ def execute(request_id: UUID, db: Session = Depends(get_db), user: User = Depend
     request.locked_until = None
     _audit(db, user, "response_action.execution_queued", request,
            {"connector_key": request.connector_key, "idempotency_key": request.idempotency_key})
+    db.commit()
+    db.refresh(request)
+    return request
+
+
+@router.post("/{request_id}/cancel", response_model=ResponseActionRead,
+             dependencies=[Depends(require_roles("admin"))])
+def cancel_request(request_id: UUID, payload: ResponseActionDecision,
+                   db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Cancel an action only while it is still safe to prevent delivery."""
+    request = db.get(ResponseActionRequest, request_id)
+    if request is None:
+        raise HTTPException(404, "Response action request not found")
+    if request.status not in {"pending", "approved"} or request.execution_status in {
+        "submitting", "delivered", "simulated"
+    }:
+        raise HTTPException(409, "This action can no longer be canceled safely")
+    request.status = "canceled"
+    request.execution_status = "canceled"
+    request.decided_by = user.username
+    request.decision_note = payload.note.strip()
+    request.decided_at = datetime.now(timezone.utc)
+    request.next_attempt_at = None
+    request.locked_until = None
+    _audit(db, user, "response_action.canceled", request,
+           {"execution_status": request.execution_status})
     db.commit()
     db.refresh(request)
     return request
