@@ -683,3 +683,25 @@ def test_source_inventory_reports_failed_and_unknown_sources(client):
     assert source.json()["health_status"] == "failing"
     assert source.json()["rejected_events"] == 1
     assert client.get("/api/v1/sources/does-not-exist").status_code == 404
+
+
+def test_read_only_users_can_view_sources_but_cannot_register_them(client):
+    from types import SimpleNamespace
+    from uuid import UUID
+    from app.core.security import get_current_user
+    from app.main import app
+
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
+        id=UUID("00000000-0000-0000-0000-000000000099"),
+        username="viewer",
+        role="read_only",
+        is_active=True,
+    )
+    listed = client.get("/api/v1/sources")
+    created = client.post("/api/v1/sources", json={
+        "source_name": "viewer-source",
+        "display_name": "Viewer Source",
+        "source_type": "generic",
+    })
+    assert listed.status_code == 200
+    assert created.status_code == 403
