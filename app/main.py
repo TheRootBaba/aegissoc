@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from app.api.routes import events, health
 from app.core.config import settings
 from app.db.base import Base
-from app.db.session import engine
+from app.db.session import engine, get_db
 from app import models  # noqa: F401 - registers SQLAlchemy models
 
 
@@ -13,7 +13,10 @@ from app import models  # noqa: F401 - registers SQLAlchemy models
 async def lifespan(app: FastAPI):
     # Convenience for the Phase 1 local prototype. Phase 1.1 will replace
     # create_all with Alembic migrations before broader deployment.
-    Base.metadata.create_all(bind=engine)
+    # When tests (or another caller) override get_db, the app should not
+    # initialize the production database during startup.
+    if get_db not in app.dependency_overrides:
+        Base.metadata.create_all(bind=engine)
     yield
 
 
