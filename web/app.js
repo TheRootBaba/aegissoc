@@ -3,7 +3,8 @@
 const $ = (id) => document.getElementById(id);
 const state = {
   alerts: [], events: [], sources: [], schedules: [], eventStats: {}, alertStats: {}, users: [],
-  savedQueries: [], queryFields: [], queryResult: null, pendingSavedQuery: null,\n  auditEntries: [], auditVerification: null,
+  savedQueries: [], queryFields: [], queryResult: null, pendingSavedQuery: null,
+  auditEntries: [], auditVerification: null,
   selectedId: null, token: null, user: null, toastTimer: null,
 };
 const esc = (value) => String(value ?? "—").replace(/[&<>"']/g, (char) => ({
@@ -68,7 +69,11 @@ function clearSession() {
   $("source-grid").innerHTML = '<div class="source-empty">Sign in to inspect source health.</div>';
   $("schedule-create-panel").hidden = true;
   $("schedules-grid").innerHTML = '<div class="source-empty">Sign in to inspect detection schedules.</div>';
-  $("schedule-history").hidden = true;\n  $("verify-audit").hidden = true;\n  $("audit-list").innerHTML = '<div class="source-empty">Sign in to inspect the security audit trail.</div>';\n  $("audit-status").textContent = "Not verified";\n  $("audit-count").textContent = "0 records";
+  $("schedule-history").hidden = true;
+  $("verify-audit").hidden = true;
+  $("audit-list").innerHTML = '<div class="source-empty">Sign in to inspect the security audit trail.</div>';
+  $("audit-status").textContent = "Not verified";
+  $("audit-count").textContent = "0 records";
   $("source-register-panel").hidden = true;
   $("detail-panel").innerHTML = '<div class="investigation-empty"><span class="empty-radar">◎</span><span class="section-kicker">INVESTIGATION WORKSPACE</span><h3>Nothing selected</h3><p>Sign in to inspect alerts and investigations.</p></div>';
   showAuth();
@@ -525,6 +530,7 @@ async function refreshDashboard() {
       api("/api/v1/events/saved-queries"),
       api("/api/v1/events/fields"),
       api("/api/v1/detection-schedules"),
+      api("/api/v1/audit?limit=10"),
     ]);
     state.alerts = alerts;
     state.events = events;
@@ -532,6 +538,7 @@ async function refreshDashboard() {
     state.alertStats = alertStats;
     state.sources = sources;
     state.schedules = schedules;
+    state.auditEntries = auditEntries;
     state.savedQueries = savedQueries;
     state.queryFields = queryFields.fields || [];
     setHealth(true, "API operational");
@@ -541,6 +548,7 @@ async function refreshDashboard() {
     renderEvents();
     renderSources();
     renderSchedules();
+    renderAudit();
     renderSavedQueries();
     if (state.selectedId && state.alerts.some((alert) => alert.id === state.selectedId)) {
       await loadInvestigation(state.selectedId);
@@ -721,7 +729,8 @@ $("create-user-form").addEventListener("submit", createUser);
 $("source-create-form").addEventListener("submit", registerSource);
 $("schedule-create-form").addEventListener("submit", createDetectionSchedule);
 $("schedules-grid").addEventListener("click", handleScheduleAction);
-$("schedule-history").addEventListener("click", handleScheduleAction);\n$("verify-audit").addEventListener("click", verifyAuditChain);
+$("schedule-history").addEventListener("click", handleScheduleAction);
+$("verify-audit").addEventListener("click", verifyAuditChain);
 $("run-event-query").addEventListener("click", () => runEventQuery());
 $("reset-event-query").addEventListener("click", () => {
   $("event-query-text").value = "";
