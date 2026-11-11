@@ -28,6 +28,14 @@ async def attach_request_id(request: Request, call_next):
     try:
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        if request.url.path.startswith("/api/v1/auth"):
+            response.headers["Cache-Control"] = "no-store"
+        if settings.app_env == "production":
+            response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
         logger.info("http_request_completed", extra={"method": request.method, "path": request.url.path, "status_code": response.status_code, "duration_ms": round((perf_counter() - started_at) * 1000, 2)})
         return response
     finally:
