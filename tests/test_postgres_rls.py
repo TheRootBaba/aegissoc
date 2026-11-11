@@ -49,6 +49,10 @@ def test_runtime_role_cannot_read_or_mutate_another_workspace():
             connection.execute(text("SELECT set_config('aegis.workspace_id', :value, true)"), {"value": str(workspace_one)})
             assert connection.execute(text("SELECT count(*) FROM workspaces")).scalar_one() == 1
             assert connection.execute(text("SELECT count(*) FROM workspace_memberships")).scalar_one() == 1
+            assert connection.execute(text("DELETE FROM workspaces WHERE id = :id"),
+                                      {"id": workspace_one}).rowcount == 0
+            assert connection.execute(text("UPDATE workspaces SET name = 'attacker rename' WHERE id = :id"),
+                                      {"id": workspace_one}).rowcount == 0
             nested = connection.begin_nested()
             with pytest.raises(DBAPIError):
                 connection.execute(text("""
