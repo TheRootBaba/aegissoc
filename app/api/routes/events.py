@@ -110,9 +110,24 @@ def _normalize_source_event(db: Session, source: str, payload: dict[str, Any]) -
     if not validation.valid:
         raise ValueError(validation.message)
     normalized_payload = adapter.normalize_payload(payload)
-    if connector.connector_type == "wazuh":
-        return normalize_wazuh_alert(normalized_payload)
-    return normalize_event(normalized_payload, source=source)
+    normalized = (
+        normalize_wazuh_alert(normalized_payload)
+        if connector.connector_type == "wazuh"
+        else normalize_event(normalized_payload, source=source)
+    )
+    normalized.source = source
+    return normalized
+
+
+def _record_connector_observation(db: Session, source: str) -> None:
+    connector = db.scalar(
+        select(ConnectorConfig).where(ConnectorConfig.connector_key == source)
+    )
+    if connector is not None:
+        from datetime import timezone
+        connector.health_status = "observed"
+        connector.last_success_at = datetime.now(timezone.utc)
+        connector.last_error_type = None
 
 
 def _require_aware(value: datetime | None, parameter: str) -> datetime | None:
@@ -126,6 +141,7 @@ def _require_aware(value: datetime | None, parameter: str) -> datetime | None:
 def ingest_event(payload: SecurityEventCreate, response: Response, db: Session = Depends(get_db)):
     outcome, event_id = _persist_event(db, payload)
     record_ingestion(db, payload.source, accepted=int(outcome == "accepted"), duplicates=int(outcome == "duplicate"), rejected=0, event_timestamp=payload.timestamp)
+    _record_connector_observation(db, payload.source)
     db.commit()
     if outcome == "duplicate":
         response.status_code = status.HTTP_200_OK
@@ -148,6 +164,7 @@ def ingest_normalized_event(payload: dict[str, Any], response: Response,
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     outcome, event_id = _persist_event(db, normalized)
     record_ingestion(db, source, accepted=int(outcome == "accepted"), duplicates=int(outcome == "duplicate"), rejected=0, event_timestamp=normalized.timestamp)
+    _record_connector_observation(db, source)
     db.commit()
     if outcome == "duplicate":
         response.status_code = status.HTTP_200_OK
@@ -191,6 +208,8 @@ def ingest_event_batch(
             results.append({"index": index, "status": "rejected", "error": error})
 
     record_ingestion(db, source, accepted=accepted, duplicates=duplicates, rejected=rejected, event_timestamp=max(accepted_timestamps, default=None))
+    if accepted or duplicates:
+        _record_connector_observation(db, source)
     db.commit()
     return {
         "received": len(batch.events),
