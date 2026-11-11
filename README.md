@@ -271,6 +271,12 @@ aegissoc/
 └── requirements.txt
 ```
 
+## Workspace identity foundation
+
+Phase 1.30 introduces a workspace registry and explicit user memberships. Existing users are backfilled into a single Default Workspace by migration 0015. Authenticated users can inspect only their active workspace memberships through GET /api/v1/workspaces and GET /api/v1/workspaces/{workspace_id}. See docs/WORKSPACE_IDENTITY.md for the rollout boundary.
+
+This is not yet multi-tenant data isolation. SOC data routes and background workers still use the existing single shared dataset. Workspace provisioning and multi-customer use remain disabled until tenant ownership, query scoping, worker context propagation, PostgreSQL row-level security, and cross-tenant tests are complete.
+
 ## Security boundary
 
 Only ingest events from systems you own or are explicitly authorized to monitor. Use synthetic data during development. Local authentication and role-based authorization are implemented, but AegisSOC is still a controlled lab build rather than a production SIEM. Shared rate limiting, token revocation, tamper-evident audit chaining, retention controls, alerting, and hardened production deployment remain future work.
