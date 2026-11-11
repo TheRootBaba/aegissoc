@@ -93,13 +93,12 @@ def _validation_summary(exc: ValidationError) -> str:
     )
 
 
-def _normalize_source_event(db: Session, source: str, payload: dict[str, Any]) -> SecurityEventCreate:
-    """Resolve a configured connector adapter while retaining legacy source ingest."""
+def _validate_registered_connector(db: Session, source: str):
     connector = db.scalar(
         select(ConnectorConfig).where(ConnectorConfig.connector_key == source)
     )
     if connector is None:
-        return normalize_wazuh_alert(payload) if source.lower() == "wazuh" else normalize_event(payload, source=source)
+        return None
     if not connector.enabled:
         raise ValueError("The configured connector is disabled")
     adapter = get_adapter(connector.connector_type)
@@ -109,6 +108,15 @@ def _normalize_source_event(db: Session, source: str, payload: dict[str, Any]) -
     validation = adapter.validate_config(adapter_config)
     if not validation.valid:
         raise ValueError(validation.message)
+    return connector
+
+
+def _normalize_source_event(db: Session, source: str, payload: dict[str, Any]) -> SecurityEventCreate:
+    """Resolve a configured connector adapter while retaining legacy source ingest."""
+    connector = _validate_registered_connector(db, source)
+    if connector is None:
+        return normalize_wazuh_alert(payload) if source.lower() == "wazuh" else normalize_event(payload, source=source)
+    adapter = get_adapter(connector.connector_type)
     normalized_payload = adapter.normalize_payload(payload)
     normalized = (
         normalize_wazuh_alert(normalized_payload)
@@ -139,6 +147,10 @@ def _require_aware(value: datetime | None, parameter: str) -> datetime | None:
 @router.post("", response_model=SecurityEventRead, status_code=status.HTTP_201_CREATED,
              dependencies=[Depends(require_roles("admin", "analyst"))])
 def ingest_event(payload: SecurityEventCreate, response: Response, db: Session = Depends(get_db)):
+    try:
+        _validate_registered_connector(db, payload.source)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     outcome, event_id = _persist_event(db, payload)
     record_ingestion(db, payload.source, accepted=int(outcome == "accepted"), duplicates=int(outcome == "duplicate"), rejected=0, event_timestamp=payload.timestamp)
     _record_connector_observation(db, payload.source)
