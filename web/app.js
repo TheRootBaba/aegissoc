@@ -278,7 +278,7 @@ function renderSchedules() {
   $("schedule-create-panel").hidden = !isAdmin;
   $("schedule-count").textContent = count(schedules.length) + " schedules";
   $("schedules-grid").innerHTML = schedules.length ? schedules.map((schedule) => {
-    const status = schedule.last_status || (schedule.enabled ? "pending" : "paused");
+    const status = schedule.enabled ? (schedule.last_status || "pending") : "paused";
     const statusClass = status === "success" ? "healthy" : status === "failed" ? "failing" : "inactive";
     const interval = schedule.interval_seconds < 3600
       ? Math.round(schedule.interval_seconds / 60) + " min"
