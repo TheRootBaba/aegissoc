@@ -51,8 +51,10 @@ services:
     mem_limit: 256m
 
   backup:
-    build: .
-    command: ["python", "scripts/backup_database.py", "--output-dir", "/backups"]
+    build:
+      context: .
+      dockerfile: Dockerfile.backup
+    command: ["--output-dir", "/backups"]
     profiles: ["backup"]
     environment:
       DATABASE_URL: postgresql+psycopg://aegis:${POSTGRES_PASSWORD:-aegis_dev_password}@db:5432/aegissoc
