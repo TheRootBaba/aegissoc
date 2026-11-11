@@ -212,7 +212,10 @@ def run_due_response_actions_once(db: Session, *, now: datetime | None = None, b
             db.commit()
             completed += 1
             continue
-        if request.expires_at is not None and request.expires_at <= started:
+        request_expiry = request.expires_at
+        if request_expiry is not None and request_expiry.tzinfo is None:
+            request_expiry = request_expiry.replace(tzinfo=timezone.utc)
+        if request_expiry is not None and request_expiry <= started:
             request.status = "expired"
             request.execution_status = "expired"
             request.executed_at = started
