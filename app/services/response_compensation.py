@@ -63,3 +63,37 @@ def post_compensation(connector, request, *, reason: str) -> dict:
     if state not in {"compensated", "pending", "rejected"}:
         raise ValueError("Receiver returned an unsupported compensation status")
     return {"status": state, "reference": str(document.get("reference") or "")[:160] or None}
+
+
+def reconcile_compensation(connector, request) -> dict:
+    """Poll a receiver-owned compensation status endpoint without resubmitting the operation."""
+    config = dict(connector.config or {})
+    endpoint = config.get("compensation_status_endpoint")
+    allowed = {str(host).lower() for host in config.get("allowed_hosts", [])}
+    parsed = urlsplit(endpoint or "")
+    if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
+            or parsed.fragment or parsed.hostname.lower() not in allowed):
+        raise ValueError("Compensation status endpoint must use HTTPS and an allowlisted host")
+    headers = {"Accept": "application/json", "Idempotency-Key":
+               hashlib.sha256((request.idempotency_key + ":compensate").encode()).hexdigest()}
+    secret = resolve_secret_reference(connector.credential_ref)
+    if secret:
+        signature = hmac.new(secret.encode(), request.idempotency_key.encode(), hashlib.sha256).hexdigest()
+        headers["X-Aegis-Signature"] = "sha256=" + signature
+    with httpx.Client(timeout=httpx.Timeout(10.0, connect=5.0), follow_redirects=False, verify=True) as client:
+        with client.stream("GET", endpoint, params={"original_idempotency_key": request.idempotency_key},
+                           headers=headers) as response:
+            response.raise_for_status()
+            chunks, size = [], 0
+            for chunk in response.iter_bytes():
+                size += len(chunk)
+                if size > 65536:
+                    raise ValueError("Compensation status response exceeds 64 KiB")
+                chunks.append(chunk)
+    document = json.loads(b"".join(chunks))
+    if not isinstance(document, dict) or document.get("original_idempotency_key") != request.idempotency_key:
+        raise ValueError("Compensation status does not identify the original action")
+    state = str(document.get("status", "")).lower()
+    if state not in {"compensated", "pending", "rejected"}:
+        raise ValueError("Receiver returned an unsupported compensation status")
+    return {"status": state, "reference": str(document.get("reference") or "")[:160] or None}
