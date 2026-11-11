@@ -28,6 +28,8 @@
         <a class="nav-link" href="#connectors" data-nav="connectors"><span class="nav-icon">⌘</span>Integrations</a>
         <a class="nav-link" href="#schedules" data-nav="schedules"><span class="nav-icon">◷</span>Detection schedules</a>
         <a class="nav-link" href="#alerts" data-nav="alerts"><span class="nav-icon">◎</span>Alert queue<span class="nav-count" id="nav-alert-count">0</span></a>
+        <a class="nav-link" href="#cases" data-nav="cases"><span class="nav-icon">▣</span>Incident cases</a>
+        <a class="nav-link" href="#detection-rules" data-nav="detection-rules"><span class="nav-icon">⌘</span>Detection rules</a>
         <a class="nav-link" href="#audit" data-nav="audit"><span class="nav-icon">⌑</span>Audit trail</a>
         <a class="nav-link" href="#events" data-nav="events"><span class="nav-icon">⌁</span>Event telemetry</a>
         <a class="nav-link admin-nav" href="#team" data-nav="team" id="team-nav"><span class="nav-icon">♙</span>Team & access</a>
@@ -148,6 +150,39 @@
           </div>
           <aside class="surface-card investigation-card" id="detail-panel"><div class="investigation-empty"><span class="empty-radar">◎</span><span class="section-kicker">INVESTIGATION WORKSPACE</span><h3>Nothing selected</h3><p>Select an alert from the queue to review evidence, update its status, assign an analyst, and document findings.</p><div class="empty-hint">SELECT AN ALERT TO BEGIN <span>→</span></div></div></aside>
         </div>
+      </section>
+
+      <section class="section-block" id="cases">
+        <div class="section-heading">
+          <div><div class="section-kicker">05 / INCIDENT RESPONSE</div><h2>Incident cases</h2><p>Group related alerts, coordinate ownership, and track response through recovery.</p></div>
+          <span class="result-count" id="case-count">0 cases</span>
+        </div>
+        <div class="case-layout">
+          <div class="surface-card case-queue">
+            <div class="card-toolbar"><div class="toolbar-title"><span class="toolbar-mark">▣</span><span><strong>Case register</strong><small>Prioritized response work</small></span></div><button class="button button-secondary" id="case-create-toggle" type="button">New case</button></div>
+            <form id="case-create-form" class="case-create-form" hidden>
+              <label>Case title<input id="case-title" maxlength="200" placeholder="e.g. Suspected credential compromise" required></label>
+              <label>Summary<textarea id="case-description" rows="2" maxlength="12000" placeholder="Initial context and scope"></textarea></label>
+              <div class="case-form-grid">
+                <label>Priority<select id="case-priority"><option value="p1">P1 · Critical</option><option value="p2" selected>P2 · High</option><option value="p3">P3 · Normal</option><option value="p4">P4 · Low</option></select></label>
+                <label>Severity<select id="case-severity"><option value="critical">Critical</option><option value="high">High</option><option value="medium" selected>Medium</option><option value="low">Low</option></select></label>
+              </div>
+              <label>Assignee<input id="case-assignee" maxlength="120" placeholder="Analyst username (optional)"></label>
+              <button class="button button-primary" type="submit" id="case-create-button">Create incident case</button>
+              <div id="case-create-feedback" class="query-feedback" aria-live="polite"></div>
+            </form>
+            <div id="case-list" class="case-list"><div class="source-empty">Loading incident cases…</div></div>
+          </div>
+          <aside class="surface-card case-detail" id="case-detail"><div class="investigation-empty"><span class="empty-radar">▣</span><span class="section-kicker">RESPONSE WORKSPACE</span><h3>No case selected</h3><p>Create a case or select an existing incident to review linked alerts, analyst notes and the response timeline.</p></div></aside>
+        </div>
+      </section>
+
+      <section class="section-block" id="detection-rules">
+        <div class="section-heading">
+          <div><div class="section-kicker">06 / DETECTION GOVERNANCE</div><h2>Detection rule library</h2><p>Control built-in detections, severity overrides and bounded thresholds. Changes are audit logged.</p></div>
+          <span class="result-count" id="rule-count">0 rules</span>
+        </div>
+        <div id="detection-rule-list" class="detection-rule-list"><div class="source-empty">Loading detection rule inventory…</div></div>
       </section>
 
       <section class="section-block" id="audit">
