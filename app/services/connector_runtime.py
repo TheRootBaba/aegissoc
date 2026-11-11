@@ -90,6 +90,7 @@ def _ingest_event_records(db: Session, connector: ConnectorConfig, records: list
     accepted = duplicates = rejected = 0
     for item in records:
         try:
+            item = get_adapter(connector.connector_type).normalize_payload(item)
             normalized = _normalize_source_event(db, connector.connector_key, item)
             outcome, _ = _persist_event(db, normalized)
             accepted += int(outcome == "accepted")
