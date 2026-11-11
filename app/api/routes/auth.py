@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.security import check_login_rate_limit, clear_login_rate_limit, client_rate_limit_key, create_access_token, get_current_user, hash_password, require_roles, verify_password
 from app.db.session import get_db
-from app.models import User
+from app.models import User, WorkspaceMembership
 from app.schemas.auth import CurrentUserRead, LoginRequest, TokenResponse, UserCreate, UserRead
 from app.services.audit_chain import append_audit_entry
 
@@ -38,6 +38,10 @@ def create_user(payload: UserCreate, _admin: User = Depends(require_roles("admin
     user = User(username=payload.username, password_hash=hash_password(payload.password),
                 role=payload.role, is_active=True)
     db.add(user)
+    db.flush()
+    workspace_id = db.info.get('workspace_id')
+    if workspace_id:
+        db.add(WorkspaceMembership(workspace_id=workspace_id, user_id=user.id, role=user.role, is_active=True))
     try:
         append_audit_entry(db, actor=_admin.username, action="user.created", resource_type="user", resource_id=user.username, details={"role": user.role})
         db.commit()
