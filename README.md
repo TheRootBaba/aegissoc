@@ -5,6 +5,7 @@ A local-first Security Operations Center platform for collecting, normalizing, a
 ## Current capabilities
 
 - FastAPI event ingestion and retrieval API backed by PostgreSQL.
+- Canonical event normalization endpoint for common nested source fields and severity aliases; original source payloads are retained in `raw`.
 - Validated event payloads with timezone-aware timestamps.
 - Event search by severity, source, event type, hostname, source IP, and inclusive time range.
 - Bounded offset pagination (limit 1–200) with deterministic timestamp/UUID ordering.
@@ -102,6 +103,10 @@ $body = @{
 
 Invoke-RestMethod -Method Post -Uri http://localhost:8000/api/v1/events -ContentType "application/json" -Body $body
 ```
+
+### Normalize and ingest source events
+
+Source adapters can submit source-specific JSON to `POST /api/v1/events/ingest/{source}`. The source identifier is part of the URL. The normalizer maps common timestamp, event action, severity, host, IP, username, and message aliases into the canonical event contract. For example, use `/api/v1/events/ingest/syslog-lab` with fields such as `@timestamp`, `event.action`, `event.severity`, `host.name`, `src_ip`, `user.name`, and `message`. The endpoint stores the normalized event and retains the submitted source record in `raw`. Missing required fields and unsupported severity values are rejected rather than guessed. The original `POST /api/v1/events` contract remains available.
 
 ### Search events
 
