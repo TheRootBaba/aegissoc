@@ -211,9 +211,22 @@ def run_due_connectors_once(db: Session, *, now: datetime | None = None, batch_s
         db.commit()
         try:
             url, headers = _poll_url(connector)
-            document = _read_response(url, headers)
-            records = _records(document, dict(connector.config or {}))
-            if connector.connector_type == "threat_feed":
+            config = dict(connector.config or {})
+            if connector.connector_type == "opencti":
+                query = (
+                    "query AegisIndicators($after: String) { "
+                    "indicators(first: 100, after: $after) { "
+                    "edges { node { id pattern name description confidence valid_until labels { value } } } "
+                    "pageInfo { hasNextPage endCursor } } }"
+                )
+                document = _read_response(
+                    url, headers, method="POST",
+                    json_body={"query": query, "variables": {"after": (state.cursor or {}).get("after")}},
+                )
+            else:
+                document = _read_response(url, headers)
+            records = _records(document, config, connector.connector_type)
+            if connector.connector_type in {"threat_feed", "misp", "opencti"}:
                 accepted, duplicates, rejected = _ingest_indicators(db, connector, records)
             else:
                 accepted, duplicates, rejected = _ingest_event_records(db, connector, records)
@@ -221,6 +234,9 @@ def run_due_connectors_once(db: Session, *, now: datetime | None = None, batch_s
             interval = int((connector.config or {}).get("interval_seconds", 60))
             state.last_run_at = finished
             state.next_run_at = finished + timedelta(seconds=interval)
+            if connector.connector_type == "opencti":
+                page_info = (((document.get("data") or {}).get("indicators") or {}).get("pageInfo") or {})
+                state.cursor = {"after": page_info.get("endCursor")} if page_info.get("hasNextPage") else {}
             state.consecutive_failures = 0
             state.locked_until = None
             connector.health_status = "observed" if accepted + duplicates else ("degraded" if rejected else "observed")
