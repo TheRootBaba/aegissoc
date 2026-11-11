@@ -13,7 +13,7 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
 def set_workspace_context(db: Session, workspace_id: UUID | str | None, *,
-                          user_id: UUID | str | None = None, worker: bool = False) -> None:
+                          user_id: UUID | str | None = None, worker: bool = False, manage_memberships: bool = False) -> None:
     """Bind the current transaction and future transactions to one workspace."""
     if workspace_id is not None:
         db.info["workspace_id"] = UUID(str(workspace_id))
@@ -21,17 +21,21 @@ def set_workspace_context(db: Session, workspace_id: UUID | str | None, *,
         db.info["user_id"] = UUID(str(user_id))
     if worker:
         db.info["worker"] = True
+    if manage_memberships:
+        db.info["manage_memberships"] = True
     if db.get_bind().dialect.name == "postgresql":
         db.execute(
             text(
                 "SELECT set_config('aegis.workspace_id', :workspace_id, true), "
                 "set_config('aegis.user_id', :user_id, true), "
-                "set_config('aegis.worker', :worker, true)"
+                "set_config('aegis.worker', :worker, true), "
+                "set_config('aegis.manage_memberships', :manage_memberships, true)"
             ),
             {
                 "workspace_id": str(db.info.get("workspace_id") or ""),
                 "user_id": str(db.info.get("user_id") or ""),
                 "worker": "on" if db.info.get("worker") else "off",
+                "manage_memberships": "on" if db.info.get("manage_memberships") else "off",
             },
         )
 
@@ -65,6 +69,7 @@ def _apply_transaction_context(session, transaction, connection):
             "workspace_id": str(session.info.get("workspace_id") or ""),
             "user_id": str(session.info.get("user_id") or ""),
             "worker": "on" if session.info.get("worker") else "off",
+            "manage_memberships": "on" if session.info.get("manage_memberships") else "off",
         },
     )
 
@@ -93,6 +98,7 @@ def _scope_orm_statements(execute_state):
     workspace_id = execute_state.session.info.get("workspace_id")
     if not workspace_id:
         return
+    workspace_id = UUID(str(workspace_id))
     if execute_state.is_select:
         statement = execute_state.statement
         for mapper in Base.registry.mappers:
