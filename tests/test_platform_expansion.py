@@ -140,6 +140,15 @@ level: medium
     enabled = api_client.patch("/api/v1/sigma/rules/test-ssh-failure/enabled?enabled=true")
     assert enabled.status_code == 200
     assert enabled.json()["enabled"] is True
+    ingested = api_client.post("/api/v1/events/ingest/lab-sigma", json={
+        "id": "sigma-event-001", "event_type": "authentication.failure", "severity": "medium",
+        "timestamp": datetime.now(timezone.utc).isoformat(), "message": "SSH failed password",
+    })
+    assert ingested.status_code == 201
+    run = api_client.post("/api/v1/sigma/run", json={"lookback_minutes": 15, "limit": 100})
+    assert run.status_code == 200
+    assert run.json()["matches"] == 1
+    assert run.json()["alerts_created"] == 1
 
 def test_response_action_requires_separate_approval_and_explicit_execution(api_client, monkeypatch):
     from app.api.routes import response_actions
