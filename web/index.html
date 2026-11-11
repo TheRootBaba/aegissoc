@@ -90,9 +90,29 @@
       <section class="section-block" id="events">
         <div class="section-heading"><div><div class="section-kicker">03 / SECURITY TELEMETRY</div><h2>Event stream</h2><p>Normalized activity collected from connected sources.</p></div><span class="result-count" id="event-count">0 events</span></div>
         <div class="surface-card event-card">
-          <div class="card-toolbar"><div class="toolbar-title"><span class="toolbar-mark blue-mark">⌁</span><span><strong>Recent events</strong><small>Canonical event records · latest 25</small></span></div><span class="data-chip">INGESTION FEED</span></div>
+          <div class="card-toolbar"><div class="toolbar-title"><span class="toolbar-mark blue-mark">⌁</span><span><strong>Investigation workbench</strong><small>Search, filter, correlate, and save event investigations</small></span></div><span class="data-chip">QUERY ENGINE</span></div>
+          <div class="query-workbench">
+            <label class="query-search-label" for="event-query-text">Search across event content</label>
+            <input id="event-query-text" class="query-search" type="search" placeholder="Search messages, users, hosts, IPs, event types…" maxlength="500">
+            <div class="query-controls">
+              <label>Severity<select id="event-query-severity"><option value="">All severities</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="info">Info</option></select></label>
+              <label>Data source<select id="event-query-source"><option value="">All sources</option></select></label>
+              <label>Time range<select id="event-query-time"><option value="1">Last hour</option><option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option><option value="all">All time</option></select></label>
+              <label>Group results<select id="event-query-group"><option value="">No aggregation</option><option value="severity">Severity</option><option value="source">Source</option><option value="event_type">Event type</option><option value="hostname">Hostname</option><option value="source_ip">Source IP</option><option value="username">Username</option></select></label>
+              <button class="button button-primary query-run-button" id="run-event-query" type="button">Run investigation</button>
+              <button class="button button-quiet" id="reset-event-query" type="button">Reset</button>
+            </div>
+            <div class="saved-query-controls">
+              <label class="saved-query-load">Saved investigations<select id="saved-query-select"><option value="">Load a saved investigation…</option></select></label>
+              <label class="saved-query-name">Save current search<input id="saved-query-name" type="text" maxlength="100" placeholder="e.g. Critical endpoint activity"></label>
+              <label class="share-query-toggle"><input id="saved-query-shared" type="checkbox"> Share with workspace</label>
+              <button class="button button-secondary" id="save-event-query" type="button">Save query</button>
+            </div>
+            <div id="query-aggregations" class="query-aggregations" hidden></div>
+            <div id="query-feedback" class="query-feedback" aria-live="polite"></div>
+          </div>
           <div class="table-wrap"><table class="data-table"><thead><tr><th>EVENT TYPE</th><th>SEVERITY</th><th>HOST</th><th>SOURCE IP</th><th>TIMESTAMP</th></tr></thead><tbody id="events-body"><tr><td colspan="5" class="table-empty">Loading event telemetry…</td></tr></tbody></table></div>
-          <div class="table-footer"><span>All-time volume: <strong id="event-total-footer">—</strong></span><span>INGESTION · NORMALIZATION · RETENTION</span></div>
+          <div class="table-footer"><span id="event-query-footer">All-time volume: <strong id="event-total-footer">—</strong></span><span>INVESTIGATION · FILTERING · CORRELATION</span></div>
         </div>
       </section>
 
