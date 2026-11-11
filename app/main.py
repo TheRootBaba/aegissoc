@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api.routes import alert_workflow, auth, detections, events, health
+from app.api.routes import alert_workflow, auth, detections, events, health, sources
 from app.core.config import settings
 from app.core.logging_config import configure_logging, request_id_var
 
@@ -56,6 +56,7 @@ async def attach_request_id(request: Request, call_next):
 
 
 app.include_router(health.router)
+app.include_router(sources.router)
 app.include_router(auth.router)
 app.include_router(events.router)
 app.include_router(detections.router)
