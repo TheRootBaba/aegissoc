@@ -5,7 +5,7 @@ from urllib.parse import urlsplit
 
 
 SENSITIVE_CONFIG_KEYS = {
-    "password", "token", "secret", "api_key", "apikey", "authorization",
+    "password", "token", "api_token", "secret", "api_key", "apikey", "authorization",
     "private_key", "client_secret", "access_key",
 }
 
