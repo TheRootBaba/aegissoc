@@ -4,7 +4,7 @@ const $ = (id) => document.getElementById(id);
 const state = {
   alerts: [], events: [], sources: [], schedules: [], eventStats: {}, alertStats: {}, users: [],
   savedQueries: [], queryFields: [], queryResult: null, pendingSavedQuery: null,
-  auditEntries: [], auditVerification: null,
+  auditEntries: [], auditVerification: null, cases: [], detectionRules: [], selectedCaseId: null,
   operationsHealth: {}, operationsMetrics: {}, retentionPolicies: [], operationJobs: [], connectors: [],
   selectedId: null, token: null, user: null, toastTimer: null,
 };
@@ -535,7 +535,7 @@ async function loadInvestigation(id) {
 }
 async function refreshDashboard() {
   try {
-    const [alerts, events, eventStats, alertStats, sources, savedQueries, queryFields, schedules, auditEntries, operationsHealth, operationsMetrics, retentionPolicies, operationJobs, connectors] = await Promise.all([
+    const [alerts, events, eventStats, alertStats, sources, savedQueries, queryFields, schedules, auditEntries, operationsHealth, operationsMetrics, retentionPolicies, operationJobs, connectors, cases, detectionRules] = await Promise.all([
       api("/api/v1/alerts?limit=200"),
       api("/api/v1/events?limit=25"),
       api("/api/v1/events/stats"),
@@ -550,6 +550,8 @@ async function refreshDashboard() {
       api("/api/v1/operations/retention"),
       api("/api/v1/operations/jobs?limit=20"),
       api("/api/v1/connectors"),
+      api("/api/v1/cases"),
+      api("/api/v1/detection-rules"),
     ]);
     state.alerts = alerts;
     state.events = events;
@@ -563,6 +565,8 @@ async function refreshDashboard() {
     state.retentionPolicies = retentionPolicies;
     state.operationJobs = operationJobs;
     state.connectors = connectors;
+    state.cases = cases;
+    state.detectionRules = detectionRules;
     state.savedQueries = savedQueries;
     state.queryFields = queryFields.fields || [];
     setHealth(true, "API operational");
@@ -575,6 +579,8 @@ async function refreshDashboard() {
     renderAudit();
     renderOperations();
     renderConnectors();
+    renderCases();
+    renderDetectionRules();
     renderSavedQueries();
     if (state.selectedId && state.alerts.some((alert) => alert.id === state.selectedId)) {
       await loadInvestigation(state.selectedId);
@@ -836,6 +842,185 @@ async function handleConnectorAction(event) {
   }
 }
 
+
+function renderCases() {
+  const editable = state.user?.role !== "read_only";
+  $("case-create-toggle").hidden = !editable;
+  $("case-count").textContent = count(state.cases.length) + " cases";
+  $("case-list").innerHTML = state.cases.length ? state.cases.map((item) =>
+    '<article class="case-row ' + (item.id === state.selectedCaseId ? "selected" : "") + '" data-case-id="' + esc(item.id) + '">' +
+      '<div class="case-row-title"><strong>' + esc(item.title) + '</strong><small>' + esc(item.case_number) + ' · ' + esc(item.assignee || "Unassigned") + '</small></div>' +
+      '<div class="case-row-meta">' + pill(item.priority, "status-") + pill(item.severity, "sev-") + '</div>' +
+      '<div class="case-row-foot"><span>' + pill(item.status, "status-") + '</span><span>Updated ' + esc(date(item.updated_at)) + '</span></div>' +
+    '</article>'
+  ).join("") : '<div class="source-empty">No incident cases yet. Create a case to coordinate alerts and response activity.</div>';
+}
+
+async function selectCase(id) {
+  state.selectedCaseId = id;
+  renderCases();
+  const panel = $("case-detail");
+  panel.innerHTML = '<div class="table-empty">Loading case evidence and timeline…</div>';
+  try {
+    const item = await api("/api/v1/cases/" + encodeURIComponent(id));
+    const editable = state.user?.role !== "read_only";
+    panel.innerHTML =
+      '<div class="section-kicker">' + esc(item.case_number) + ' · INCIDENT RESPONSE</div>' +
+      '<h3>' + esc(item.title) + '</h3>' +
+      '<div class="case-detail-meta">Created by ' + esc(item.created_by) + ' · ' + esc(date(item.created_at)) + '</div>' +
+      '<p class="detail-description">' + esc(item.description || "No case summary has been added.") + '</p>' +
+      '<div class="case-detail-controls">' +
+        '<label>Response status<select id="case-status" ' + (editable ? "" : "disabled") + '>' +
+          ["open","investigating","contained","eradicated","recovered","closed"].map((v) => '<option value="' + v + '" ' + (item.status === v ? "selected" : "") + '>' + v.replaceAll("_"," ") + '</option>').join("") +
+        '</select></label>' +
+        '<label>Assignee<input id="case-assignee-edit" maxlength="120" value="' + esc(item.assignee || "") + '" placeholder="Unassigned" ' + (editable ? "" : "disabled") + '></label>' +
+        '<label>Priority<select id="case-priority-edit" ' + (editable ? "" : "disabled") + '>' +
+          ["p1","p2","p3","p4"].map((v) => '<option value="' + v + '" ' + (item.priority === v ? "selected" : "") + '>' + v.toUpperCase() + '</option>').join("") +
+        '</select></label>' +
+        '<label>Severity<select id="case-severity-edit" ' + (editable ? "" : "disabled") + '>' +
+          ["critical","high","medium","low"].map((v) => '<option value="' + v + '" ' + (item.severity === v ? "selected" : "") + '>' + v + '</option>').join("") +
+        '</select></label>' +
+      '</div>' +
+      (editable ? '<button class="button button-primary" type="button" data-case-save="' + esc(item.id) + '">Save case changes</button>' : "") +
+      '<div class="subsection"><h4>LINKED ALERT EVIDENCE · ' + count(item.alerts.length) + '</h4>' +
+        (item.alerts.length ? item.alerts.map((alert) =>
+          '<div class="case-linked-alert"><div><strong>' + esc(alert.title) + '</strong><small>' + esc(alert.rule_id) + ' · ' + esc(alert.id) + '</small></div><div>' + pill(alert.severity, "sev-") +
+          (editable ? '<button class="button button-quiet" type="button" data-case-unlink="' + esc(alert.id) + '" data-case-id="' + esc(item.id) + '">Remove</button>' : "") + '</div></div>'
+        ).join("") : '<p class="detail-meta">No alerts linked to this case.</p>') +
+        (editable ? '<div class="case-note-form"><input id="case-alert-id" placeholder="Alert UUID to link"><button class="button button-secondary" type="button" data-case-link="' + esc(item.id) + '">Link alert</button></div>' : "") +
+      '</div>' +
+      '<div class="subsection"><h4>ANALYST NOTES · ' + count(item.notes.length) + '</h4>' +
+        (item.notes.length ? item.notes.map((note) => '<article class="case-note"><div class="case-note-head"><strong>' + esc(note.author) + '</strong><time>' + esc(date(note.created_at)) + '</time></div><p>' + esc(note.body) + '</p></article>').join("") : '<p class="detail-meta">No analyst notes recorded.</p>') +
+        (editable ? '<form class="case-note-form" data-case-note="' + esc(item.id) + '"><textarea id="case-note-body" maxlength="10000" placeholder="Record investigation findings, containment actions or handoff context" required></textarea><button class="button button-secondary" type="submit">Add note</button></form>' : "") +
+      '</div>' +
+      '<div class="subsection"><h4>CASE TIMELINE</h4><div class="case-timeline">' +
+        (item.timeline.length ? item.timeline.map((entry) => '<div class="case-timeline-item"><strong>' + esc(entry.action.replaceAll("."," · ")) + '</strong><small>' + esc(entry.actor) + ' · ' + esc(date(entry.occurred_at)) + '</small></div>').join("") : '<span class="detail-meta">No activity recorded.</span>') +
+      '</div></div>';
+  } catch (error) {
+    panel.innerHTML = '<div class="investigation-empty"><h3>Unable to load case</h3><p>' + esc(error.message) + '</p></div>';
+  }
+}
+
+async function createCase(event) {
+  event.preventDefault();
+  const button = $("case-create-button");
+  button.disabled = true;
+  try {
+    const item = await api("/api/v1/cases", {
+      method: "POST",
+      body: JSON.stringify({
+        title: $("case-title").value.trim(),
+        description: $("case-description").value.trim(),
+        priority: $("case-priority").value,
+        severity: $("case-severity").value,
+        assignee: $("case-assignee").value.trim() || null,
+      }),
+    });
+    $("case-create-form").reset();
+    $("case-create-form").hidden = true;
+    showToast("Incident case " + item.case_number + " created.");
+    await refreshDashboard();
+    await selectCase(item.id);
+  } catch (error) {
+    $("case-create-feedback").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function handleCaseDetailClick(event) {
+  const save = event.target.closest("[data-case-save]");
+  const link = event.target.closest("[data-case-link]");
+  const unlink = event.target.closest("[data-case-unlink]");
+  try {
+    if (save) {
+      await api("/api/v1/cases/" + encodeURIComponent(save.dataset.caseSave), {
+        method: "PATCH",
+        body: JSON.stringify({
+          status: $("case-status").value,
+          assignee: $("case-assignee-edit").value.trim() || null,
+          priority: $("case-priority-edit").value,
+          severity: $("case-severity-edit").value,
+        }),
+      });
+      showToast("Case updated and audit logged.");
+      await refreshDashboard();
+      await selectCase(save.dataset.caseSave);
+    } else if (link) {
+      const alertId = $("case-alert-id").value.trim();
+      await api("/api/v1/cases/" + encodeURIComponent(link.dataset.caseLink) + "/alerts/" + encodeURIComponent(alertId), { method: "POST" });
+      showToast("Alert evidence linked to case.");
+      await refreshDashboard();
+      await selectCase(link.dataset.caseLink);
+    } else if (unlink) {
+      await api("/api/v1/cases/" + encodeURIComponent(unlink.dataset.caseId) + "/alerts/" + encodeURIComponent(unlink.dataset.caseUnlink), { method: "DELETE" });
+      showToast("Alert unlinked from case.");
+      await refreshDashboard();
+      await selectCase(unlink.dataset.caseId);
+    }
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
+async function addCaseNote(event) {
+  const form = event.target.closest("[data-case-note]");
+  if (!form) return;
+  event.preventDefault();
+  try {
+    await api("/api/v1/cases/" + encodeURIComponent(form.dataset.caseNote) + "/notes", {
+      method: "POST", body: JSON.stringify({ body: $("case-note-body").value }),
+    });
+    showToast("Case note added to the audit timeline.");
+    await refreshDashboard();
+    await selectCase(form.dataset.caseNote);
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
+function renderDetectionRules() {
+  const admin = state.user?.role === "admin";
+  $("rule-count").textContent = count(state.detectionRules.length) + " rules";
+  $("detection-rule-list").innerHTML = state.detectionRules.length ? state.detectionRules.map((rule) =>
+    '<article class="detection-rule-card">' +
+      '<div class="detection-rule-head"><div><strong>' + esc(rule.title) + '</strong><span class="detection-rule-id">' + esc(rule.rule_id) + '</span></div>' + pill(rule.enabled ? "enabled" : "disabled", rule.enabled ? "status-resolved" : "status-open") + '</div>' +
+      '<p>' + esc(rule.description) + '</p>' +
+      '<div class="detection-rule-meta"><span>' + esc(rule.attack_tactic) + '</span><span>' + esc(rule.attack_technique_id) + ' · ' + esc(rule.attack_technique_name) + '</span></div>' +
+      (admin ? '<div class="detection-rule-controls">' +
+        '<label class="rule-enabled"><input id="rule-enabled-' + esc(rule.rule_id) + '" type="checkbox" ' + (rule.enabled ? "checked" : "") + '> Enabled</label>' +
+        '<label>Threshold<input id="rule-threshold-' + esc(rule.rule_id) + '" type="number" min="2" max="100" placeholder="Default" value="' + esc(rule.threshold_override ?? "") + '"></label>' +
+        '<label>Severity<select id="rule-severity-' + esc(rule.rule_id) + '"><option value="">Rule default</option>' + ["info","low","medium","high","critical"].map((v) => '<option value="' + v + '" ' + (rule.severity_override === v ? "selected" : "") + '>' + v + '</option>').join("") + '</select></label>' +
+        '<button class="button button-secondary" type="button" data-rule-save="' + esc(rule.rule_id) + '">Save</button>' +
+      '</div>' : "") +
+      '<div class="case-detail-meta">Updated by ' + esc(rule.updated_by) + ' · ' + esc(date(rule.updated_at)) + '</div>' +
+    '</article>'
+  ).join("") : '<div class="source-empty">No detection rules are registered.</div>';
+}
+
+async function saveDetectionRule(ruleId) {
+  const button = document.querySelector('[data-rule-save="' + CSS.escape(ruleId) + '"]');
+  if (!button) return;
+  button.disabled = true;
+  try {
+    const rawThreshold = $("rule-threshold-" + ruleId).value.trim();
+    await api("/api/v1/detection-rules/" + encodeURIComponent(ruleId), {
+      method: "PATCH",
+      body: JSON.stringify({
+        enabled: $("rule-enabled-" + ruleId).checked,
+        threshold_override: rawThreshold ? Number(rawThreshold) : null,
+        severity_override: $("rule-severity-" + ruleId).value || null,
+      }),
+    });
+    showToast("Detection rule updated and audit logged.");
+    await refreshDashboard();
+  } catch (error) {
+    showToast(error.message, "error");
+  } finally {
+    if (button.isConnected) button.disabled = false;
+  }
+}
+
 function setActiveNav() {
   const current = location.hash.replace("#", "") || "overview";
   document.querySelectorAll("[data-nav]").forEach((link) => {
@@ -845,6 +1030,7 @@ function setActiveNav() {
     current === "alerts" ? "Alert queue" : current === "events" ? "Event telemetry" :
     current === "sources" ? "Data source health" : current === "operations" ? "Operational health" :
     current === "connectors" ? "Integration registry" : current === "schedules" ? "Detection schedules" :
+    current === "cases" ? "Incident cases" : current === "detection-rules" ? "Detection rule library" :
     current === "audit" ? "Security audit trail" : "Overview";
 }
 
@@ -897,6 +1083,18 @@ $("retention-policies").addEventListener("click", (event) => {
 });
 $("connector-create-form").addEventListener("submit", createConnector);
 $("connector-list").addEventListener("click", handleConnectorAction);
+$("case-create-toggle").addEventListener("click", () => { $("case-create-form").hidden = !$("case-create-form").hidden; });
+$("case-create-form").addEventListener("submit", createCase);
+$("case-list").addEventListener("click", (event) => {
+  const row = event.target.closest("[data-case-id]");
+  if (row) selectCase(row.dataset.caseId);
+});
+$("case-detail").addEventListener("click", handleCaseDetailClick);
+$("case-detail").addEventListener("submit", addCaseNote);
+$("detection-rule-list").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-rule-save]");
+  if (button) saveDetectionRule(button.dataset.ruleSave);
+});
 $("connector-type").addEventListener("change", () => {
   const examples = {
     wazuh: '{ "manager_url": "https://wazuh.example.internal" }',
