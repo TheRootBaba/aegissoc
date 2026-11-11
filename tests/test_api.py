@@ -162,3 +162,16 @@ def test_normalized_ingest_endpoint_maps_source_payload(client):
     assert response.json()["hostname"] == "linux-lab-01"
     assert response.json()["source_ip"] == "192.0.2.44"
     assert response.json()["raw"]["event"]["action"] == "authentication.failure"
+
+
+def test_normalized_ingest_rejects_invalid_source_payload_with_422(client):
+    response = client.post(
+        "/api/v1/events/ingest/syslog-lab",
+        json={
+            "event_type": "authentication.failure",
+            "severity": "high",
+            "message": "Timestamp intentionally omitted",
+        },
+    )
+
+    assert response.status_code == 422
