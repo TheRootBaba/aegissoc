@@ -235,7 +235,7 @@ aegissoc/
 
 ## Security boundary
 
-Only ingest events from systems you own or are explicitly authorized to monitor. Use synthetic data during development. Authentication, authorization, rate limiting, retention controls, alerting, and production deployment hardening remain future work.
+Only ingest events from systems you own or are explicitly authorized to monitor. Use synthetic data during development. Local authentication and role-based authorization are implemented, but AegisSOC is still a controlled lab build rather than a production SIEM. Shared rate limiting, token revocation, tamper-evident audit chaining, retention controls, alerting, and hardened production deployment remain future work.
 
 ## Roadmap
 
