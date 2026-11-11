@@ -388,6 +388,7 @@ def run_sigma_rules(db: Session, *, lookback_minutes: int = 15, limit: int = 100
     corr_matches, corr_created, corr_updated = _run_correlations(db, rules, events, now)
     return {
         "rules_evaluated": len(rules),
+        "rule_ids_evaluated": [rule.rule_id for rule in rules],
         "events_evaluated": len(events),
         "matches": matches + corr_matches,
         "alerts_created": created + corr_created,
