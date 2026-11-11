@@ -79,7 +79,25 @@ def _poll_url(connector: ConnectorConfig) -> tuple[str, dict]:
         raise ValueError("Connector endpoint host is not allowlisted")
     headers = {"Accept": "application/json"}
     secret = _credential(connector)
-    if secret:
+    if connector.connector_type == "wazuh_manager":
+        import base64
+        auth_url = config.get("auth_endpoint") or (
+            f"{parsed.scheme}://{parsed.netloc}/security/user/authenticate"
+        )
+        auth_parsed = urlsplit(auth_url)
+        if auth_parsed.scheme != "https" or auth_parsed.hostname.lower() not in [
+            str(host).lower() for host in config["allowed_hosts"]
+        ]:
+            raise ValueError("Wazuh Manager authentication endpoint must use HTTPS and an allowlisted host")
+        if not secret or ":" not in secret:
+            raise ValueError("Wazuh Manager credential must reference username:password")
+        basic = base64.b64encode(secret.encode()).decode("ascii")
+        auth_document = _read_response(auth_url, {"Authorization": "Basic " + basic, "Accept": "application/json"}, method="POST")
+        token = ((auth_document.get("data") or {}).get("token")) if isinstance(auth_document, dict) else None
+        if not isinstance(token, str) or not token:
+            raise ValueError("Wazuh Manager did not return an API access token")
+        headers["Authorization"] = "Bearer " + token
+    elif secret:
         header = config.get("auth_header", "X-MISP-Auth" if connector.connector_type == "misp" else "Authorization")
         if header.lower() not in {"authorization", "x-api-key", "x-misp-auth", "x-apikeys"}:
             raise ValueError("auth_header must be a supported authentication header")
