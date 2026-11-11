@@ -9,9 +9,12 @@ def _first(value: Any) -> Any:
     return value
 
 
-def _severity(value: Any) -> str:
+def _severity(value: Any, provider: str) -> str:
     if isinstance(value, int) or (isinstance(value, str) and value.isdigit()):
-        return {0: "low", 1: "low", 2: "medium", 3: "high", 4: "critical"}.get(int(value), "medium")
+        numeric = int(value)
+        if provider == "qualys":
+            return {1: "low", 2: "medium", 3: "high", 4: "high", 5: "critical"}.get(numeric, "medium")
+        return {0: "low", 1: "low", 2: "medium", 3: "high", 4: "critical"}.get(numeric, "medium")
     normalized = str(value or "medium").strip().lower()
     aliases = {"info": "low", "informational": "low", "urgent": "critical", "severe": "critical"}
     normalized = aliases.get(normalized, normalized)
@@ -32,7 +35,7 @@ def _finding(item: dict, provider: str) -> dict:
     return {
         "vulnerability_id": str(identifier),
         "title": str(title)[:200],
-        "severity": _severity(item.get("severity") or item.get("risk_factor") or item.get("severity_level")),
+        "severity": _severity(item.get("severity") or item.get("risk_factor") or item.get("severity_level"), provider),
         "description": str(item.get("description") or item.get("synopsis") or item.get("solution") or "")[:4000],
     }
 
@@ -60,7 +63,7 @@ def normalize_scanner_export(provider: str, document: dict) -> dict:
             host.get("hostname") or host.get("host-fqdn") or host.get("host_name")
             or host.get("fqdn") or host.get("host-ip") or host.get("ip")
         )
-        asset_key = host.get("asset_key") or host.get("host-fqdn") or host.get("hostname") or host.get("host_name") or host.get("host-ip") or host.get("ip")
+        asset_key = host.get("asset_key") or host.get("asset_id") or host.get("host-fqdn") or host.get("hostname") or host.get("host_name") or host.get("host-ip") or host.get("ip")
         raw_findings = host.get("findings") or host.get("vulnerabilities") or host.get("detectionList") or []
         if not hostname or not asset_key or not isinstance(raw_findings, list):
             continue
