@@ -175,3 +175,51 @@ def test_response_action_requires_separate_approval_and_explicit_execution(api_c
     assert executed.status_code == 200
     assert executed.json()["status"] == "succeeded"
     app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_http_poll_worker_ingests_events_idempotently(isolated_db, monkeypatch):
+    from app.services import connector_runtime
+    from app.models import ConnectorRuntimeState
+    connector = ConnectorConfig(
+        connector_key="edr-poll", connector_type="http_poll", display_name="EDR poll",
+        config={"endpoint": "https://edr.example/events", "allowed_hosts": ["edr.example"],
+                "interval_seconds": 60, "records_path": "items"},
+        enabled=True, health_status="unverified",
+    )
+    isolated_db.add(connector)
+    isolated_db.commit()
+    payload = {"items": [{
+        "id": "edr-event-001", "event_type": "process.started", "severity": "medium",
+        "timestamp": datetime.now(timezone.utc).isoformat(), "hostname": "endpoint-01",
+        "message": "A test process started",
+    }]}
+    monkeypatch.setattr(connector_runtime, "_read_response", lambda url, headers: payload)
+    assert connector_runtime.run_due_connectors_once(isolated_db, batch_size=1) == 1
+    assert isolated_db.query(SecurityEvent).filter_by(source="edr-poll").count() == 1
+    state = isolated_db.get(ConnectorRuntimeState, connector.id)
+    state.next_run_at = datetime.now(timezone.utc)
+    isolated_db.commit()
+    assert connector_runtime.run_due_connectors_once(isolated_db, batch_size=1) == 1
+    assert isolated_db.query(SecurityEvent).filter_by(source="edr-poll").count() == 1
+    latest = isolated_db.query(connector_runtime.ConnectorExecution).filter_by(connector_id=connector.id).order_by(
+        connector_runtime.ConnectorExecution.started_at.desc()
+    ).first()
+    assert latest.duplicates == 1
+
+
+def test_connector_worker_records_failure_and_backoff(isolated_db, monkeypatch):
+    from app.services import connector_runtime
+    connector = ConnectorConfig(
+        connector_key="broken-poll", connector_type="http_poll", display_name="Broken poll",
+        config={"endpoint": "https://feed.example/items", "allowed_hosts": ["feed.example"],
+                "interval_seconds": 30},
+        enabled=True, health_status="unverified",
+    )
+    isolated_db.add(connector)
+    isolated_db.commit()
+    monkeypatch.setattr(connector_runtime, "_read_response", lambda *args: (_ for _ in ()).throw(TimeoutError()))
+    assert connector_runtime.run_due_connectors_once(isolated_db, batch_size=1) == 0
+    state = isolated_db.get(connector_runtime.ConnectorRuntimeState, connector.id)
+    assert state.consecutive_failures == 1
+    assert state.locked_until is None
+    assert isolated_db.query(connector_runtime.ConnectorExecution).filter_by(status="failed").count() == 1
