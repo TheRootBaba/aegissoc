@@ -1545,3 +1545,9 @@ def test_asset_risk_read_endpoints_are_bounded_and_validate_filters(client):
 def test_oidc_routes_are_not_exposed_when_sso_is_disabled(client):
     assert client.get('/api/v1/auth/oidc/login').status_code == 404
     assert client.get('/api/v1/auth/oidc/callback').status_code == 404
+
+
+def test_auth_methods_report_oidc_disabled_by_default(client):
+    response = client.get('/api/v1/auth/methods')
+    assert response.status_code == 200
+    assert response.json() == {'local_password': True, 'oidc_enabled': False}
