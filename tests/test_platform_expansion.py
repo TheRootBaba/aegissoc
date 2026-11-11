@@ -606,3 +606,57 @@ def test_wazuh_manager_adapter_exchanges_credentials_for_api_token(isolated_db, 
     assert calls[0][0] == "https://manager.example.internal:55000/security/user/authenticate"
     assert calls[0][1]["Authorization"].startswith("Basic ")
     assert calls[1][1]["Authorization"] == "Bearer fixture-access-token"
+
+
+
+def test_response_worker_reconciles_expired_lease_before_redelivery(api_client, isolated_db, monkeypatch):
+    from datetime import timedelta
+    from app.models import ResponseActionRequest
+    from app.services import response_execution
+
+    connector = api_client.post("/api/v1/connectors", json={
+        "connector_key": "reconcile-webhook", "connector_type": "response_webhook",
+        "display_name": "Reconciliation receiver",
+        "config": {
+            "endpoint": "https://response.example/actions",
+            "reconciliation_endpoint": "https://response.example/actions/status",
+            "allowed_hosts": ["response.example"],
+        },
+        "enabled": True,
+    })
+    assert connector.status_code == 201
+    created = api_client.post("/api/v1/response-actions", json={
+        "connector_key": "reconcile-webhook", "action_type": "block_ip", "target": "203.0.113.18",
+        "parameters": {"duration_minutes": 15},
+    })
+    assert created.status_code == 201
+    request_id = created.json()["id"]
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
+        id=uuid4(), username="reconciliation-admin", role="admin", is_active=True
+    )
+    approved = api_client.post(f"/api/v1/response-actions/{request_id}/approve", json={"note": "Approved"})
+    assert approved.status_code == 200
+    queued = api_client.post(f"/api/v1/response-actions/{request_id}/execute")
+    assert queued.status_code == 200
+
+    request = isolated_db.get(ResponseActionRequest, UUID(request_id))
+    now = datetime.now(timezone.utc)
+    request.status = "executing"
+    request.execution_status = "submitting"
+    request.execution_attempts = 1
+    request.locked_until = now - timedelta(seconds=1)
+    isolated_db.commit()
+    monkeypatch.setattr(response_execution, "_reconcile", lambda *_: {
+        "status": "succeeded", "response_code": 200, "reference": "reconciled-action-42",
+    })
+    monkeypatch.setattr(response_execution.httpx, "Client", lambda **kwargs: (_ for _ in ()).throw(
+        AssertionError("A reconciled action must not be delivered again")
+    ))
+
+    assert response_execution.run_due_response_actions_once(isolated_db, now=now) == 1
+    isolated_db.refresh(request)
+    assert request.status == "succeeded"
+    assert request.execution_status == "reconciled"
+    assert request.external_reference == "reconciled-action-42"
+    assert request.execution_attempts == 2
+    app.dependency_overrides.pop(get_current_user, None)
