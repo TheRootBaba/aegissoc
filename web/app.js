@@ -1,10 +1,10 @@
 const $ = (id) => document.getElementById(id);
-const state = { alerts: [], events: [], eventStats: {}, alertStats: {}, selectedId: null };
+const state = { alerts: [], events: [], eventStats: {}, alertStats: {}, selectedId: null, token: null, user: null };
 const esc = (value) => String(value ?? "—").replace(/[&<>"']/g, (char) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
 const date = (value) => value ? new Date(value).toLocaleString() : "—";
 const pill = (value, prefix="") => '<span class="pill '+prefix+esc(value)+'">'+esc(String(value).replaceAll("_"," "))+'</span>';
 async function api(path, options={}) {
-  const response = await fetch(path, {headers:{"Content-Type":"application/json",...(options.headers||{})},...options});
+  const response = await fetch(path, {headers:{"Content-Type":"application/json",...(state.token?{Authorization:"Bearer "+state.token}:{}),...(options.headers||{})},...options});
   const body = response.status === 204 ? null : await response.json().catch(()=>null);
   if (!response.ok) throw new Error(body?.detail || response.statusText || "Request failed");
   return body;
@@ -51,19 +51,19 @@ async function selectAlert(id,rerender=true) {
       '<div class="attack-card"><div class="eyebrow">MITRE ATT&amp;CK MAPPING</div><strong>'+esc(a.attack_technique_id||'Not mapped')+' · '+esc(a.attack_technique_name||'—')+'</strong><span>'+esc(a.attack_tactic||'No tactic assigned')+'</span>'+(a.attack_technique_id?'<a href="https://attack.mitre.org/techniques/'+encodeURIComponent(a.attack_technique_id)+'/" target="_blank" rel="noopener noreferrer">Open technique ↗</a>':'')+'</div>'+
       '<div class="field"><label class="form-label" for="status-input">WORKFLOW STATUS</label><select id="status-input"><option value="open">Open</option><option value="acknowledged">Acknowledged</option><option value="in_progress">In progress</option><option value="resolved">Resolved</option><option value="false_positive">False positive</option></select></div>'+
       '<div class="field"><label class="form-label" for="assignee-input">ASSIGNED ANALYST</label><input id="assignee-input" maxlength="120" placeholder="Unassigned" value="'+esc(a.assigned_to||"")+'"></div>'+
-      '<div class="field"><label class="form-label" for="actor-input">ACTION BY (LAB LABEL)</label><input id="actor-input" maxlength="120" value="analyst-01"></div>'+
+      '<div class="detail-meta">Analyst identity is verified by the API token.</div>'+
       '<div class="subsection"><h4>TRIGGERING EVIDENCE</h4><p class="detail-meta" style="line-height:1.7;word-break:break-all">'+esc(a.evidence_event_ids.join(" · "))+"</p></div>"+
       '<div class="detail-actions"><button class="button primary" id="save-alert">Save changes</button><span class="detail-meta">'+esc(a.status.replaceAll("_"," "))+'</span></div>'+
       '<div class="subsection"><h4>INVESTIGATION NOTES</h4><div id="notes-list">'+(notes.length?notes.map(n=>'<div class="note-item"><strong>'+esc(n.author)+'</strong><time> · '+esc(date(n.created_at))+'</time><p>'+esc(n.body)+'</p></div>').join(""):'<p class="detail-meta">No notes yet.</p>')+'</div>'+
       '<div class="field"><textarea id="note-input" maxlength="10000" placeholder="Record evidence, triage decisions, and investigation findings…"></textarea></div><button class="button secondary" id="add-note">Add investigation note</button></div>'+
       '<div class="subsection"><h4>AUDIT HISTORY</h4><div>'+(history.length?history.map(h=>'<div class="history-item"><strong>'+esc(h.action)+'</strong><time> · '+esc(h.actor)+' · '+esc(date(h.created_at))+'</time><p>'+esc(JSON.stringify(h.details))+'</p></div>').join(""):'<p class="detail-meta">No audit entries yet.</p>')+'</div></div>';
-    $("status-input").value=a.status;
+    $("status-input").value=a.status;if(state.user?.role==="read_only"){ $("status-input").disabled=true;$("assignee-input").disabled=true;$("save-alert").hidden=true;$("note-input").disabled=true;$("add-note").hidden=true;}
     $("save-alert").addEventListener("click",async()=>{
-      try{await api("/api/v1/alerts/"+id,{method:"PATCH",body:JSON.stringify({actor:$("actor-input").value.trim(),status:$("status-input").value,assigned_to:$("assignee-input").value.trim()||null})});toast("Alert updated and audit recorded.");await refresh();}
+      try{await api("/api/v1/alerts/"+id,{method:"PATCH",body:JSON.stringify({status:$("status-input").value,assigned_to:$("assignee-input").value.trim()||null})});toast("Alert updated and audit recorded.");await refresh();}
       catch(error){toast(error.message);}
     });
     $("add-note").addEventListener("click",async()=>{
-      try{await api("/api/v1/alerts/"+id+"/notes",{method:"POST",body:JSON.stringify({author:$("actor-input").value.trim(),body:$("note-input").value})});toast("Investigation note saved.");await selectAlert(id);}
+      try{await api("/api/v1/alerts/"+id+"/notes",{method:"POST",body:JSON.stringify({body:$("note-input").value})});toast("Investigation note saved.");await selectAlert(id);}
       catch(error){toast(error.message);}
     });
   } catch(error){panel.innerHTML='<div class="detail-empty"><h3>Could not load alert</h3><p>'+esc(error.message)+'</p></div>';}
@@ -77,4 +77,34 @@ $("run-detections").addEventListener("click",async()=>{
   catch(error){toast(error.message);}
   finally{button.disabled=false;button.textContent="▶ Run detections";}
 });
-refresh();
+async function bootstrap(){
+  const token=sessionStorage.getItem("aegis_token");
+  if(!token){$("auth-overlay").classList.remove("hidden");return;}
+  state.token=token;
+  try{
+    state.user=await api("/api/v1/auth/me");
+    $("auth-overlay").classList.add("hidden");
+    $("session-label").textContent=state.user.username+" · "+state.user.role;
+    $("run-detections").hidden=state.user.role==="read_only";
+    await refresh();
+  }catch(error){
+    sessionStorage.removeItem("aegis_token");state.token=null;state.user=null;
+    $("auth-overlay").classList.remove("hidden");
+    $("login-error").textContent="Session expired. Please sign in again.";
+  }
+}
+$("login-form").addEventListener("submit",async(event)=>{
+  event.preventDefault();const button=$("login-button");button.disabled=true;button.textContent="Signing in…";$("login-error").textContent="";
+  try{
+    const response=await fetch("/api/v1/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:$("login-username").value.trim(),password:$("login-password").value})});
+    const body=await response.json().catch(()=>null);
+    if(!response.ok)throw new Error(body?.detail||"Sign-in failed");
+    sessionStorage.setItem("aegis_token",body.access_token);state.token=body.access_token;await bootstrap();
+  }catch(error){$("login-error").textContent=error.message;}
+  finally{button.disabled=false;button.textContent="Sign in";}
+});
+$("signout-button").addEventListener("click",()=>{
+  sessionStorage.removeItem("aegis_token");state.token=null;state.user=null;state.alerts=[];state.events=[];
+  $("auth-overlay").classList.remove("hidden");$("session-label").textContent="";
+});
+bootstrap();

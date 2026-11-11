@@ -526,3 +526,76 @@ def test_event_search_can_filter_by_external_source_identifier(client):
     assert response.status_code == 200
     assert len(response.json()) == 1
     assert response.json()[0]["external_id"] == "wazuh-alert-lookup"
+
+
+def test_admin_can_create_user_and_user_can_login(client):
+    created = client.post("/api/v1/auth/users", json={
+        "username": "new-analyst",
+        "password": "strong-test-password-2026",
+        "role": "analyst",
+    })
+    assert created.status_code == 201
+    assert created.json()["role"] == "analyst"
+    assert "password_hash" not in created.json()
+
+    login = client.post("/api/v1/auth/login", json={
+        "username": "new-analyst",
+        "password": "strong-test-password-2026",
+    })
+    assert login.status_code == 200
+    token = login.json()["access_token"]
+    from app.core.security import get_current_user
+    app.dependency_overrides.pop(get_current_user, None)
+    identity = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert identity.status_code == 200
+    assert identity.json()["username"] == "new-analyst"
+    assert identity.json()["role"] == "analyst"
+
+
+def test_read_only_role_cannot_ingest_or_run_detections(client):
+    from types import SimpleNamespace
+    from app.core.security import get_current_user
+
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
+        id=UUID("00000000-0000-0000-0000-000000000001"),
+        username="viewer",
+        role="read_only",
+        is_active=True,
+    )
+    ingest = client.post("/api/v1/events", json=sample_event())
+    detect = client.post("/api/v1/detections/run", json={"window_minutes": 10, "threshold": 5})
+    read = client.get("/api/v1/events")
+    assert ingest.status_code == 403
+    assert detect.status_code == 403
+    assert read.status_code == 200
+
+
+def test_alert_audit_actor_is_bound_to_authenticated_user(client):
+    now = datetime.now(timezone.utc)
+    for attempt in range(5):
+        client.post("/api/v1/events", json=sample_event(
+            timestamp=(now - timedelta(seconds=attempt)).isoformat(),
+            message=f"SSH authentication failure {attempt}",
+        ))
+    alert_id = client.post("/api/v1/detections/run", json={
+        "window_minutes": 10, "threshold": 5
+    }).json()["alerts"][0]["id"]
+    changed = client.patch(f"/api/v1/alerts/{alert_id}", json={
+        "actor": "forged-admin-name", "status": "acknowledged"
+    })
+    history = client.get(f"/api/v1/alerts/{alert_id}/history")
+    assert changed.status_code == 200
+    assert history.json()[0]["actor"] == "test-admin"
+
+
+def test_login_returns_generic_failure_and_throttles_repeated_attempts(client):
+    from app.core.security import clear_login_rate_limit
+    clear_login_rate_limit("testclient")
+    payload = {"username": "missing-user", "password": "strong-test-password"}
+    for _ in range(5):
+        response = client.post("/api/v1/auth/login", json=payload)
+        assert response.status_code == 401
+        assert response.json()["detail"] == "Invalid username or password"
+    limited = client.post("/api/v1/auth/login", json=payload)
+    assert limited.status_code == 429
+    clear_login_rate_limit("testclient")

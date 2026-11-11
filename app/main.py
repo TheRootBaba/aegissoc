@@ -8,10 +8,9 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api.routes import alert_workflow, detections, events, health
+from app.api.routes import alert_workflow, auth, detections, events, health
 from app.core.config import settings
 from app.core.logging_config import configure_logging, request_id_var
-
 
 configure_logging(settings.log_level)
 logger = logging.getLogger("aegissoc.http")
@@ -26,8 +25,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.2.0",
-    description="Local-first security event ingestion and investigation foundation.",
+    version="0.3.0",
+    description="Authenticated local-first security event ingestion and investigation platform.",
     lifespan=lifespan,
 )
 
@@ -57,6 +56,7 @@ async def attach_request_id(request: Request, call_next):
 
 
 app.include_router(health.router)
+app.include_router(auth.router)
 app.include_router(events.router)
 app.include_router(detections.router)
 app.include_router(alert_workflow.router)
@@ -65,15 +65,9 @@ app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 
 @app.get("/dashboard", include_in_schema=False)
 def dashboard():
-    """Serve the local analyst dashboard."""
     return FileResponse(WEB_DIR / "index.html")
 
 
 @app.get("/")
 def root():
-    return {
-        "name": "AegisSOC",
-        "status": "running",
-        "docs": "/docs",
-        "phase": 1,
-    }
+    return {"name": "AegisSOC", "status": "running", "docs": "/docs", "phase": 1}
