@@ -121,3 +121,47 @@ class SavedEventQuery(Base):
     created_by: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class DetectionSchedule(Base):
+    """Durable recurring execution configuration for the detection engine."""
+
+    __tablename__ = "detection_schedules"
+    __table_args__ = (UniqueConstraint("created_by", "name", name="uq_detection_schedules_owner_name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    interval_seconds: Mapped[int] = mapped_column(nullable=False)
+    window_minutes: Mapped[int] = mapped_column(nullable=False)
+    threshold: Mapped[int] = mapped_column(nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=true(), index=True)
+    next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    consecutive_failures: Mapped[int] = mapped_column(nullable=False, default=0)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    created_by: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class DetectionExecution(Base):
+    """Immutable outcome record for one scheduled detection attempt."""
+
+    __tablename__ = "detection_executions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    schedule_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("detection_schedules.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    duration_ms: Mapped[int] = mapped_column(nullable=False)
+    events_evaluated: Mapped[int] = mapped_column(nullable=False, default=0)
+    alerts_created: Mapped[int] = mapped_column(nullable=False, default=0)
+    alerts_updated: Mapped[int] = mapped_column(nullable=False, default=0)
+    rules_evaluated: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    error: Mapped[str | None] = mapped_column(String(500), nullable=True)

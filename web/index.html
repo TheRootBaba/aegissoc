@@ -24,6 +24,7 @@
       <nav class="nav-group" aria-label="Main navigation">
         <a class="nav-link active" href="#overview" data-nav="overview"><span class="nav-icon">◫</span>Overview</a>
         <a class="nav-link" href="#sources" data-nav="sources"><span class="nav-icon">⌘</span>Data sources<span class="nav-count" id="nav-source-count">0</span></a>
+        <a class="nav-link" href="#schedules" data-nav="schedules"><span class="nav-icon">◷</span>Detection schedules</a>
         <a class="nav-link" href="#alerts" data-nav="alerts"><span class="nav-icon">◎</span>Alert queue<span class="nav-count" id="nav-alert-count">0</span></a>
         <a class="nav-link" href="#events" data-nav="events"><span class="nav-icon">⌁</span>Event telemetry</a>
         <a class="nav-link admin-nav" href="#team" data-nav="team" id="team-nav"><span class="nav-icon">♙</span>Team & access</a>
@@ -72,6 +73,25 @@
               <p class="form-feedback" id="source-create-feedback" role="status"></p>
             </form>
           </aside>
+        </div>
+      </section>
+
+      <section class="section-block" id="schedules">
+        <div class="section-heading"><div><div class="section-kicker">02 / CONTINUOUS DETECTION</div><h2>Detection schedules</h2><p>Recurring rule execution, durable run history, and operational retry state.</p></div><span class="result-count" id="schedule-count">0 schedules</span></div>
+        <div class="surface-card schedule-workspace">
+          <div class="schedule-create-panel" id="schedule-create-panel" hidden>
+            <div class="schedule-create-heading"><strong>Create detection schedule</strong><span>ADMINISTRATOR CONTROL</span></div>
+            <form id="schedule-create-form" class="schedule-create-form">
+              <label>Schedule name<input id="schedule-name" type="text" maxlength="100" placeholder="e.g. Continuous endpoint monitoring" required></label>
+              <label>Run interval<select id="schedule-interval"><option value="60">Every minute</option><option value="300" selected>Every 5 minutes</option><option value="900">Every 15 minutes</option><option value="3600">Every hour</option><option value="86400">Every 24 hours</option></select></label>
+              <label>Detection window<select id="schedule-window"><option value="5">5 minutes</option><option value="10" selected>10 minutes</option><option value="30">30 minutes</option><option value="60">1 hour</option><option value="1440">24 hours</option></select></label>
+              <label>Match threshold<input id="schedule-threshold" type="number" min="2" max="100" value="5" required></label>
+              <button class="button button-primary" type="submit" id="schedule-create-button">Create schedule</button>
+            </form>
+            <div id="schedule-create-feedback" class="query-feedback" aria-live="polite"></div>
+          </div>
+          <div id="schedules-grid" class="schedules-grid"><div class="source-empty">Loading detection schedules…</div></div>
+          <div id="schedule-history" class="schedule-history" hidden></div>
         </div>
       </section>
 

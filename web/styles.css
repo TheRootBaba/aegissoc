@@ -33,3 +33,33 @@
 .aggregation-item strong{color:var(--cyan);font-family:var(--mono)}
 @media(max-width:1100px){.query-controls{grid-template-columns:repeat(2,minmax(0,1fr))}.saved-query-controls{grid-template-columns:1fr 1fr}.query-run-button,.saved-query-controls .button{width:100%}}
 @media(max-width:680px){.query-workbench{padding:14px}.query-controls,.saved-query-controls{grid-template-columns:1fr}.saved-query-controls .share-query-toggle{min-height:22px}.query-controls button{width:100%}}
+
+/* Durable detection schedule workspace */
+.schedule-workspace{overflow:hidden}
+.schedule-create-panel{padding:18px 20px;border-bottom:1px solid var(--line2);background:linear-gradient(145deg,#12233a88,#0c1728aa)}
+.schedule-create-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}
+.schedule-create-heading strong{font-size:12px}.schedule-create-heading span{font:9px var(--mono);letter-spacing:.1em;color:var(--cyan)}
+.schedule-create-form{display:grid;grid-template-columns:1.4fr 1fr 1fr .8fr auto;align-items:end;gap:10px}
+.schedule-create-form label{display:flex;flex-direction:column;gap:7px;color:var(--muted);font-size:10px;font-weight:700}
+.schedule-create-form input,.schedule-create-form select{width:100%;height:36px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:#0b1728;color:var(--text);outline:none}
+.schedule-create-form input:focus,.schedule-create-form select:focus{border-color:var(--cyan);box-shadow:0 0 0 3px #62dfd018}
+.schedules-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:17px}
+.schedule-card{padding:15px;border:1px solid var(--line);border-radius:10px;background:linear-gradient(145deg,#13243a,#0e1a2c)}
+.schedule-card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.schedule-card-head>div{min-width:0}.schedule-card-head strong{display:block;font-size:12px}.schedule-card-head small{display:block;margin-top:5px;color:var(--muted);font-size:9px}
+.schedule-timing{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;margin-top:15px;padding:11px 0;border-top:1px solid var(--line2);border-bottom:1px solid var(--line2)}
+.schedule-timing span{display:flex;flex-direction:column;gap:5px;color:var(--dim);font-size:9px}
+.schedule-timing strong{color:var(--text);font-size:10px;font-weight:600}
+.schedule-actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
+.schedule-actions .button{height:30px;padding:0 10px;font-size:9px}
+.schedule-delete{color:var(--red)}
+.schedule-error{display:block;margin-top:9px;color:var(--red);font-size:9px}
+.schedule-history{padding:16px 20px;border-top:1px solid var(--line);background:#091525}
+.schedule-history-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;font-size:11px}
+.schedule-history-list{display:grid;gap:8px}
+.schedule-run{display:flex;align-items:center;gap:12px;padding:10px;border:1px solid var(--line2);border-radius:8px;background:#0d1a2d}
+.schedule-run>span:nth-child(2){display:flex;flex-direction:column;gap:4px;min-width:0}
+.schedule-run strong{font-size:10px}.schedule-run small{color:var(--muted);font-size:9px}
+.run-duration{margin-left:auto;color:var(--dim);font:9px var(--mono);white-space:nowrap}
+@media(max-width:1100px){.schedule-create-form{grid-template-columns:repeat(2,minmax(0,1fr))}.schedule-create-form button{width:100%}}
+@media(max-width:680px){.schedule-create-form,.schedules-grid{grid-template-columns:1fr}.schedule-create-panel{padding:14px}.schedules-grid{padding:12px}.schedule-card-head{align-items:flex-start}.schedule-timing{grid-template-columns:1fr 1fr auto}}
