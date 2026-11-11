@@ -443,3 +443,25 @@ def test_secret_resolver_supports_environment_and_rejects_unmounted_files(monkey
         resolve_secret_reference("file:///tmp/aegis-secret")
     with pytest.raises(ValueError):
         resolve_secret_reference("https://example.invalid/secret")
+
+def test_nessus_export_endpoint_reconciles_only_known_assets(api_client):
+    asset = api_client.post("/api/v1/asset-risk/assets", json={
+        "asset_key": "nessus-db-01", "hostname": "nessus-db-01.internal", "criticality": "critical",
+    })
+    assert asset.status_code == 201
+    response = api_client.post("/api/v1/asset-risk/scanner-imports/nessus", json={
+        "info": {"uuid": "nessus-export-001"},
+        "hosts": [{
+            "host-fqdn": "nessus-db-01.internal",
+            "host-ip": "192.0.2.210",
+            "vulnerabilities": [{
+                "plugin_id": 44123, "plugin_name": "Synthetic critical finding",
+                "severity": 4, "cve": ["CVE-2026-44123"],
+            }],
+        }],
+    })
+    assert response.status_code == 200
+    assert response.json()["findings_created"] == 1
+    findings = api_client.get(f"/api/v1/asset-risk/assets/{asset.json()['id']}/findings")
+    assert findings.status_code == 200
+    assert findings.json()[0]["vulnerability_id"] == "CVE-2026-44123"
