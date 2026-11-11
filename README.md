@@ -167,3 +167,7 @@ The CI workflow also validates PostgreSQL migrations and RLS behavior, runs the 
 - OIDC identities must be provisioned by an administrator; unknown external identities are not auto-created.
 - The audit hash chain is tamper-evident within the database trust boundary, not an external immutable archive.
 - Before a real production deployment, complete the remaining assurance work in the [platform roadmap](docs/PLATFORM_COMPLETION_1_30B_1_34.md), including independent security review, load testing, restore drills, secrets rotation and provider validation.
+
+## Product evidence
+
+See the [dashboard and API screenshot gallery](docs/SCREENSHOT_GALLERY.md) for genuine captures of the current interface, the related engineering guides, and recorded local walkthroughs. Screenshots are evidence of the captured environment and should not be read as a production certification.

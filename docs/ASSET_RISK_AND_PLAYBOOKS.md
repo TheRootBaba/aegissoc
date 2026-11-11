@@ -1,5 +1,7 @@
 # Asset risk and response playbooks
 
+> Related product captures: [AegisSOC screenshot gallery](SCREENSHOT_GALLERY.md).
+
 ## Phase 1.22 — Asset inventory and vulnerability triage
 
 AegisSOC maintains an analyst-curated inventory of managed assets and source-attributed vulnerability observations.

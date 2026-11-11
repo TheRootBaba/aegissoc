@@ -1,5 +1,7 @@
 # Operational recovery runbook
 
+> Related product captures: [AegisSOC screenshot gallery](SCREENSHOT_GALLERY.md).
+
 This runbook is for the local Docker Compose deployment. Adapt credentials, storage, RPO, and RTO before production use.
 
 ## First deployment of the API and workers

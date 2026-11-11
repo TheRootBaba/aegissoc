@@ -1,5 +1,7 @@
 # Sigma rule engineering
 
+> Related product captures: [AegisSOC screenshot gallery](SCREENSHOT_GALLERY.md).
+
 AegisSOC imports and evaluates a deliberately bounded Sigma subset. The implementation uses safe YAML parsing and a local event evaluator; it is not a full Sigma compiler and does not promise backend parity with a general-purpose Sigma pipeline.
 
 ## Rule structure and validation
