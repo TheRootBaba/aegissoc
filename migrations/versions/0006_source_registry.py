@@ -1,4 +1,7 @@
-"""Create source inventory and ingestion-health counters."""
+"""Create source inventory, counters, and seed existing event producers."""
+from datetime import datetime, timezone
+from uuid import uuid4
+
 from alembic import op
 import sqlalchemy as sa
 
@@ -30,6 +33,58 @@ def upgrade() -> None:
     op.create_index("ix_source_registry_health_status", "source_registry", ["health_status"])
     op.create_index("ix_source_registry_last_attempt_at", "source_registry", ["last_attempt_at"])
     op.create_index("ix_source_registry_last_successful_event_at", "source_registry", ["last_successful_event_at"])
+
+    # Preserve visibility for producers that already have canonical events.
+    # Historical retries/rejections are unknowable, so only persisted events are
+    # counted as accepted and the unavailable historical outcomes start at zero.
+    connection = op.get_bind()
+    events = sa.table(
+        "security_events",
+        sa.column("source", sa.String(length=80)),
+        sa.column("timestamp", sa.DateTime(timezone=True)),
+        sa.column("created_at", sa.DateTime(timezone=True)),
+    )
+    registry = sa.table(
+        "source_registry",
+        sa.column("id", sa.Uuid(as_uuid=True)),
+        sa.column("source_name", sa.String(length=80)),
+        sa.column("source_type", sa.String(length=32)),
+        sa.column("display_name", sa.String(length=120)),
+        sa.column("description", sa.Text()),
+        sa.column("health_status", sa.String(length=16)),
+        sa.column("last_attempt_at", sa.DateTime(timezone=True)),
+        sa.column("last_successful_event_at", sa.DateTime(timezone=True)),
+        sa.column("accepted_events", sa.Integer()),
+        sa.column("duplicate_events", sa.Integer()),
+        sa.column("rejected_events", sa.Integer()),
+        sa.column("created_at", sa.DateTime(timezone=True)),
+        sa.column("updated_at", sa.DateTime(timezone=True)),
+    )
+    existing_sources = connection.execute(
+        sa.select(
+            events.c.source,
+            sa.func.count().label("event_count"),
+            sa.func.max(events.c.created_at).label("last_attempt"),
+            sa.func.max(events.c.timestamp).label("last_event"),
+        ).group_by(events.c.source)
+    ).all()
+    for source_name, event_count, last_attempt, last_event in existing_sources:
+        observed_at = last_attempt or datetime.now(timezone.utc)
+        connection.execute(sa.insert(registry).values(
+            id=uuid4(),
+            source_name=source_name,
+            source_type="wazuh" if source_name.lower() == "wazuh" else "generic",
+            display_name=source_name,
+            description=None,
+            health_status="healthy",
+            last_attempt_at=observed_at,
+            last_successful_event_at=last_event,
+            accepted_events=event_count,
+            duplicate_events=0,
+            rejected_events=0,
+            created_at=observed_at,
+            updated_at=observed_at,
+        ))
 
 
 def downgrade() -> None:
