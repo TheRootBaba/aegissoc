@@ -58,6 +58,8 @@ def ingest_normalized_event(
     except ValidationError as exc:
         # Treat source-payload validation like normal FastAPI request validation.
         raise RequestValidationError(exc.errors()) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if normalized.external_id:
         existing = db.scalar(select(SecurityEvent).where(
             SecurityEvent.source == normalized.source,
