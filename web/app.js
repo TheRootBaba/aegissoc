@@ -2,7 +2,7 @@
 
 const $ = (id) => document.getElementById(id);
 const state = {
-  alerts: [], events: [], eventStats: {}, alertStats: {}, users: [],
+  alerts: [], events: [], sources: [], eventStats: {}, alertStats: {}, users: [],
   selectedId: null, token: null, user: null, toastTimer: null,
 };
 const esc = (value) => String(value ?? "—").replace(/[&<>"']/g, (char) => ({
@@ -43,6 +43,7 @@ function clearSession() {
   state.user = null;
   state.alerts = [];
   state.events = [];
+  state.sources = [];
   state.eventStats = {};
   state.alertStats = {};
   state.users = [];
@@ -58,6 +59,8 @@ function clearSession() {
   $("sidebar-signout").hidden = true;
   $("alerts-body").innerHTML = '<tr><td colspan="5" class="table-empty">Sign in to load alerts.</td></tr>';
   $("events-body").innerHTML = '<tr><td colspan="5" class="table-empty">Sign in to load telemetry.</td></tr>';
+  $("source-grid").innerHTML = '<div class="source-empty">Sign in to inspect source health.</div>';
+  $("source-register-panel").hidden = true;
   $("detail-panel").innerHTML = '<div class="investigation-empty"><span class="empty-radar">◎</span><span class="section-kicker">INVESTIGATION WORKSPACE</span><h3>Nothing selected</h3><p>Sign in to inspect alerts and investigations.</p></div>';
   showAuth();
 }
@@ -124,6 +127,38 @@ function renderEvents() {
     "</td><td>" + esc(date(event.timestamp)) + "</td></tr>").join("") :
     '<tr><td colspan="5" class="table-empty">No events ingested yet. Connect a source or send a lab event to get started.</td></tr>';
 }
+function renderSources() {
+  const sources = state.sources || [];
+  const counts = sources.reduce((total, source) => {
+    total[source.health_status] = (total[source.health_status] || 0) + 1;
+    return total;
+  }, {});
+  $("source-count").textContent = count(sources.length) + " sources";
+  $("nav-source-count").textContent = count(sources.length);
+  $("source-health-summary").textContent = sources.length
+    ? (counts.healthy || 0) + " healthy · " + (counts.stale || 0) + " stale · " +
+      (counts.failing || 0) + " failing · " + (counts.inactive || 0) + " inactive"
+    : "No sources observed";
+  $("source-grid").innerHTML = sources.length ? sources.map((source) => {
+    const status = source.health_status || "inactive";
+    const symbol = source.source_type === "wazuh" ? "◈" :
+      source.source_type === "endpoint" ? "▣" :
+      source.source_type === "cloud" ? "☁" :
+      source.source_type === "network" ? "⌁" : "⌘";
+    return '<article class="source-card"><div class="source-card-head"><div class="source-title">' +
+      '<span class="source-symbol">' + symbol + '</span><span><strong>' + esc(source.display_name) +
+      '</strong><small>' + esc(source.source_name) + ' · ' + esc(source.source_type) +
+      '</small></span></div><span class="source-state ' + esc(status) + '">' + esc(status) +
+      '</span></div><div class="source-counters"><div><span>Accepted</span><strong>' +
+      count(source.accepted_events) + '</strong></div><div><span>Duplicates</span><strong>' +
+      count(source.duplicate_events) + '</strong></div><div><span>Rejected</span><strong>' +
+      count(source.rejected_events) + '</strong></div></div><div class="source-timing"><span>Last event: ' +
+      esc(source.last_successful_event_at ? date(source.last_successful_event_at) : "Not observed") +
+      '</span><span>Attempt: ' + esc(source.last_attempt_at ? date(source.last_attempt_at) : "—") +
+      '</span></div></article>';
+  }).join("") : '<div class="source-empty">No sources registered yet. Register a producer or send its first event to discover it automatically.</div>';
+}
+
 function renderUsers() {
   $("member-count").textContent = state.users.length + " members";
   $("users-list").innerHTML = state.users.length ? state.users.map((user) =>
@@ -234,21 +269,24 @@ async function loadInvestigation(id) {
 }
 async function refreshDashboard() {
   try {
-    const [alerts, events, eventStats, alertStats] = await Promise.all([
+    const [alerts, events, eventStats, alertStats, sources] = await Promise.all([
       api("/api/v1/alerts?limit=200"),
       api("/api/v1/events?limit=25"),
       api("/api/v1/events/stats"),
       api("/api/v1/alerts/stats"),
+      api("/api/v1/sources"),
     ]);
     state.alerts = alerts;
     state.events = events;
     state.eventStats = eventStats;
     state.alertStats = alertStats;
+    state.sources = sources;
     setHealth(true, "API operational");
     $("last-updated").textContent = "Last synced " + new Date().toLocaleTimeString();
     renderMetrics();
     renderAlerts();
     renderEvents();
+    renderSources();
     if (state.selectedId && state.alerts.some((alert) => alert.id === state.selectedId)) {
       await loadInvestigation(state.selectedId);
     }
@@ -281,6 +319,7 @@ async function bootstrap() {
     $("sidebar-role").textContent = state.user.role.replaceAll("_", " ");
     $("sidebar-avatar").textContent = state.user.username.slice(0, 1).toUpperCase();
     $("team-nav").hidden = state.user.role !== "admin";
+    $("source-register-panel").hidden = state.user.role !== "admin";
     $("team").classList.toggle("visible", state.user.role === "admin");
     $("run-detections").hidden = state.user.role === "read_only";
     $("signout-button").hidden = false;
@@ -352,13 +391,39 @@ async function createUser(event) {
     button.disabled = false;
   }
 }
+async function registerSource(event) {
+  event.preventDefault();
+  const button = $("source-create-button");
+  const feedback = $("source-create-feedback");
+  button.disabled = true;
+  feedback.className = "form-feedback";
+  feedback.textContent = "Registering source…";
+  try {
+    await api("/api/v1/sources", { method: "POST", body: JSON.stringify({
+      source_name: $("source-name").value.trim(),
+      display_name: $("source-display-name").value.trim(),
+      source_type: $("source-type").value,
+    }) });
+    $("source-create-form").reset();
+    feedback.textContent = "Source registered. Health will reflect observed ingestion.";
+    showToast("Source added to inventory.");
+    await refreshDashboard();
+  } catch (error) {
+    feedback.className = "form-feedback error";
+    feedback.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function setActiveNav() {
   const current = location.hash.replace("#", "") || "overview";
   document.querySelectorAll("[data-nav]").forEach((link) => {
     link.classList.toggle("active", link.dataset.nav === current);
   });
   $("page-breadcrumb").textContent = current === "team" ? "Team & access" :
-    current === "alerts" ? "Alert queue" : current === "events" ? "Event telemetry" : "Overview";
+    current === "alerts" ? "Alert queue" : current === "events" ? "Event telemetry" :
+    current === "sources" ? "Data source health" : "Overview";
 }
 
 $("login-form").addEventListener("submit", signIn);
@@ -398,6 +463,7 @@ $("run-detections").addEventListener("click", async () => {
   }
 });
 $("create-user-form").addEventListener("submit", createUser);
+$("source-create-form").addEventListener("submit", registerSource);
 $("severity-filter").addEventListener("change", renderAlerts);
 $("attack-filter").addEventListener("change", renderAlerts);
 $("alert-search").addEventListener("input", renderAlerts);
@@ -414,3 +480,4 @@ document.querySelectorAll("[data-nav]").forEach((link) => {
 window.addEventListener("hashchange", setActiveNav);
 setActiveNav();
 bootstrap();
+window.setInterval(() => { if (state.token) refreshDashboard(); }, 60000);
