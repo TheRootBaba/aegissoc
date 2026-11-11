@@ -116,5 +116,5 @@ def run_due_schedules_once(
                 rules_evaluated=[], error=schedule.last_error,
             ))
             db.commit()
-            logger.exception("scheduled_detection_failed", extra={"schedule_id": str(schedule_id)})
+            logger.error("scheduled_detection_failed schedule_id=%s error_type=%s", schedule_id, type(exc).__name__)
     return completed_count
