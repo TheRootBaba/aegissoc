@@ -527,6 +527,10 @@ The analyst workspace moves to a light mineral canvas (#F3F5F2), deep blue-green
 Migration `0013_asset_risk_playbooks` follows `0012_threat_intel_correlation`.
 
 
+## Architecture and engineering references
+
+The system topology, data paths, trust boundaries and explicit operating limits are documented in [Platform architecture](docs/PLATFORM_ARCHITECTURE.md).
+
 ## Integration and response engineering
 
 The platform now includes an independently deployed integration worker, scheduled JSON event polling, threat-feed synchronization, scanner-neutral vulnerability imports, a bounded Sigma detection subset, and approval-gated response webhooks. These capabilities are described in the engineering documents:
