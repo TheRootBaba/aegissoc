@@ -42,6 +42,15 @@ jobs:
         run: alembic upgrade head
       - name: Verify PostgreSQL migration revision
         run: alembic current
+      - name: Provision least-privilege runtime database role
+        env:
+          MIGRATION_DATABASE_URL: postgresql+psycopg://aegissoc:aegissoc@localhost:5432/aegissoc
+          RUNTIME_DB_PASSWORD: aegis_runtime_ci_password_2026
+        run: python -m scripts.configure_runtime_role
+      - name: Verify PostgreSQL row-level security as runtime role
+        env:
+          AEGISSOC_RLS_TEST_URL: postgresql+psycopg://aegis_runtime:aegis_runtime_ci_password_2026@localhost:5432/aegissoc
+        run: python -m pytest tests/test_postgres_rls.py -q
       - name: Set up Node.js for dashboard validation
         uses: actions/setup-node@v4
         with:

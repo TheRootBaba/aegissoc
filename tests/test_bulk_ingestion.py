@@ -9,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
+from app.models import Workspace
 
 
 @pytest.fixture()
@@ -20,9 +21,16 @@ def bulk_client():
     )
     testing_sessions = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     Base.metadata.create_all(bind=engine)
+    seed = testing_sessions()
+    default_workspace = Workspace(slug='default', name='Default Workspace', is_active=True)
+    seed.add(default_workspace)
+    seed.commit()
+    workspace_id = str(default_workspace.id)
+    seed.close()
 
     def override_get_db():
         db = testing_sessions()
+        db.info['workspace_id'] = workspace_id
         try:
             yield db
         finally:

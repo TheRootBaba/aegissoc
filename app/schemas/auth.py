@@ -22,4 +22,9 @@ class UserRead(BaseModel):
     is_active: bool
     created_at: datetime
 class CurrentUserRead(UserRead):
-    pass
+    workspace_role: Role | None = None
+
+
+class OIDCIdentityCreate(BaseModel):
+    subject: str = Field(min_length=1, max_length=255)
+    username: str = Field(pattern=r"^[a-zA-Z0-9_.-]{3,64}$")

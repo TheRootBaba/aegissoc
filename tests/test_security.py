@@ -78,3 +78,20 @@ def test_password_reset_rejects_short_password_and_unknown_user():
             raise AssertionError("Short password should be rejected.")
         assert not reset_password(db, "missing-user", "valid-password-2026")
     engine.dispose()
+
+
+
+def test_production_settings_reject_database_owner_credentials():
+    from app.core.config import Settings
+
+    with pytest.raises(ValueError, match="dedicated non-owner"):
+        Settings(
+            app_env="production",
+            database_url="postgresql+psycopg://aegis:owner-password@db:5432/aegissoc",
+            auth_secret_key="production-signing-secret-" + "x" * 32,
+        )
+    Settings(
+        app_env="production",
+        database_url="postgresql+psycopg://aegis_runtime:runtime-password@db:5432/aegissoc",
+        auth_secret_key="production-signing-secret-" + "x" * 32,
+    )

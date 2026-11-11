@@ -1,4 +1,6 @@
 from datetime import datetime, timezone
+from typing import Literal
+from pydantic import ValidationError
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
@@ -11,6 +13,7 @@ from app.schemas.asset_risk import (
     PlaybookRunCreate, PlaybookRunRead, PlaybookStepUpdate,
 )
 from app.services.audit_chain import append_audit_entry
+from app.services.scanner_adapters import normalize_scanner_export
 from app.schemas.runtime import ScannerImportRequest, ScannerImportRead
 
 router = APIRouter(
@@ -263,3 +266,17 @@ def import_scanner_results(payload: ScannerImportRequest, db: Session = Depends(
         details={key: value for key, value in result.items() if key != "scan_id"})
     db.commit()
     return result
+
+@router.post("/scanner-imports/{provider}", response_model=ScannerImportRead,
+             dependencies=[Depends(require_roles("admin", "analyst"))])
+def import_provider_scanner_export(
+    provider: Literal["nessus", "tenable", "qualys"],
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    try:
+        normalized = ScannerImportRequest.model_validate(normalize_scanner_export(provider, payload))
+    except (ValueError, ValidationError) as exc:
+        raise HTTPException(422, "Scanner export could not be normalized: " + str(exc)) from exc
+    return import_scanner_results(normalized, db, user)

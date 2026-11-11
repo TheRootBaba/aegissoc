@@ -34,6 +34,8 @@ class IntegrationAdapter:
         return AdapterCheck(True, "Configuration is structurally valid.")
     def normalize_payload(self, payload: dict) -> dict:
         return dict(payload)
+    def normalize_indicator(self, payload: dict) -> dict:
+        return dict(payload)
 
 class WazuhAdapter(IntegrationAdapter):
     connector_type = "wazuh"
@@ -93,6 +95,124 @@ class ThreatFeedAdapter(HttpPollAdapter):
     connector_type = "threat_feed"
 
 
+
+class WazuhManagerAdapter(HttpPollAdapter):
+    connector_type = "wazuh_manager"
+    def validate_config(self, config: dict) -> AdapterCheck:
+        result = super().validate_config(config)
+        if not result.valid:
+            return result
+        if urlsplit(config["endpoint"]).scheme != "https":
+            return AdapterCheck(False, "Wazuh Manager polling requires HTTPS.")
+        if not config.get("credential_ref"):
+            return AdapterCheck(False, "Wazuh Manager polling requires an external API token reference.")
+        return AdapterCheck(True, "Wazuh Manager endpoint, TLS, allowlist, and credential reference are valid.")
+
+    def normalize_payload(self, payload: dict) -> dict:
+        source = payload.get("_source") if isinstance(payload.get("_source"), dict) else payload
+        return dict(source)
+
+
+class WazuhIndexerAdapter(HttpPollAdapter):
+    connector_type = "wazuh_indexer"
+
+    def validate_config(self, config: dict) -> AdapterCheck:
+        result = super().validate_config(config)
+        if not result.valid:
+            return result
+        if urlsplit(config["endpoint"]).scheme != "https":
+            return AdapterCheck(False, "Wazuh Indexer polling requires HTTPS.")
+        if not config.get("credential_ref"):
+            return AdapterCheck(False, "Wazuh Indexer requires a mounted or environment Basic Auth credential reference.")
+        if config.get("auth_scheme", "basic") != "basic":
+            return AdapterCheck(False, "Wazuh Indexer supports Basic Auth credentials.")
+        return AdapterCheck(True, "Wazuh Indexer endpoint, TLS, allowlist, and Basic Auth reference are valid.")
+
+    def normalize_payload(self, payload: dict) -> dict:
+        source = payload.get("_source") if isinstance(payload.get("_source"), dict) else payload
+        normalized = dict(source)
+        if not normalized.get("id") and payload.get("_id"):
+            normalized["id"] = payload["_id"]
+        return normalized
+
+
+class MISPAdapter(HttpPollAdapter):
+    connector_type = "misp"
+    def validate_config(self, config: dict) -> AdapterCheck:
+        result = super().validate_config(config)
+        if not result.valid:
+            return result
+        if urlsplit(config["endpoint"]).scheme != "https":
+            return AdapterCheck(False, "MISP polling requires HTTPS.")
+        if not config.get("credential_ref"):
+            return AdapterCheck(False, "MISP requires an external API key reference.")
+        return AdapterCheck(True, "MISP REST endpoint, TLS, allowlist, and API key reference are valid.")
+
+    def normalize_indicator(self, payload: dict) -> dict:
+        attribute = payload.get("Attribute") if isinstance(payload.get("Attribute"), dict) else payload
+        kind = str(attribute.get("type", "")).lower()
+        mapped = {
+            "ip-src": "ip", "ip-dst": "ip", "ip-src|port": "ip", "ip-dst|port": "ip",
+            "domain": "domain", "hostname": "domain",
+            "md5": "hash", "sha1": "hash", "sha256": "hash",
+        }.get(kind, kind)
+        raw_tags = attribute.get("Tag", attribute.get("tags", []))
+        tags = [str(item.get("name", "")) for item in raw_tags if isinstance(item, dict)] if isinstance(raw_tags, list) else []
+        return {
+            "type": mapped,
+            "value": str(attribute.get("value", "")).split("|", 1)[0],
+            "confidence": 80 if attribute.get("to_ids") else 50,
+            "severity": "high" if attribute.get("to_ids") else "medium",
+            "source": "MISP",
+            "description": str(attribute.get("comment") or attribute.get("category") or "")[:500],
+            "tags": tags,
+        }
+
+
+class OpenCTIAdapter(HttpPollAdapter):
+    connector_type = "opencti"
+    def validate_config(self, config: dict) -> AdapterCheck:
+        result = super().validate_config(config)
+        if not result.valid:
+            return result
+        if urlsplit(config["endpoint"]).scheme != "https":
+            return AdapterCheck(False, "OpenCTI polling requires HTTPS.")
+        if not config.get("credential_ref"):
+            return AdapterCheck(False, "OpenCTI requires an external API token reference.")
+        return AdapterCheck(True, "OpenCTI GraphQL endpoint, TLS, allowlist, and token reference are valid.")
+
+    def normalize_indicator(self, payload: dict) -> dict:
+        item = payload.get("node") if isinstance(payload.get("node"), dict) else payload
+        pattern = str(item.get("pattern") or "")
+        match = __import__("re").search(
+            r"\[(?:ipv4-addr|ipv6-addr|domain-name|file):(?:value|hashes\.(?:MD5|SHA-1|SHA-256))\s*=\s*'([^']+)'\]",
+            pattern,
+            __import__("re").I,
+        )
+        if match:
+            prefix = pattern.split(":", 1)[0].lstrip("[").lower()
+            if "ipv" in prefix:
+                kind = "ip"
+            elif "domain" in prefix:
+                kind = "domain"
+            else:
+                kind = "hash"
+            value = match.group(1)
+        else:
+            kind = str(item.get("type") or item.get("indicator_type") or "").lower()
+            value = item.get("value", "")
+        labels = item.get("labels") if isinstance(item.get("labels"), list) else []
+        return {
+            "type": kind,
+            "value": value,
+            "confidence": item.get("confidence", 50),
+            "severity": item.get("severity", "medium"),
+            "source": "OpenCTI",
+            "description": str(item.get("description") or "")[:500],
+            "tags": [str(label.get("value", "")) for label in labels if isinstance(label, dict)],
+            "expires_at": item.get("valid_until"),
+        }
+
 class ResponseWebhookAdapter(IntegrationAdapter):
     connector_type = "response_webhook"
     def validate_config(self, config: dict) -> AdapterCheck:
@@ -106,11 +226,20 @@ class ResponseWebhookAdapter(IntegrationAdapter):
             return AdapterCheck(False, "HTTP response delivery requires explicit allow_http=true.")
         if not isinstance(hosts, list) or parsed.hostname.lower() not in [str(x).lower() for x in hosts]:
             return AdapterCheck(False, "endpoint hostname must appear in the explicit allowed_hosts list.")
-        return AdapterCheck(True, "Response endpoint and host allowlist are valid.")
+        reconciliation = config.get("reconciliation_endpoint")
+        if reconciliation:
+            status_url = urlsplit(reconciliation)
+            if status_url.scheme not in ("https", "http") or not status_url.hostname or status_url.username or status_url.password:
+                return AdapterCheck(False, "reconciliation_endpoint must be an HTTP(S) URL without embedded credentials.")
+            if status_url.scheme != "https" and config.get("allow_http") is not True:
+                return AdapterCheck(False, "HTTP reconciliation requires explicit allow_http=true.")
+            if status_url.hostname.lower() not in [str(x).lower() for x in hosts]:
+                return AdapterCheck(False, "reconciliation_endpoint hostname must appear in allowed_hosts.")
+        return AdapterCheck(True, "Response and optional reconciliation endpoints are allowlisted.")
 
 ADAPTERS = {item.connector_type: item for item in (
     IntegrationAdapter(), WazuhAdapter(), SyslogAdapter(), HttpEventAdapter(),
-    HttpPollAdapter(), ThreatFeedAdapter(), ResponseWebhookAdapter(),
+    HttpPollAdapter(), ThreatFeedAdapter(), WazuhManagerAdapter(), WazuhIndexerAdapter(), MISPAdapter(), OpenCTIAdapter(), ResponseWebhookAdapter(),
 )}
 
 def get_adapter(connector_type: str) -> IntegrationAdapter:

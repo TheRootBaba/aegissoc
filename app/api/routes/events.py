@@ -11,7 +11,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user, require_roles
-from app.db.session import get_db
+from app.db.session import get_db, workspace_id_for_session
 from app.models import ConnectorConfig, SavedEventQuery, SecurityEvent
 from app.services.source_inventory import record_ingestion
 from app.services.audit_chain import append_audit_entry
@@ -44,6 +44,7 @@ def _persist_event(db: Session, payload: SecurityEventCreate) -> tuple[str, uuid
     request cannot turn an otherwise successful ingest into a 500 response.
     """
     values = payload.model_dump()
+    values['workspace_id'] = workspace_id_for_session(db)
     dialect = db.get_bind().dialect.name
 
     if dialect == "postgresql":
@@ -54,6 +55,7 @@ def _persist_event(db: Session, payload: SecurityEventCreate) -> tuple[str, uuid
         if payload.external_id:
             existing_id = db.scalar(
                 select(SecurityEvent.id).where(
+                    SecurityEvent.workspace_id == values['workspace_id'],
                     SecurityEvent.source == payload.source,
                     SecurityEvent.external_id == payload.external_id,
                 )
@@ -67,7 +69,7 @@ def _persist_event(db: Session, payload: SecurityEventCreate) -> tuple[str, uuid
 
     event_id = db.scalar(
         statement.on_conflict_do_nothing(
-            index_elements=[SecurityEvent.source, SecurityEvent.external_id]
+            index_elements=[SecurityEvent.workspace_id, SecurityEvent.source, SecurityEvent.external_id]
         ).returning(SecurityEvent.id)
     )
     if event_id is not None:
@@ -115,12 +117,12 @@ def _normalize_source_event(db: Session, source: str, payload: dict[str, Any]) -
     """Resolve a configured connector adapter while retaining legacy source ingest."""
     connector = _validate_registered_connector(db, source)
     if connector is None:
-        return normalize_wazuh_alert(payload) if source.lower() == "wazuh" else normalize_event(payload, source=source)
+        return normalize_wazuh_alert(payload) if source.lower() in {"wazuh", "wazuh_manager", "wazuh_indexer"} else normalize_event(payload, source=source)
     adapter = get_adapter(connector.connector_type)
     normalized_payload = adapter.normalize_payload(payload)
     normalized = (
         normalize_wazuh_alert(normalized_payload)
-        if connector.connector_type == "wazuh"
+        if connector.connector_type in {"wazuh", "wazuh_manager", "wazuh_indexer"}
         else normalize_event(normalized_payload, source=source)
     )
     normalized.source = source

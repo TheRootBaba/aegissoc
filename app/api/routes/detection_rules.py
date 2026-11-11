@@ -58,7 +58,7 @@ def update_detection_rule(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    config = db.get(DetectionRuleConfig, rule_id)
+    config = db.scalar(select(DetectionRuleConfig).where(DetectionRuleConfig.rule_id == rule_id))
     if config is None:
         raise HTTPException(status_code=404, detail="Detection rule not found")
     changes = {}

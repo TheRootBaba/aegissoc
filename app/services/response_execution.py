@@ -1,0 +1,311 @@
+"""Leased, retryable response-action delivery with stable receiver idempotency."""
+
+import hashlib
+import hmac
+import ipaddress
+import json
+import logging
+from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit
+
+import httpx
+from sqlalchemy import or_, select
+from sqlalchemy.orm import Session
+
+from app.models import ConnectorConfig, ResponseActionRequest
+from app.services.audit_chain import append_audit_entry
+from app.services.integrations import get_adapter
+from app.services.secrets import resolve_secret_reference
+
+logger = logging.getLogger("aegissoc.response_execution")
+LEASE_SECONDS = 120
+MAX_ATTEMPTS = 5
+MAX_RETRY_SECONDS = 1800
+
+
+def _delivery(request: ResponseActionRequest, connector: ConnectorConfig) -> tuple[str, dict, bytes]:
+    config = dict(connector.config or {})
+    validation = get_adapter("response_webhook").validate_config(config)
+    if not validation.valid:
+        raise ValueError(validation.message)
+    endpoint = config["endpoint"]
+    parsed = urlsplit(endpoint)
+    if parsed.hostname.lower() not in [str(host).lower() for host in config["allowed_hosts"]]:
+        raise ValueError("Response endpoint host is not allowlisted")
+    if request.action_type == "block_ip":
+        ipaddress.ip_address(request.target)
+    body = {
+        "id": str(request.id),
+        "idempotency_key": request.idempotency_key,
+        "action_type": request.action_type,
+        "target": request.target,
+        "parameters": request.parameters,
+        "case_id": str(request.case_id) if request.case_id else None,
+        "requested_by": request.requested_by,
+        "approved_by": request.approved_by,
+    }
+    encoded = json.dumps(body, separators=(",", ":"), sort_keys=True).encode()
+    headers = {"Content-Type": "application/json", "Idempotency-Key": request.idempotency_key}
+    secret = resolve_secret_reference(connector.credential_ref)
+    if secret:
+        headers["X-Aegis-Signature"] = "sha256=" + hmac.new(secret.encode(), encoded, hashlib.sha256).hexdigest()
+    return endpoint, headers, encoded
+
+
+def _reconcile(request: ResponseActionRequest, connector: ConnectorConfig) -> dict | None:
+    """Query an allowlisted receiver status endpoint before replaying a leased action."""
+    config = dict(connector.config or {})
+    endpoint = config.get("reconciliation_endpoint")
+    if not endpoint:
+        return None
+    validation = get_adapter("response_webhook").validate_config(config)
+    if not validation.valid:
+        raise ValueError(validation.message)
+    secret = resolve_secret_reference(connector.credential_ref)
+    headers = {"Accept": "application/json", "Idempotency-Key": request.idempotency_key}
+    if secret:
+        signature = hmac.new(secret.encode(), request.idempotency_key.encode(), hashlib.sha256).hexdigest()
+        headers["X-Aegis-Signature"] = "sha256=" + signature
+    parsed = urlsplit(endpoint)
+    if parsed.hostname.lower() not in [str(host).lower() for host in config["allowed_hosts"]]:
+        raise ValueError("Response reconciliation endpoint host is not allowlisted")
+    with httpx.Client(timeout=httpx.Timeout(10.0, connect=5.0), follow_redirects=False, verify=True) as client:
+        with client.stream(
+            "GET", endpoint, params={"idempotency_key": request.idempotency_key}, headers=headers,
+        ) as response:
+            if response.status_code == 404:
+                return None
+            response.raise_for_status()
+            chunks, size = [], 0
+            for chunk in response.iter_bytes():
+                size += len(chunk)
+                if size > 65536:
+                    raise ValueError("Response reconciliation payload exceeds 64 KiB")
+                chunks.append(chunk)
+    document = json.loads(b"".join(chunks))
+    if not isinstance(document, dict) or document.get("idempotency_key") != request.idempotency_key:
+        raise ValueError("Response reconciliation payload does not match the idempotency key")
+    status = str(document.get("status", "")).lower()
+    if status not in {"succeeded", "delivered", "completed", "pending", "in_progress", "failed", "rejected", "not_found"}:
+        raise ValueError("Response reconciliation status is unsupported")
+    if status == "not_found":
+        return None
+    reference = document.get("reference")
+    return {
+        "status": status,
+        "response_code": document.get("response_code") if isinstance(document.get("response_code"), int) else None,
+        "reference": str(reference)[:160] if reference else None,
+    }
+
+
+def _apply_reconciliation(db: Session, request: ResponseActionRequest, outcome: dict, now: datetime) -> None:
+    status = outcome["status"]
+    request.response_code = outcome["response_code"]
+    request.external_reference = outcome["reference"]
+    request.locked_until = None
+    request.last_error_type = None
+    if status in {"succeeded", "delivered", "completed"}:
+        request.status = "succeeded"
+        request.execution_status = "reconciled"
+        request.result_summary = "Receiver status confirms this action was completed."
+        request.executed_at = now
+        request.next_attempt_at = None
+    elif status in {"pending", "in_progress"}:
+        request.status = "approved"
+        request.execution_status = "retry_scheduled"
+        request.result_summary = "Receiver reports this action is still in progress; delivery is paused pending another reconciliation check."
+        request.executed_at = None
+        request.next_attempt_at = now + timedelta(seconds=30)
+    else:
+        request.status = "failed"
+        request.execution_status = "reconciled_failed"
+        request.result_summary = "Receiver status confirms this action failed."
+        request.executed_at = now
+        request.next_attempt_at = None
+    append_audit_entry(
+        db, actor="response-worker", action="response_action.reconciled",
+        resource_type="response_action", resource_id=str(request.id),
+        details={"status": request.status, "receiver_status": status, "response_code": request.response_code},
+    )
+    db.commit()
+
+
+def _retry_delay(attempt: int) -> int:
+    return min(30 * (2 ** max(0, attempt - 1)), MAX_RETRY_SECONDS)
+
+
+def run_due_response_actions_once(db: Session, *, now: datetime | None = None, batch_size: int = 10) -> int:
+    run_at = now or datetime.now(timezone.utc)
+    eligible = or_(
+        (
+            (ResponseActionRequest.status == "approved")
+            & ResponseActionRequest.execution_status.in_(("queued", "retry_scheduled"))
+            & (ResponseActionRequest.next_attempt_at <= run_at)
+        ),
+        (
+            (ResponseActionRequest.status == "executing")
+            & (
+                ResponseActionRequest.locked_until.is_(None)
+                | (ResponseActionRequest.locked_until <= run_at)
+            )
+        ),
+    )
+    statement = (
+        select(ResponseActionRequest)
+        .where(eligible)
+        .order_by(ResponseActionRequest.next_attempt_at.asc().nullsfirst(),
+                  ResponseActionRequest.created_at.asc(), ResponseActionRequest.id.asc())
+        .limit(batch_size)
+    )
+    if db.get_bind().dialect.name == "postgresql":
+        statement = statement.with_for_update(skip_locked=True)
+    claimed = list(db.scalars(statement).all())
+    ids = [item.id for item in claimed]
+    for item in claimed:
+        item.status = "executing"
+        item.execution_status = "submitting"
+        item.locked_until = run_at + timedelta(seconds=LEASE_SECONDS)
+    if claimed:
+        db.commit()
+
+    completed = 0
+    for request_id in ids:
+        request = db.get(ResponseActionRequest, request_id)
+        if request is None:
+            continue
+        started = datetime.now(timezone.utc)
+        connector = db.scalar(select(ConnectorConfig).where(
+            ConnectorConfig.connector_key == request.connector_key,
+            ConnectorConfig.connector_type == "response_webhook",
+            ConnectorConfig.enabled.is_(True),
+        ))
+        if connector is None:
+            error_type = "ResponseConnectorUnavailable"
+            response_code = None
+            external_reference = None
+            retryable = False
+        else:
+            try:
+                reconciliation = _reconcile(request, connector)
+            except httpx.HTTPError as exc:
+                finished = datetime.now(timezone.utc)
+                request.status = "approved"
+                request.execution_status = "retry_scheduled"
+                request.last_error_type = type(exc).__name__
+                request.result_summary = "Receiver reconciliation was unavailable; delivery was paused to avoid an unsafe duplicate action."
+                request.locked_until = None
+                request.next_attempt_at = finished + timedelta(seconds=_retry_delay(request.execution_attempts))
+                append_audit_entry(
+                    db, actor="response-worker", action="response_action.reconciliation_deferred",
+                    resource_type="response_action", resource_id=str(request.id),
+                    details={"error_type": type(exc).__name__, "attempt": request.execution_attempts},
+                )
+                db.commit()
+                completed += 1
+                continue
+            except (ValueError, OSError) as exc:
+                finished = datetime.now(timezone.utc)
+                request.status = "failed"
+                request.execution_status = "reconciliation_failed"
+                request.last_error_type = type(exc).__name__
+                request.result_summary = "Receiver reconciliation returned an invalid response; action delivery was stopped."
+                request.locked_until = None
+                request.next_attempt_at = None
+                request.executed_at = finished
+                append_audit_entry(
+                    db, actor="response-worker", action="response_action.reconciliation_failed",
+                    resource_type="response_action", resource_id=str(request.id),
+                    details={"error_type": type(exc).__name__, "attempt": request.execution_attempts},
+                )
+                db.commit()
+                completed += 1
+                continue
+            if reconciliation is not None:
+                _apply_reconciliation(db, request, reconciliation, datetime.now(timezone.utc))
+                completed += 1
+                continue
+            if request.execution_attempts >= MAX_ATTEMPTS:
+                request.status = "failed"
+                request.execution_status = "attempt_limit_exceeded"
+                request.last_error_type = "MaxAttemptsExceeded"
+                request.result_summary = "The response worker lease expired after the maximum delivery attempts."
+                request.executed_at = datetime.now(timezone.utc)
+                request.next_attempt_at = None
+                request.locked_until = None
+                append_audit_entry(
+                    db, actor="response-worker", action="response_action.attempt_limit_reached",
+                    resource_type="response_action", resource_id=str(request.id),
+                    details={"attempts": request.execution_attempts},
+                )
+                db.commit()
+                completed += 1
+                continue
+            request.execution_attempts += 1
+            db.commit()
+            try:
+                endpoint, headers, encoded = _delivery(request, connector)
+                with httpx.Client(
+                    timeout=httpx.Timeout(10.0, connect=5.0),
+                    follow_redirects=False,
+                    verify=True,
+                ) as client:
+                    with client.stream("POST", endpoint, content=encoded, headers=headers) as response:
+                        response_code = response.status_code
+                        external_reference = response.headers.get("X-Aegis-Action-Reference")
+                error_type = None if 200 <= response_code < 300 else "HTTPStatusError"
+                retryable = response_code in {408, 425, 429} or response_code >= 500
+            except (ValueError, OSError) as exc:
+                response_code = None
+                external_reference = None
+                error_type = type(exc).__name__
+                retryable = False
+            except httpx.HTTPError as exc:
+                response_code = None
+                external_reference = None
+                error_type = type(exc).__name__
+                retryable = True
+
+        finished = datetime.now(timezone.utc)
+        request.response_code = response_code
+        request.external_reference = external_reference[:160] if external_reference else None
+        request.last_error_type = error_type
+        request.locked_until = None
+        if error_type is None and response_code is not None and 200 <= response_code < 300:
+            request.status = "succeeded"
+            request.execution_status = "delivered"
+            request.result_summary = "Webhook accepted the action request."
+            request.executed_at = finished
+            request.next_attempt_at = None
+        elif retryable and request.execution_attempts < MAX_ATTEMPTS:
+            request.status = "approved"
+            request.execution_status = "retry_scheduled"
+            request.next_attempt_at = finished + timedelta(seconds=_retry_delay(request.execution_attempts))
+            request.result_summary = "Delivery outcome was not successful; a bounded retry has been scheduled with the same idempotency key."
+            request.executed_at = None
+        else:
+            request.status = "failed"
+            request.execution_status = "delivery_failed" if error_type else "receiver_rejected"
+            request.result_summary = (
+                "Webhook delivery failed (" + error_type + ")."
+                if error_type else "Webhook returned a non-success HTTP status."
+            )
+            request.executed_at = finished
+            request.next_attempt_at = None
+        append_audit_entry(
+            db,
+            actor="response-worker",
+            action="response_action.attempt_finished",
+            resource_type="response_action",
+            resource_id=str(request.id),
+            details={
+                "attempt": request.execution_attempts,
+                "status": request.status,
+                "execution_status": request.execution_status,
+                "response_code": response_code,
+                "error_type": error_type,
+                "retry_at": request.next_attempt_at.isoformat() if request.next_attempt_at else None,
+            },
+        )
+        db.commit()
+        completed += 1
+    return completed

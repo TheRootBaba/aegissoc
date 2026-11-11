@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.models import DetectionExecution, DetectionSchedule
 from app.services.detection_engine import run_ssh_brute_force_detection
+from app.services.sigma_engine import run_sigma_rules
 from app.services.audit_chain import append_audit_entry
 
 logger = logging.getLogger("aegissoc.scheduler")
@@ -68,6 +69,11 @@ def run_due_schedules_once(
                 db, window_minutes=schedule.window_minutes,
                 threshold=schedule.threshold, now=run_at, commit=False,
             )
+            sigma_result = run_sigma_rules(db, lookback_minutes=schedule.window_minutes)
+            result["events_evaluated"] += sigma_result["events_evaluated"]
+            result["alerts_created"] += sigma_result["alerts_created"]
+            result["alerts_updated"] += sigma_result["alerts_updated"]
+            result["rules_evaluated"] += ["SIGMA:" + rule_id for rule_id in sigma_result["rule_ids_evaluated"]]
             completed_at = datetime.now(timezone.utc)
             schedule = db.get(DetectionSchedule, schedule_id)
             if schedule is None:

@@ -18,4 +18,4 @@ RUN useradd --create-home --uid 10001 appuser
 USER appuser
 
 EXPOSE 8000
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "DATABASE_URL=\\"$MIGRATION_DATABASE_URL\\" alembic upgrade head && python -m scripts.configure_runtime_role && DATABASE_URL=\\"$RUNTIME_DATABASE_URL\\" exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]

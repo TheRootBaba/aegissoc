@@ -8,7 +8,9 @@ A local-first Security Operations Center platform for collecting, normalizing, a
 - Canonical event normalization endpoint for common nested source fields and severity aliases; original source payloads are retained in `raw`.
 - Deterministic SSH brute-force and password-spray detections with persistent, deduplicated alerts and event-level evidence references.
 - MITRE ATT&CK tactic and technique metadata on detection alerts, including direct technique references.
-- Native Wazuh JSON alert ingestion with rule-level severity mapping, canonical field extraction, and raw-payload preservation.
+- Native Wazuh JSON alert ingestion plus Wazuh Manager token exchange and Wazuh Indexer search polling.
+- MISP attribute and OpenCTI GraphQL threat-indicator synchronization with external credential references.
+- Nessus, Tenable, and Qualys export normalization into managed-asset vulnerability findings.
 - Replay-safe source event ingestion using a unique `(source, external_id)` key.
 - A browser-based analyst dashboard for alert triage, event review, and investigation workflow.
 - Alert lifecycle transitions, analyst assignment, investigation notes, and append-only audit history.
@@ -16,7 +18,11 @@ A local-first Security Operations Center platform for collecting, normalizing, a
 - Event search by severity, source, event type, hostname, source IP, and inclusive time range.
 - Bounded offset pagination (limit 1–200) with deterministic timestamp/UUID ordering.
 - Liveness and database-readiness endpoints.
-- Alembic-managed database schema migrations.
+- Alembic-managed database schema migrations and a dedicated least-privilege PostgreSQL runtime role.
+- Workspace membership, tenant-scoped records and queries, PostgreSQL row-level security, and workspace-aware workers.
+- Governed Sigma rules with bounded event-count correlation and scheduled execution.
+- Leased, idempotent response webhook delivery with bounded retries and audit history.
+- Optional pre-provisioned OIDC SSO and environment/file-backed secret references.
 - Per-request X-Request-ID response header and JSON application logs.
 - Automated API tests using an isolated SQLite database.
 - GitHub Actions test workflow for pushes and pull requests.
@@ -52,7 +58,7 @@ Event producers (manual lab input / Wazuh JSON alerts)
 1. Copy the example environment file and set a strong local database password:
 
    ```powershell
-   Copy-Item .env.example .env
+   if (-not (Test-Path .env)) { Copy-Item .env.example .env } else { Write-Host ".env already exists; preserving existing credentials." }
    ```
 
 2. Start the stack:
@@ -62,7 +68,7 @@ Event producers (manual lab input / Wazuh JSON alerts)
    docker compose ps
    ```
 
-   The API container applies pending Alembic migrations before starting Uvicorn.
+   The API container applies pending Alembic migrations with the migration-owner connection, provisions the non-owner runtime role, and then starts Uvicorn. When reusing an existing PostgreSQL volume, set `POSTGRES_PASSWORD` in `.env` to the password currently configured for the `aegis` database role; changing the environment variable alone does not rotate an existing PostgreSQL role password.
 
 3. Open the analyst dashboard at http://localhost:8000/dashboard. API documentation is at http://localhost:8000/docs. Liveness and readiness are available at /health/live and /health/ready.
 

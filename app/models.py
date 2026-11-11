@@ -7,7 +7,8 @@ from app.db.base import Base
 
 class SecurityEvent(Base):
     __tablename__ = "security_events"
-    __table_args__ = (UniqueConstraint("source", "external_id", name="uq_security_events_source_external_id"),)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    __table_args__ = (UniqueConstraint("workspace_id", "source", "external_id", name="uq_security_events_workspace_source_external_id"),)
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     source: Mapped[str] = mapped_column(String(80), index=True)
     event_type: Mapped[str] = mapped_column(String(120), index=True)
@@ -23,9 +24,11 @@ class SecurityEvent(Base):
 
 class DetectionAlert(Base):
     __tablename__ = "detection_alerts"
+    __table_args__ = (UniqueConstraint("workspace_id", "fingerprint", name="uq_detection_alerts_workspace_fingerprint"),)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     rule_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     attack_tactic: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
@@ -48,6 +51,7 @@ class DetectionAlert(Base):
 
 class AlertNote(Base):
     __tablename__ = "alert_notes"
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     alert_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("detection_alerts.id", ondelete="CASCADE"), nullable=False, index=True)
     author: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -56,6 +60,7 @@ class AlertNote(Base):
 
 class AlertAuditLog(Base):
     __tablename__ = "alert_audit_logs"
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     alert_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("detection_alerts.id", ondelete="CASCADE"), nullable=False, index=True)
     actor: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -65,8 +70,10 @@ class AlertAuditLog(Base):
 
 class SourceRegistry(Base):
     __tablename__ = "source_registry"
+    __table_args__ = (UniqueConstraint("workspace_id", "source_name", name="uq_source_registry_workspace_name"),)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    source_name: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
+    source_name: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     source_type: Mapped[str] = mapped_column(String(32), nullable=False, default="generic")
     display_name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -92,7 +99,8 @@ class User(Base):
 
 class SavedEventQuery(Base):
     __tablename__ = "saved_event_queries"
-    __table_args__ = (UniqueConstraint("created_by", "name", name="uq_saved_event_queries_owner_name"),)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    __table_args__ = (UniqueConstraint("workspace_id", "created_by", "name", name="uq_saved_event_queries_workspace_owner_name"),)
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -104,7 +112,8 @@ class SavedEventQuery(Base):
 
 class DetectionSchedule(Base):
     __tablename__ = "detection_schedules"
-    __table_args__ = (UniqueConstraint("created_by", "name", name="uq_detection_schedules_owner_name"),)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    __table_args__ = (UniqueConstraint("workspace_id", "created_by", "name", name="uq_detection_schedules_workspace_owner_name"),)
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     interval_seconds: Mapped[int] = mapped_column(nullable=False)
@@ -123,6 +132,7 @@ class DetectionSchedule(Base):
 
 class DetectionExecution(Base):
     __tablename__ = "detection_executions"
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     schedule_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("detection_schedules.id", ondelete="CASCADE"), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
@@ -137,6 +147,8 @@ class DetectionExecution(Base):
 
 class AuditChainState(Base):
     __tablename__ = "audit_chain_state"
+    __table_args__ = ()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True, primary_key=True)
     id: Mapped[int] = mapped_column(primary_key=True)
     head_sequence: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     head_hash: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -144,7 +156,8 @@ class AuditChainState(Base):
 
 class SecurityAuditEntry(Base):
     __tablename__ = "security_audit_entries"
-    __table_args__ = (UniqueConstraint("sequence", name="uq_security_audit_entries_sequence"),)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    __table_args__ = (UniqueConstraint("workspace_id", "sequence", name="uq_security_audit_entries_workspace_sequence"),)
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     sequence: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
@@ -158,8 +171,10 @@ class SecurityAuditEntry(Base):
 
 class RetentionPolicy(Base):
     __tablename__ = "retention_policies"
+    __table_args__ = (UniqueConstraint("workspace_id", "data_kind", name="uq_retention_policies_workspace_kind"),)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    data_kind: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
+    data_kind: Mapped[str] = mapped_column(String(32), nullable=False)
     retention_days: Mapped[int] = mapped_column(nullable=False, default=90)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=true())
     preserve_active_evidence: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=true())
@@ -168,6 +183,7 @@ class RetentionPolicy(Base):
 
 class OperationalJobRun(Base):
     __tablename__ = "operational_job_runs"
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     job_name: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
@@ -179,8 +195,10 @@ class OperationalJobRun(Base):
 
 class ConnectorConfig(Base):
     __tablename__ = "connector_configs"
+    __table_args__ = (UniqueConstraint("workspace_id", "connector_key", name="uq_connector_configs_workspace_key"),)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    connector_key: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
+    connector_key: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     connector_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     display_name: Mapped[str] = mapped_column(String(120), nullable=False)
     config: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
@@ -195,8 +213,10 @@ class ConnectorConfig(Base):
 
 class IncidentCase(Base):
     __tablename__ = "incident_cases"
+    __table_args__ = (UniqueConstraint("workspace_id", "case_number", name="uq_incident_cases_workspace_number"),)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    case_number: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True)
+    case_number: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="open", index=True)
@@ -211,6 +231,7 @@ class IncidentCase(Base):
 
 class CaseAlertLink(Base):
     __tablename__ = "case_alert_links"
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
     __table_args__ = (UniqueConstraint("case_id", "alert_id", name="uq_case_alert_links_case_alert"),)
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     case_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("incident_cases.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -220,6 +241,7 @@ class CaseAlertLink(Base):
 
 class CaseNote(Base):
     __tablename__ = "case_notes"
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     case_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("incident_cases.id", ondelete="CASCADE"), nullable=False, index=True)
     author: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -228,6 +250,7 @@ class CaseNote(Base):
 
 class DetectionRuleConfig(Base):
     __tablename__ = "detection_rule_configs"
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True, primary_key=True)
     rule_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=true())
     severity_override: Mapped[str | None] = mapped_column(String(16), nullable=True)
@@ -238,7 +261,8 @@ class DetectionRuleConfig(Base):
 class ThreatIndicator(Base):
     """Curated IOC record; provider lookups remain explicit and never happen implicitly."""
     __tablename__ = "threat_indicators"
-    __table_args__ = (UniqueConstraint("indicator_type", "value", name="uq_threat_indicators_type_value"),)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    __table_args__ = (UniqueConstraint("workspace_id", "indicator_type", "value", name="uq_threat_indicators_workspace_type_value"),)
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     indicator_type: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
     value: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
@@ -257,9 +281,10 @@ class ThreatIndicator(Base):
 class ManagedAsset(Base):
     """Known infrastructure under monitoring; inventory metadata is analyst-curated."""
     __tablename__ = "managed_assets"
-    __table_args__ = (UniqueConstraint("asset_key", name="uq_managed_assets_asset_key"),)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    __table_args__ = (UniqueConstraint("workspace_id", "asset_key", name="uq_managed_assets_workspace_key"),)
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    asset_key: Mapped[str] = mapped_column(String(160), nullable=False, unique=True, index=True)
+    asset_key: Mapped[str] = mapped_column(String(160), nullable=False, index=True)
     hostname: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     asset_type: Mapped[str] = mapped_column(String(32), nullable=False, default="server")
     environment: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown", index=True)
@@ -276,7 +301,8 @@ class ManagedAsset(Base):
 class VulnerabilityFinding(Base):
     """A source-attributed vulnerability observation associated with one managed asset."""
     __tablename__ = "vulnerability_findings"
-    __table_args__ = (UniqueConstraint("asset_id", "vulnerability_id", name="uq_vulnerability_findings_asset_vuln"),)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    __table_args__ = (UniqueConstraint("workspace_id", "asset_id", "vulnerability_id", name="uq_vulnerability_findings_workspace_asset_vuln"),)
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     asset_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("managed_assets.id", ondelete="CASCADE"), nullable=False, index=True)
     vulnerability_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
@@ -293,6 +319,7 @@ class VulnerabilityFinding(Base):
 class ResponsePlaybookRun(Base):
     """Auditable checklist execution; steps are data, never executable commands."""
     __tablename__ = "response_playbook_runs"
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     case_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("incident_cases.id", ondelete="SET NULL"), nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(160), nullable=False)
@@ -305,6 +332,7 @@ class ResponsePlaybookRun(Base):
 
 class ConnectorRuntimeState(Base):
     __tablename__ = "connector_runtime_states"
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
     connector_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("connector_configs.id", ondelete="CASCADE"), primary_key=True)
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -316,6 +344,7 @@ class ConnectorRuntimeState(Base):
 
 class ConnectorExecution(Base):
     __tablename__ = "connector_executions"
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     connector_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("connector_configs.id", ondelete="CASCADE"), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
@@ -331,6 +360,7 @@ class ConnectorExecution(Base):
 
 class SigmaRule(Base):
     __tablename__ = "sigma_rules"
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True, primary_key=True)
     rule_id: Mapped[str] = mapped_column(String(160), primary_key=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
@@ -342,6 +372,7 @@ class SigmaRule(Base):
     logsource: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     tags: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     sigma_yaml: Mapped[str] = mapped_column(Text, nullable=False)
+    correlation: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_by: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
@@ -349,6 +380,8 @@ class SigmaRule(Base):
 
 class ResponseActionRequest(Base):
     __tablename__ = "response_action_requests"
+    __table_args__ = (UniqueConstraint("workspace_id", "idempotency_key", name="uq_response_actions_workspace_idempotency"),)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     case_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("incident_cases.id", ondelete="SET NULL"), nullable=True, index=True)
     connector_key: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
@@ -363,7 +396,12 @@ class ResponseActionRequest(Base):
     execution_status: Mapped[str | None] = mapped_column(String(24), nullable=True)
     response_code: Mapped[int | None] = mapped_column(nullable=True)
     result_summary: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    execution_attempts: Mapped[int] = mapped_column(nullable=False, default=0)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    last_error_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    external_reference: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -371,7 +409,8 @@ class ResponseActionRequest(Base):
 
 class ScannerImportRun(Base):
     __tablename__ = "scanner_import_runs"
-    __table_args__ = (UniqueConstraint("scanner_name", "scan_id", name="uq_scanner_import_runs_scanner_scan"),)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    __table_args__ = (UniqueConstraint("workspace_id", "scanner_name", "scan_id", name="uq_scanner_import_runs_workspace_scanner_scan"),)
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     scanner_name: Mapped[str] = mapped_column(String(120), nullable=False)
     scan_id: Mapped[str] = mapped_column(String(160), nullable=False)
@@ -398,4 +437,14 @@ class WorkspaceMembership(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=true())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class ExternalIdentity(Base):
+    __tablename__ = "external_identities"
+    __table_args__ = (UniqueConstraint("issuer", "subject", name="uq_external_identities_issuer_subject"),)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    issuer: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)

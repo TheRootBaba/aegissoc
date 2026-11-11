@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from uuid import UUID, uuid4
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -10,7 +11,7 @@ from app.core.security import get_current_user
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
-from app.models import ConnectorConfig, ManagedAsset, SecurityEvent, ThreatIndicator
+from app.models import ConnectorConfig, ManagedAsset, SecurityEvent, ThreatIndicator, Workspace
 from app.services.integrations import get_adapter
 from app.services.sigma_engine import parse_sigma_document, rule_matches
 
@@ -20,6 +21,10 @@ def isolated_db():
     factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     Base.metadata.create_all(bind=engine)
     session = factory()
+    default_workspace = Workspace(slug='default', name='Default Workspace', is_active=True)
+    session.add(default_workspace)
+    session.commit()
+    session.info['workspace_id'] = str(default_workspace.id)
     yield session
     session.close()
     Base.metadata.drop_all(bind=engine)
@@ -157,8 +162,8 @@ level: medium
     assert run.json()["matches"] == 1
     assert run.json()["alerts_created"] == 1
 
-def test_response_action_requires_separate_approval_and_explicit_execution(api_client, monkeypatch):
-    from app.api.routes import response_actions
+def test_response_action_requires_approval_then_queues_durable_worker_delivery(api_client, isolated_db, monkeypatch):
+    from app.services import response_execution
     connector = api_client.post("/api/v1/connectors", json={
         "connector_key": "approved-webhook", "connector_type": "response_webhook",
         "display_name": "Approved response receiver",
@@ -176,24 +181,33 @@ def test_response_action_requires_separate_approval_and_explicit_execution(api_c
     assert self_approval.status_code == 403
 
     app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
-        id="second-admin", username="second-admin", role="admin", is_active=True
+        id=uuid4(), username="second-admin", role="admin", is_active=True
     )
     approved = api_client.post(f"/api/v1/response-actions/{request_id}/approve", json={"note": "Reviewed change window"})
     assert approved.status_code == 200
+
     class FakeResponse:
         status_code = 202
+        headers = {"X-Aegis-Action-Reference": "receiver-action-202"}
         def __enter__(self): return self
         def __exit__(self, *args): return False
     class FakeClient:
         def __enter__(self): return self
         def __exit__(self, *args): return False
         def stream(self, *args, **kwargs): return FakeResponse()
-    monkeypatch.setattr(response_actions.httpx, "Client", lambda **kwargs: FakeClient())
-    executed = api_client.post(f"/api/v1/response-actions/{request_id}/execute")
-    assert executed.status_code == 200
-    assert executed.json()["status"] == "succeeded"
-    app.dependency_overrides.pop(get_current_user, None)
+    monkeypatch.setattr(response_execution.httpx, "Client", lambda **kwargs: FakeClient())
 
+    queued = api_client.post(f"/api/v1/response-actions/{request_id}/execute")
+    assert queued.status_code == 200
+    assert queued.json()["status"] == "approved"
+    assert queued.json()["execution_status"] == "queued"
+    assert response_execution.run_due_response_actions_once(isolated_db) == 1
+    result = api_client.get(f"/api/v1/response-actions?status=succeeded")
+    assert result.status_code == 200
+    assert result.json()[0]["id"] == request_id
+    assert result.json()[0]["execution_attempts"] == 1
+    assert result.json()[0]["external_reference"] == "receiver-action-202"
+    app.dependency_overrides.pop(get_current_user, None)
 
 def test_http_poll_worker_ingests_events_idempotently(isolated_db, monkeypatch):
     from app.services import connector_runtime
@@ -241,3 +255,408 @@ def test_connector_worker_records_failure_and_backoff(isolated_db, monkeypatch):
     assert state.consecutive_failures == 1
     assert state.locked_until is None
     assert isolated_db.query(connector_runtime.ConnectorExecution).filter_by(status="failed").count() == 1
+
+def test_native_provider_adapters_validate_tls_and_normalize_indicators():
+    misp = get_adapter("misp")
+    valid = {
+        "endpoint": "https://misp.example/attributes/restSearch",
+        "allowed_hosts": ["misp.example"],
+        "interval_seconds": 60,
+        "credential_ref": "env://MISP_API_KEY",
+    }
+    assert misp.validate_config(valid).valid
+    assert not misp.validate_config({**valid, "endpoint": "http://misp.example/attributes/restSearch"}).valid
+    normalized = misp.normalize_indicator({"type": "ip-src|port", "value": "203.0.113.9|443", "to_ids": True})
+    assert normalized["type"] == "ip"
+    assert normalized["value"] == "203.0.113.9"
+
+    opencti = get_adapter("opencti")
+    normalized = opencti.normalize_indicator({
+        "node": {
+            "pattern": "[domain-name:value = 'malware.example']",
+            "confidence": 90,
+            "labels": [{"value": "tlp:amber"}],
+        }
+    })
+    assert normalized["type"] == "domain"
+    assert normalized["value"] == "malware.example"
+    assert normalized["tags"] == ["tlp:amber"]
+
+
+def test_scanner_export_normalizers_map_vendor_findings_to_managed_asset_contract():
+    from app.services.scanner_adapters import normalize_scanner_export
+
+    nessus = normalize_scanner_export("nessus", {
+        "info": {"uuid": "scan-nessus-001"},
+        "hosts": [{
+            "host-fqdn": "db01.example.internal",
+            "host-ip": "192.0.2.81",
+            "vulnerabilities": [{
+                "plugin_id": 12345,
+                "plugin_name": "Example remote code execution",
+                "severity": 4,
+                "cve": ["CVE-2026-12345"],
+                "description": "Synthetic scanner fixture",
+            }],
+        }],
+    })
+    assert nessus["scanner_name"] == "nessus"
+    assert nessus["scan_id"] == "scan-nessus-001"
+    assert nessus["assets"][0]["asset_key"] == "db01.example.internal"
+    assert nessus["assets"][0]["findings"][0]["vulnerability_id"] == "CVE-2026-12345"
+    assert nessus["assets"][0]["findings"][0]["severity"] == "critical"
+
+    qualys = normalize_scanner_export("qualys", {
+        "scan_id": "qualys-2026-01",
+        "assets": [{
+            "host_name": "web01.example.internal",
+            "ip": "192.0.2.82",
+            "detectionList": [{"qid": 9876, "title": "Outdated package", "severity": 3}],
+        }],
+    })
+    assert qualys["assets"][0]["findings"][0]["vulnerability_id"] == "QID-9876"
+    assert qualys["assets"][0]["findings"][0]["severity"] == "high"
+
+def test_sigma_advanced_conditions_and_modifiers():
+    source = """title: Encoded PowerShell
+id: sigma-advanced-001
+logsource:
+  product: windows
+detection:
+  selection_a:
+    CommandLine|contains|all:
+      - powershell
+      - -encodedcommand
+  selection_b:
+    event_type: process.started
+  filter:
+    severity: critical
+  condition: 1 of selection_* and not filter
+level: high
+"""
+    parsed = parse_sigma_document(source)
+    rule = SimpleNamespace(**parsed, enabled=True)
+    event = SimpleNamespace(
+        source="edr", event_type="process.started", severity="high",
+        hostname="win01", source_ip=None, username="analyst",
+        message="encoded powershell", raw={"CommandLine": "powershell.exe -EncodedCommand abc"},
+    )
+    assert rule_matches(event, rule)
+    event.severity = "critical"
+    assert not rule_matches(event, rule)
+
+
+def test_sigma_event_count_correlation_creates_grouped_evidence_alert(isolated_db):
+    from datetime import datetime, timezone
+    from app.models import SigmaRule
+    from app.services.sigma_engine import run_sigma_rules
+
+    base = parse_sigma_document("""title: Failed authentication
+id: base-auth-failure
+logsource:
+  service: auth
+detection:
+  selection:
+    event_type: authentication.failure
+  condition: selection
+level: medium
+""")
+    correlation = parse_sigma_document("""title: Repeated authentication failures
+id: corr-auth-failure
+logsource:
+  service: auth
+correlation:
+  type: event_count
+  rules:
+    - base-auth-failure
+  group-by:
+    - source_ip
+  timespan: 5m
+  condition:
+    gte: 3
+level: high
+""")
+    isolated_db.add_all([
+        SigmaRule(**base, enabled=True, created_by="analyst"),
+        SigmaRule(**correlation, enabled=True, created_by="analyst"),
+    ])
+    now = datetime.now(timezone.utc)
+    for index in range(3):
+        isolated_db.add(SecurityEvent(
+            source="auth-sensor", event_type="authentication.failure", severity="medium",
+            timestamp=now, source_ip="192.0.2.99", message=f"failed login {index}", raw={},
+        ))
+    isolated_db.commit()
+
+    result = run_sigma_rules(isolated_db, lookback_minutes=15)
+    assert result["rules_evaluated"] == 2
+    assert result["matches"] == 4
+    alerts = isolated_db.query(models.DetectionAlert).filter(
+        models.DetectionAlert.rule_id == "SIGMA-C:corr-auth-failure"
+    ).all()
+    assert len(alerts) == 1
+    assert alerts[0].event_count == 3
+    assert len(alerts[0].evidence_event_ids) == 3
+
+def test_misp_connector_poll_uses_native_attribute_normalization(isolated_db, monkeypatch):
+    from app.services import connector_runtime
+
+    monkeypatch.setenv("MISP_RUNTIME_KEY", "fixture-misp-key")
+    connector = ConnectorConfig(
+        connector_key="misp-native",
+        connector_type="misp",
+        display_name="MISP fixture",
+        config={
+            "endpoint": "https://misp.example/attributes/restSearch",
+            "allowed_hosts": ["misp.example"],
+            "interval_seconds": 60,
+            "page_size": 100,
+        },
+        credential_ref="env://MISP_RUNTIME_KEY",
+        enabled=True,
+        health_status="unverified",
+    )
+    isolated_db.add(connector)
+    isolated_db.commit()
+    calls = []
+    def fake_read(url, headers, **kwargs):
+        calls.append((url, headers, kwargs))
+        return {"response": {"Attribute": [{
+            "type": "ip-src|port", "value": "203.0.113.121|443",
+            "to_ids": True, "comment": "synthetic MISP fixture",
+        }]}}
+    monkeypatch.setattr(connector_runtime, "_read_response", fake_read)
+    assert connector_runtime.run_due_connectors_once(isolated_db, batch_size=1) == 1
+    indicator = isolated_db.query(ThreatIndicator).filter_by(value="203.0.113.121").one()
+    assert indicator.indicator_type == "ip"
+    assert indicator.confidence == 80
+    assert calls[0][1]["X-MISP-Auth"] == "fixture-misp-key"
+    assert calls[0][2]["method"] == "POST"
+    assert calls[0][2]["json_body"]["returnFormat"] == "json"
+
+
+def test_secret_resolver_supports_environment_and_rejects_unmounted_files(monkeypatch):
+    from app.services.secrets import resolve_secret_reference
+
+    monkeypatch.setenv("AEGIS_SECRET_FIXTURE", "secret-value")
+    assert resolve_secret_reference("env://AEGIS_SECRET_FIXTURE") == "secret-value"
+    with pytest.raises(ValueError):
+        resolve_secret_reference("file:///tmp/aegis-secret")
+    with pytest.raises(ValueError):
+        resolve_secret_reference("https://example.invalid/secret")
+
+def test_nessus_export_endpoint_reconciles_only_known_assets(api_client):
+    asset = api_client.post("/api/v1/asset-risk/assets", json={
+        "asset_key": "nessus-db-01.internal", "hostname": "nessus-db-01.internal", "criticality": "critical",
+    })
+    assert asset.status_code == 201
+    response = api_client.post("/api/v1/asset-risk/scanner-imports/nessus", json={
+        "info": {"uuid": "nessus-export-001"},
+        "hosts": [{
+            "host-fqdn": "nessus-db-01.internal",
+            "host-ip": "192.0.2.210",
+            "vulnerabilities": [{
+                "plugin_id": 44123, "plugin_name": "Synthetic critical finding",
+                "severity": 4, "cve": ["CVE-2026-44123"],
+            }],
+        }],
+    })
+    assert response.status_code == 200
+    assert response.json()["findings_created"] == 1
+    findings = api_client.get(f"/api/v1/asset-risk/assets/{asset.json()['id']}/findings")
+    assert findings.status_code == 200
+    assert findings.json()[0]["vulnerability_id"] == "CVE-2026-44123"
+
+def test_response_worker_retries_transient_receiver_failure_with_stable_idempotency(isolated_db, monkeypatch):
+    from datetime import timedelta
+    from app.models import ResponseActionRequest
+    from app.services import response_execution
+
+    connector = ConnectorConfig(
+        connector_key="retry-webhook", connector_type="response_webhook",
+        display_name="Retry receiver",
+        config={"endpoint": "https://response.example/actions", "allowed_hosts": ["response.example"]},
+        enabled=True, health_status="observed",
+    )
+    now = datetime.now(timezone.utc)
+    request = ResponseActionRequest(
+        connector_key="retry-webhook", action_type="notify", target="soc@example.invalid",
+        parameters={}, status="approved", execution_status="queued",
+        next_attempt_at=now, requested_by="analyst", approved_by="admin",
+        idempotency_key="a" * 64,
+    )
+    isolated_db.add_all([connector, request])
+    isolated_db.commit()
+    statuses = iter([503, 202])
+
+    class FakeResponse:
+        headers = {}
+        def __init__(self, status_code): self.status_code = status_code
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+    class FakeClient:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def stream(self, *args, **kwargs): return FakeResponse(next(statuses))
+    monkeypatch.setattr(response_execution.httpx, "Client", lambda **kwargs: FakeClient())
+
+    assert response_execution.run_due_response_actions_once(isolated_db, now=now) == 1
+    isolated_db.refresh(request)
+    assert request.status == "approved"
+    assert request.execution_status == "retry_scheduled"
+    assert request.execution_attempts == 1
+    retry_at = request.next_attempt_at
+    assert retry_at is not None and retry_at > now
+    original_key = request.idempotency_key
+
+    assert response_execution.run_due_response_actions_once(
+        isolated_db, now=retry_at + timedelta(seconds=1)
+    ) == 1
+    isolated_db.refresh(request)
+    assert request.status == "succeeded"
+    assert request.execution_attempts == 2
+    assert request.idempotency_key == original_key
+
+def test_wazuh_indexer_connector_uses_basic_auth_search_and_native_alert_normalization(isolated_db, monkeypatch):
+    from app.services import connector_runtime
+
+    monkeypatch.setenv("WAZUH_INDEXER_FIXTURE", "fixture-user:fixture-password")
+    connector = ConnectorConfig(
+        connector_key="wazuh-indexer-prod",
+        connector_type="wazuh_indexer",
+        display_name="Wazuh Indexer production",
+        config={
+            "endpoint": "https://indexer.example.internal:9200/wazuh-alerts-*/_search",
+            "allowed_hosts": ["indexer.example.internal"],
+            "auth_scheme": "basic",
+            "page_size": 100,
+            "interval_seconds": 60,
+        },
+        credential_ref="env://WAZUH_INDEXER_FIXTURE",
+        enabled=True,
+        health_status="unverified",
+    )
+    isolated_db.add(connector)
+    isolated_db.commit()
+    calls = []
+    def fake_read(url, headers, **kwargs):
+        calls.append((url, headers, kwargs))
+        return {"hits": {"hits": [{
+            "_id": "wazuh-hit-001",
+            "_source": {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "rule": {"level": 8, "description": "sshd authentication failed", "groups": ["sshd"]},
+                "agent": {"name": "linux-prod-01"},
+                "data": {"srcip": "192.0.2.33", "srcuser": "root"},
+                "full_log": "sshd: Failed password for root",
+            },
+            "sort": [1, "wazuh-hit-001"],
+        }]}}
+    monkeypatch.setattr(connector_runtime, "_read_response", fake_read)
+    assert connector_runtime.run_due_connectors_once(isolated_db, batch_size=1) == 1
+    event = isolated_db.query(SecurityEvent).filter_by(external_id="wazuh-hit-001").one()
+    assert event.source == "wazuh-indexer-prod"
+    assert event.event_type == "authentication.failure"
+    assert event.hostname == "linux-prod-01"
+    assert calls[0][1]["Authorization"].startswith("Basic ")
+    assert calls[0][2]["method"] == "POST"
+    assert calls[0][2]["json_body"]["size"] == 100
+
+
+
+def test_wazuh_manager_adapter_exchanges_credentials_for_api_token(isolated_db, monkeypatch):
+    from app.services import connector_runtime
+
+    monkeypatch.setenv("WAZUH_MANAGER_FIXTURE", "api-user:api-password")
+    connector = ConnectorConfig(
+        connector_key="wazuh-manager-prod",
+        connector_type="wazuh_manager",
+        display_name="Wazuh Manager production",
+        config={
+            "endpoint": "https://manager.example.internal:55000/security/events",
+            "allowed_hosts": ["manager.example.internal"],
+            "interval_seconds": 60,
+        },
+        credential_ref="env://WAZUH_MANAGER_FIXTURE",
+        enabled=True,
+        health_status="unverified",
+    )
+    isolated_db.add(connector)
+    isolated_db.commit()
+    calls = []
+
+    def fake_read(url, headers, **kwargs):
+        calls.append((url, headers, kwargs))
+        if "authenticate" in url:
+            return {"data": {"token": "fixture-access-token"}}
+        return {"data": {"affected_items": [{
+            "id": "wazuh-manager-alert-001",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "rule": {"level": 8, "description": "sshd failed password", "groups": ["sshd"]},
+            "agent": {"name": "linux-manager-01"},
+            "data": {"srcip": "192.0.2.44"},
+            "full_log": "sshd: Failed password",
+        }]}}
+    monkeypatch.setattr(connector_runtime, "_read_response", fake_read)
+
+    assert connector_runtime.run_due_connectors_once(isolated_db, batch_size=1) == 1
+    event = isolated_db.query(SecurityEvent).filter_by(external_id="wazuh-manager-alert-001").one()
+    assert event.source == "wazuh-manager-prod"
+    assert event.hostname == "linux-manager-01"
+    assert calls[0][0] == "https://manager.example.internal:55000/security/user/authenticate"
+    assert calls[0][1]["Authorization"].startswith("Basic ")
+    assert calls[1][1]["Authorization"] == "Bearer fixture-access-token"
+
+
+
+def test_response_worker_reconciles_expired_lease_before_redelivery(api_client, isolated_db, monkeypatch):
+    from datetime import timedelta
+    from app.models import ResponseActionRequest
+    from app.services import response_execution
+
+    connector = api_client.post("/api/v1/connectors", json={
+        "connector_key": "reconcile-webhook", "connector_type": "response_webhook",
+        "display_name": "Reconciliation receiver",
+        "config": {
+            "endpoint": "https://response.example/actions",
+            "reconciliation_endpoint": "https://response.example/actions/status",
+            "allowed_hosts": ["response.example"],
+        },
+        "enabled": True,
+    })
+    assert connector.status_code == 201
+    created = api_client.post("/api/v1/response-actions", json={
+        "connector_key": "reconcile-webhook", "action_type": "block_ip", "target": "203.0.113.18",
+        "parameters": {"duration_minutes": 15},
+    })
+    assert created.status_code == 201
+    request_id = created.json()["id"]
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
+        id=uuid4(), username="reconciliation-admin", role="admin", is_active=True
+    )
+    approved = api_client.post(f"/api/v1/response-actions/{request_id}/approve", json={"note": "Approved"})
+    assert approved.status_code == 200
+    queued = api_client.post(f"/api/v1/response-actions/{request_id}/execute")
+    assert queued.status_code == 200
+
+    request = isolated_db.get(ResponseActionRequest, UUID(request_id))
+    now = datetime.now(timezone.utc)
+    request.status = "executing"
+    request.execution_status = "submitting"
+    request.execution_attempts = 1
+    request.locked_until = now - timedelta(seconds=1)
+    isolated_db.commit()
+    monkeypatch.setattr(response_execution, "_reconcile", lambda *_: {
+        "status": "succeeded", "response_code": 200, "reference": "reconciled-action-42",
+    })
+    monkeypatch.setattr(response_execution.httpx, "Client", lambda **kwargs: (_ for _ in ()).throw(
+        AssertionError("A reconciled action must not be delivered again")
+    ))
+
+    assert response_execution.run_due_response_actions_once(isolated_db, now=now) == 1
+    isolated_db.refresh(request)
+    assert request.status == "succeeded"
+    assert request.execution_status == "reconciled"
+    assert request.external_reference == "reconciled-action-42"
+    assert request.execution_attempts == 1
+    app.dependency_overrides.pop(get_current_user, None)
