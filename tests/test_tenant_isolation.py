@@ -1,10 +1,13 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
+import pytest
+
 from sqlalchemy import create_engine, delete, select, update
 from sqlalchemy.orm import Session
 
 from app.db.base import Base
+from app.db.session import set_workspace_context
 from app.models import DetectionRuleConfig, SecurityEvent, SigmaRule, Workspace
 
 
@@ -50,6 +53,17 @@ def test_workspace_context_scopes_reads_updates_and_deletes():
         result = db.execute(delete(SecurityEvent).where(SecurityEvent.id == second_id))
         assert result.rowcount == 0
         db.commit()
+
+        set_workspace_context(db, second_workspace_id := db.scalar(select(Workspace.id).where(Workspace.slug == "tenant-two")))
+        assert [item.id for item in db.scalars(select(SecurityEvent)).all()] == [second_id]
+        set_workspace_context(db, first_workspace_id)
+        assert db.get(SecurityEvent, second_id) is None
+        wrong_workspace_event = _event("forged-source", "must not cross workspace")
+        wrong_workspace_event.workspace_id = second_workspace_id
+        db.add(wrong_workspace_event)
+        with pytest.raises(RuntimeError, match="different workspace"):
+            db.flush()
+        db.rollback()
 
     with Session(engine) as db:
         other = db.get(SecurityEvent, second_id)
