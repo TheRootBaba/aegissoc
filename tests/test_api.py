@@ -222,3 +222,29 @@ def test_detection_run_validates_threshold_and_window(client):
 
     assert invalid_threshold.status_code == 422
     assert invalid_window.status_code == 422
+
+
+def test_detection_engine_reports_both_ssh_rules_for_password_spray(client):
+    now = datetime.now(timezone.utc)
+    for attempt in range(5):
+        client.post(
+            "/api/v1/events",
+            json=sample_event(
+                timestamp=(now - timedelta(seconds=attempt)).isoformat(),
+                username=f"account-{attempt}",
+                message="SSH authentication failure",
+            ),
+        )
+
+    response = client.post(
+        "/api/v1/detections/run",
+        json={"window_minutes": 10, "threshold": 5},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["rules_evaluated"] == ["AUTH-SSH-001", "AUTH-SSH-002"]
+    assert {alert["rule_id"] for alert in body["alerts"]} == {
+        "AUTH-SSH-001",
+        "AUTH-SSH-002",
+    }
