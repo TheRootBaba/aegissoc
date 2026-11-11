@@ -372,7 +372,7 @@ def run_due_connectors_once(db: Session, *, now: datetime | None = None, batch_s
                 else:
                     state.last_run_at = finished
                     state.locked_until = None
-                    execution.status = "running"
+                    execution.status = "pending"
                     execution.completed_at = finished
                     execution.duration_ms = int((perf_counter() - timer) * 1000)
                     db.commit()
