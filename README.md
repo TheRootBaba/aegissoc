@@ -246,3 +246,34 @@ Only ingest events from systems you own or are explicitly authorized to monitor.
 5. Phase 1.5: alert lifecycle, analyst workflow, and local analyst dashboard.
 6. Phase 1.6: native Wazuh ingestion, replay-safe source event IDs, MITRE ATT&CK technique mapping, and aggregate dashboard metrics.
 7. Phase 1.7: operational security controls and deployment readiness.
+
+
+## Phase 1.7 — authentication and access control
+
+The API now uses short-lived signed bearer tokens. Sign in with `POST /api/v1/auth/login` using JSON `username` and `password`, then pass the returned token as `Authorization: Bearer <token>`. `GET /api/v1/auth/me` returns the verified identity and role.
+
+| Role | Permissions |
+|---|---|
+| `admin` | Read SOC data, ingest events, run detections, manage alerts, create/list users |
+| `analyst` | Read SOC data, ingest events, run detections, manage alerts and notes |
+| `read_only` | Read events, alerts, metrics, notes, and audit history |
+
+There is no public self-registration or default account. Create the first administrator interactively after migrations:
+
+```powershell
+docker compose exec api python -m scripts.create_admin
+```
+
+For local non-container development, run `python -m scripts.create_admin` after `alembic upgrade head`. User provisioning is administrator-only through `POST /api/v1/auth/users`. Passwords require at least 12 characters and are stored as salted PBKDF2-HMAC-SHA256 hashes. Analyst identity in alert updates, notes, and audit entries comes from the verified token; client-supplied actor labels are ignored.
+
+### Security configuration
+
+- Set `AUTH_SECRET_KEY` to a unique random value of at least 32 characters in production. Startup rejects the development placeholder.
+- `ACCESS_TOKEN_MINUTES` controls token lifetime (5–1440 minutes; default 30).
+- Login attempts are throttled to five per client IP per rolling minute in each API process. This is defense-in-depth for a single-instance lab; production multi-instance deployments also need shared rate limiting at the reverse proxy or API gateway.
+- The dashboard keeps the bearer token in session storage for the current browser tab. Use HTTPS outside localhost and deploy a hardened reverse proxy, secure headers, secret management, backups, and monitoring before production.
+- Wazuh ingestion is protected like other event ingestion endpoints. Use a dedicated least-privilege analyst account until service identities are implemented.
+
+## Roadmap update
+
+Phase 1.7 delivers local authentication, RBAC, trusted analyst identities, login throttling, and production secret guardrails. Distributed rate limiting, tamper-evident audit chaining, dedicated event-producer service identities, and full production deployment hardening remain future work.
