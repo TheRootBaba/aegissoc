@@ -1,6 +1,7 @@
 """Provision a non-owner, non-superuser PostgreSQL role for the running application."""
 
 import os
+import re
 
 from app.core.config import settings
 
