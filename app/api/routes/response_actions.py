@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import ipaddress
 import json
+import httpx
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -157,6 +158,49 @@ def cancel_request(request_id: UUID, payload: ResponseActionDecision,
     request.locked_until = None
     _audit(db, user, "response_action.canceled", request,
            {"execution_status": request.execution_status})
+    db.commit()
+    db.refresh(request)
+    return request
+
+
+@router.post("/{request_id}/compensate", response_model=ResponseActionRead,
+             dependencies=[Depends(require_roles("admin"))])
+def compensate_request(request_id: UUID, payload: ResponseActionDecision,
+                       db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Ask an explicitly capable receiver to compensate a previously delivered action."""
+    from app.services.response_compensation import post_compensation
+
+    request = db.scalar(select(ResponseActionRequest).where(
+        ResponseActionRequest.id == request_id
+    ).with_for_update())
+    if request is None:
+        raise HTTPException(404, "Response action request not found")
+    if request.status != "succeeded" or request.execution_status not in {"delivered", "reconciled"}:
+        raise HTTPException(409, "Only a confirmed delivered action can be compensated")
+    if not request.external_reference:
+        raise HTTPException(409, "Receiver did not provide an external action reference")
+    connector = db.scalar(select(ConnectorConfig).where(
+        ConnectorConfig.connector_key == request.connector_key,
+        ConnectorConfig.connector_type == "response_webhook",
+        ConnectorConfig.enabled.is_(True),
+    ))
+    if connector is None:
+        raise HTTPException(409, "The original response receiver is unavailable")
+    try:
+        outcome = post_compensation(connector, request, reason=payload.note.strip())
+    except (ValueError, OSError, httpx.HTTPError) as exc:
+        raise HTTPException(502, "Receiver compensation could not be confirmed: " + type(exc).__name__) from exc
+    request.execution_status = "compensated" if outcome["status"] == "compensated" else (
+        "compensation_pending" if outcome["status"] == "pending" else "compensation_rejected"
+    )
+    request.result_summary = (
+        "Receiver confirmed compensation." if outcome["status"] == "compensated" else
+        "Receiver accepted compensation and reports it is still pending." if outcome["status"] == "pending" else
+        "Receiver rejected compensation."
+    )
+    request.decision_note = payload.note.strip()[:500]
+    _audit(db, user, "response_action.compensation_" + outcome["status"], request,
+           {"reference": outcome["reference"], "original_reference": request.external_reference})
     db.commit()
     db.refresh(request)
     return request
