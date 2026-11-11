@@ -38,20 +38,11 @@ Before publishing screenshots from another environment, review them for account 
 | ![Team access](../evidence/team%20access.png) | Workspace membership and access | [Workspace identity](WORKSPACE_IDENTITY.md) |
 | ![Operations and retention](../evidence/operations%26retention.png) | Operational jobs and retention controls | [Operations runbook](OPERATIONS_RUNBOOK.md) |
 
-## Local environment evidence
+## Local environment and recorded walkthroughs
 
-![Docker Desktop](../evidence/docker%20desktop.png)
+The uploaded working copy also contains a Docker Desktop capture and two local recordings (dashboard and FastAPI `/docs`). Those three files are not yet part of the GitHub `main` branch, so this gallery deliberately does not link to missing repository paths. The Docker capture should accompany the local deployment guide; the dashboard recording belongs with this gallery; the API recording belongs with the API/integration guide. Add them as Git LFS objects or release assets rather than ordinary Git blobs if their size is material.
 
-This is a local Docker Desktop view, not a production deployment or availability claim.
-
-## Recorded walkthroughs
-
-The recordings are kept in the repository's `evidence/` directory for now:
-
-- [Dashboard walkthrough](../evidence/dashboard-demo.mp4)
-- [FastAPI interactive API walkthrough](../evidence/api%20demo%20.mp4)
-
-The API reference itself is served by the running application at `/docs`. The recording demonstrates the API browser; it does not replace the endpoint schemas or the versioned API behavior.
+The API reference itself is served by the running application at `/docs`. A recording demonstrates the API browser; it does not replace endpoint schemas or versioned API behavior.
 
 ## Capture and maintenance
 
