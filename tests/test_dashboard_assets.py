@@ -87,3 +87,14 @@ def test_dashboard_exposes_detection_schedule_controls():
     assert 'api("/api/v1/detection-schedules")' in script
     assert 'function renderSchedules()' in script
     assert 'function loadScheduleHistory(' in script
+
+
+def test_dashboard_exposes_audit_integrity_controls():
+    html = (WEB / "index.html").read_text(encoding="utf-8")
+    script = (WEB / "app.js").read_text(encoding="utf-8")
+    for element_id in ("audit-status", "verify-audit", "audit-count", "audit-list"):
+        assert f'id="{element_id}"' in html
+    assert 'data-nav="audit"' in html
+    assert 'api("/api/v1/audit?limit=10")' in script
+    assert 'api("/api/v1/audit/verify")' in script
+    assert "function renderAudit()" in script
