@@ -87,6 +87,7 @@ def verify_audit_chain(db: Session) -> dict:
     previous_hash = GENESIS_HASH
     expected_sequence = 1
     record_count = 0
+    verified_count = 0
     first_invalid = None
 
     for entry in records:
@@ -109,6 +110,7 @@ def verify_audit_chain(db: Session) -> dict:
             break
         previous_hash = entry.entry_hash
         expected_sequence += 1
+        verified_count += 1
 
     if first_invalid is None and records and (
         state is None
@@ -124,7 +126,7 @@ def verify_audit_chain(db: Session) -> dict:
     valid = first_invalid is None
     return {
         "valid": valid,
-        "checked_entries": record_count if valid else max(0, (first_invalid or 1) - 1),
+        "checked_entries": verified_count,
         "head_sequence": state.head_sequence if state else 0,
         "head_hash": state.head_hash if state else GENESIS_HASH,
         "first_invalid_sequence": first_invalid,
