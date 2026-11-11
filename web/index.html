@@ -29,7 +29,7 @@
       </nav>
       <div class="sidebar-bottom">
         <div class="system-status"><span class="status-orb"></span><span><strong>All systems nominal</strong><small>API and database monitored</small></span></div>
-        <div class="sidebar-user"><span class="user-avatar" id="sidebar-avatar">A</span><span class="user-meta"><strong id="sidebar-username">Analyst</strong><small id="sidebar-role">Signed out</small></span><button class="icon-button" id="sidebar-signout" title="Sign out" aria-label="Sign out">↗</button></div>
+        <div class="sidebar-user"><span class="user-avatar" id="sidebar-avatar">A</span><span class="user-meta"><strong id="sidebar-username">Analyst</strong><small id="sidebar-role">Signed out</small></span><button class="icon-button" id="sidebar-signout" title="Sign out" aria-label="Sign out" hidden>↗</button></div>
       </div>
     </aside>
 
@@ -40,8 +40,8 @@
           <div class="connection-state" id="health-pill"><span class="status-orb"></span><span>Connecting to API</span></div>
           <span class="topbar-divider"></span>
           <button class="icon-button refresh-button" id="refresh-button" aria-label="Refresh dashboard" title="Refresh">↻</button>
-          <button class="button button-primary" id="run-detections"><span>▶</span> Run detections</button>
-          <button class="button button-quiet top-signout" id="signout-button">Sign out</button>
+          <button class="button button-primary" id="run-detections" hidden><span>▶</span> Run detections</button>
+          <button class="button button-quiet top-signout" id="signout-button" hidden>Sign out</button>
         </div>
       </header>
 
