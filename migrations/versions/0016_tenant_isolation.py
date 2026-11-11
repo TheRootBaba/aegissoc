@@ -113,6 +113,7 @@ def upgrade() -> None:
                 current_setting('aegis.manage_memberships', true) = 'on'
                 AND workspace_id = NULLIF(current_setting('aegis.workspace_id', true), '')::uuid
             )
+            OR current_setting('aegis.manage_workspaces', true) = 'on'
         );
     """)
 
