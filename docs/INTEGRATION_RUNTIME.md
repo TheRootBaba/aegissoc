@@ -1,5 +1,7 @@
 # Integration runtime
 
+> Related product captures: [AegisSOC screenshot gallery](SCREENSHOT_GALLERY.md).
+
 The integration worker performs outbound polling independently of the API. Connector configuration and execution history live in PostgreSQL; credentials are resolved by the worker from references rather than stored in connector JSON.
 
 ## Execution flow
