@@ -94,6 +94,7 @@ class CaseNoteRead(BaseModel):
 
 
 class CaseAlertRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     rule_id: str
     title: str
