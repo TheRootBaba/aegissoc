@@ -57,7 +57,6 @@ def create_schedule(payload: DetectionScheduleCreate, db: Session = Depends(get_
         "window_minutes": schedule.window_minutes, "threshold": schedule.threshold,
         "enabled": schedule.enabled,
     })
-    append_audit_entry(db, actor=current_user.username, action="detection.schedule_updated", resource_type="detection_schedule", resource_id=str(schedule.id), details=changes)
     try:
         db.commit()
     except IntegrityError as exc:
@@ -83,6 +82,7 @@ def update_schedule(schedule_id: UUID, payload: DetectionScheduleUpdate,
         schedule.next_run_at = datetime.now(timezone.utc) + timedelta(seconds=schedule.interval_seconds)
     if changes.get("enabled") is False:
         schedule.locked_until = None
+    append_audit_entry(db, actor=current_user.username, action="detection.schedule_updated", resource_type="detection_schedule", resource_id=str(schedule.id), details=changes)
     try:
         db.commit()
     except IntegrityError as exc:
