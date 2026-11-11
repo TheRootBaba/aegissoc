@@ -111,7 +111,7 @@ Source adapters can submit source-specific JSON to `POST /api/v1/events/ingest/{
 
 ### Run detections and inspect alerts
 
-The first deterministic rule is AUTH-SSH-001. It groups SSH authentication failures by source IP and target hostname inside a rolling time window. The default trigger is five failures in ten minutes. Events must have a source IP and an SSH indicator in the event type or message. The detector is intentionally run on demand in this phase; scheduling and analyst workflow are later work.
+The first detection pack contains two deterministic rules. AUTH-SSH-001 detects repeated SSH authentication failures from one source IP against one target host (five failures by default). AUTH-SSH-002 detects password spraying when the same source/target pair attempts five or more distinct usernames in the window. Both require a source IP and an SSH indicator in the event type or message. The detector is intentionally run on demand in this phase; scheduling and analyst workflow are later work.
 
 ```powershell
 # Evaluate recent events using the default five-failure / ten-minute threshold
