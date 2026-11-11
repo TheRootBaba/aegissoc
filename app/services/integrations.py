@@ -92,9 +92,25 @@ class HttpPollAdapter(IntegrationAdapter):
 class ThreatFeedAdapter(HttpPollAdapter):
     connector_type = "threat_feed"
 
+
+class ResponseWebhookAdapter(IntegrationAdapter):
+    connector_type = "response_webhook"
+    def validate_config(self, config: dict) -> AdapterCheck:
+        base = super().validate_config(config)
+        if not base.valid: return base
+        parsed = urlsplit(config.get("endpoint", ""))
+        hosts = config.get("allowed_hosts")
+        if parsed.scheme not in ("https", "http") or not parsed.hostname or parsed.username or parsed.password:
+            return AdapterCheck(False, "endpoint must be an HTTP(S) URL without embedded credentials.")
+        if parsed.scheme != "https" and config.get("allow_http") is not True:
+            return AdapterCheck(False, "HTTP response delivery requires explicit allow_http=true.")
+        if not isinstance(hosts, list) or parsed.hostname.lower() not in [str(x).lower() for x in hosts]:
+            return AdapterCheck(False, "endpoint hostname must appear in the explicit allowed_hosts list.")
+        return AdapterCheck(True, "Response endpoint and host allowlist are valid.")
+
 ADAPTERS = {item.connector_type: item for item in (
     IntegrationAdapter(), WazuhAdapter(), SyslogAdapter(), HttpEventAdapter(),
-    HttpPollAdapter(), ThreatFeedAdapter(),
+    HttpPollAdapter(), ThreatFeedAdapter(), ResponseWebhookAdapter(),
 )}
 
 def get_adapter(connector_type: str) -> IntegrationAdapter:
