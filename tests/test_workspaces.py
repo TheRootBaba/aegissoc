@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -108,7 +108,7 @@ def test_workspace_admin_can_provision_isolated_workspace_and_default_policies()
                 "slug": "customer-blue", "name": "Customer Blue",
             })
             assert created.status_code == 201
-            workspace_id = created.json()["id"]
+            workspace_id = UUID(created.json()["id"])
             assert created.json()["role"] == "admin"
             memberships = db.query(WorkspaceMembership).filter_by(workspace_id=workspace_id).all()
             assert len(memberships) == 1
