@@ -96,10 +96,18 @@ def upgrade() -> None:
         USING (
             current_setting('aegis.worker', true) = 'on'
             OR user_id = NULLIF(current_setting('aegis.user_id', true), '')::uuid
+            OR (
+                current_setting('aegis.manage_memberships', true) = 'on'
+                AND workspace_id = NULLIF(current_setting('aegis.workspace_id', true), '')::uuid
+            )
         )
         WITH CHECK (
             current_setting('aegis.worker', true) = 'on'
             OR user_id = NULLIF(current_setting('aegis.user_id', true), '')::uuid
+            OR (
+                current_setting('aegis.manage_memberships', true) = 'on'
+                AND workspace_id = NULLIF(current_setting('aegis.workspace_id', true), '')::uuid
+            )
         );
     """)
 
