@@ -23,9 +23,12 @@ def client():
     TestingSessionLocal = sessionmaker(bind=test_engine, autoflush=False, autocommit=False)
     Base.metadata.create_all(bind=test_engine)
     # Mirror the defaults inserted by Alembic revision 0010 in the isolated test DB.
-    from app.models import DetectionRuleConfig, RetentionPolicy
+    from app.models import DetectionRuleConfig, RetentionPolicy, Workspace
     seed_session = TestingSessionLocal()
+    default_workspace = Workspace(slug='default', name='Default Workspace', is_active=True)
+    seed_session.info['workspace_id'] = str(default_workspace.id)
     seed_session.add_all([
+        default_workspace,
         RetentionPolicy(data_kind="events", retention_days=90, enabled=True, preserve_active_evidence=True, updated_by="system"),
         RetentionPolicy(data_kind="executions", retention_days=180, enabled=True, preserve_active_evidence=True, updated_by="system"),
         RetentionPolicy(data_kind="jobs", retention_days=90, enabled=True, preserve_active_evidence=False, updated_by="system"),
