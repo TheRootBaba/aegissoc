@@ -138,7 +138,7 @@ def get_current_user(
             raise HTTPException(status_code=400, detail="X-Workspace-ID is required when the user belongs to multiple workspaces")
         selected = memberships[0]
 
-    set_workspace_context(db, selected.workspace_id, user_id=user.id)
+    set_workspace_context(db, selected.workspace_id, user_id=user.id, manage_memberships=(user.role == 'admin'))
     return user
 
 def require_roles(*roles: str):
