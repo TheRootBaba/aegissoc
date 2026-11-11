@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.security import get_current_user, require_roles
 from app.db.session import get_db
 from app.models import (
-    ConnectorConfig, DetectionExecution, DetectionSchedule, OperationalJobRun,
+    ConnectorConfig, DetectionAlert, DetectionExecution, DetectionSchedule, OperationalJobRun,
     RetentionPolicy, SecurityEvent, SourceRegistry, User,
 )
 from app.schemas.operations import OperationalJobRunRead, RetentionPolicyRead, RetentionPolicyUpdate
