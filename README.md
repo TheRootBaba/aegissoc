@@ -279,7 +279,7 @@ Only ingest events from systems you own or are explicitly authorized to monitor.
 
 ## Phase 1.11 — source inventory and ingestion health
 
-AegisSOC now maintains a persistent source registry. Sources can be registered by an administrator before telemetry arrives, or discovered automatically when a producer submits its first event. The inventory records source type and display name, last ingestion attempt, last successfully accepted event timestamp, and cumulative accepted, duplicate, and rejected record counts.
+AegisSOC now maintains a persistent source registry. The migration seeds the inventory from existing canonical event history so previously observed producers appear immediately; new sources are also discovered automatically when a producer submits its first event. Historical duplicate/rejection outcomes cannot be reconstructed, so the migration counts existing persisted event rows as accepted and initializes unavailable historical outcome counters to zero. Sources can also be registered by an administrator before telemetry arrives. The inventory records source type and display name, last ingestion attempt, last successfully accepted event timestamp, and cumulative accepted, duplicate, and rejected record counts.
 
 The observed health state is intentionally distinct from registration metadata:
 - **healthy** — a recent accepted event is within the freshness window and the latest ingestion attempt did not fail completely.
