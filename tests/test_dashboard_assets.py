@@ -72,3 +72,18 @@ def test_dashboard_exposes_investigation_workbench_controls():
     assert 'api("/api/v1/events/saved-queries"' in script
     assert 'api("/api/v1/events/fields"' in script
     assert "function renderQueryAggregations()" in script
+
+
+def test_dashboard_exposes_detection_schedule_controls():
+    html = (WEB / "index.html").read_text(encoding="utf-8")
+    script = (WEB / "app.js").read_text(encoding="utf-8")
+    for element_id in (
+        "schedule-create-panel", "schedule-create-form", "schedule-name",
+        "schedule-interval", "schedule-window", "schedule-threshold",
+        "schedule-create-button", "schedules-grid", "schedule-history",
+    ):
+        assert f'id="{element_id}"' in html
+    assert 'data-nav="schedules"' in html
+    assert 'api("/api/v1/detection-schedules")' in script
+    assert 'function renderSchedules()' in script
+    assert 'function loadScheduleHistory(' in script
