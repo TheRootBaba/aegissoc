@@ -28,6 +28,7 @@ def client():
     seed_session.add_all([
         RetentionPolicy(data_kind="events", retention_days=90, enabled=True, preserve_active_evidence=True, updated_by="system"),
         RetentionPolicy(data_kind="executions", retention_days=180, enabled=True, preserve_active_evidence=True, updated_by="system"),
+        RetentionPolicy(data_kind="jobs", retention_days=90, enabled=True, preserve_active_evidence=False, updated_by="system"),
     ])
     seed_session.commit()
     seed_session.close()
@@ -1153,7 +1154,7 @@ def test_operations_metrics_and_health_endpoints(client):
     assert metrics.json()["events"]["total"] == 0
     assert metrics.json()["detection_executions"]["failed_last_24_hours"] == 0
     assert policies.status_code == 200
-    assert {item["data_kind"] for item in policies.json()} == {"events", "executions"}
+    assert {item["data_kind"] for item in policies.json()} == {"events", "executions", "jobs"}
 
 
 def test_admin_can_update_retention_policy_and_action_is_audited(client):
