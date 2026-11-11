@@ -26,3 +26,12 @@ def test_sigma_regression_fixtures(filename, raw, expected):
         message="process telemetry fixture", raw=raw,
     )
     assert rule_matches(event, rule) is expected
+
+
+def test_every_bundled_sigma_rule_parses_with_unique_ids():
+    from app.services.sigma_engine import parse_sigma_document
+    rule_files = sorted((Path(__file__).parents[1] / "rules" / "sigma").glob("*.yml"))
+    assert len(rule_files) >= 13
+    parsed = [parse_sigma_document(path.read_text(encoding="utf-8")) for path in rule_files]
+    ids = [rule["rule_id"] for rule in parsed]
+    assert len(ids) == len(set(ids))
