@@ -6,6 +6,7 @@ from uuid import uuid4
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 from app.api.routes import workspaces, alert_workflow, audit, auth, cases, connectors, detections, detection_schedules, events, health, operations, sources, detection_rules, threat_intel, asset_risk, sigma, response_actions
 from app.core.config import settings
 from app.core.logging_config import configure_logging, request_id_var
@@ -16,7 +17,8 @@ WEB_DIR = Path(__file__).resolve().parents[1] / "web"
 async def lifespan(app: FastAPI):
     """Manage application lifecycle; schema changes are applied with Alembic."""
     yield
-app = FastAPI(title=settings.app_name, version="0.4.0", description="Authenticated local-first security event ingestion and investigation platform.", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version="0.4.0", description="Authenticated security event ingestion and investigation platform.", lifespan=lifespan)
+app.add_middleware(SessionMiddleware, secret_key=settings.auth_secret_key, same_site="lax", https_only=settings.app_env == "production")
 @app.middleware("http")
 async def attach_request_id(request: Request, call_next):
     request_id = str(uuid4())
