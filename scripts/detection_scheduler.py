@@ -3,7 +3,7 @@
 import logging
 import time
 
-from app.db.session import SessionLocal
+from sqlalchemy import inspect\n\nfrom app.db.session import SessionLocal, engine
 from app.services.detection_scheduler import run_due_schedules_once
 
 POLL_INTERVAL_SECONDS = 5
@@ -12,8 +12,8 @@ POLL_INTERVAL_SECONDS = 5
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     logger = logging.getLogger("aegissoc.scheduler.worker")
-    logger.info("Detection scheduler worker started; polling every %s seconds", POLL_INTERVAL_SECONDS)
-    while True:
+    logger.info("Detection scheduler worker starting; waiting for schema migrations")
+    while True:\n        try:\n            if inspect(engine).has_table("detection_schedules"):\n                break\n        except Exception:\n            logger.exception("Database not ready; retrying schema check")\n        time.sleep(POLL_INTERVAL_SECONDS)\n    logger.info("Detection scheduler worker started; polling every %s seconds", POLL_INTERVAL_SECONDS)\n    while True:
         try:
             with SessionLocal() as db:
                 completed = run_due_schedules_once(db)
