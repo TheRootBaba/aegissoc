@@ -5,8 +5,9 @@ from urllib.parse import urlsplit
 
 
 SENSITIVE_CONFIG_KEYS = {
-    "password", "token", "api_token", "secret", "api_key", "apikey", "authorization",
-    "private_key", "client_secret", "access_key",
+    "auth", "password", "token", "api_token", "access_token", "secret",
+    "secret_key", "api_key", "apikey", "authorization", "private_key",
+    "privatekey", "client_secret", "clientsecret", "access_key", "accesskey",
 }
 
 
@@ -23,8 +24,11 @@ class IntegrationAdapter:
         def sensitive_keys(value):
             if isinstance(value, dict):
                 for key, nested in value.items():
-                    normalized = str(key).lower()
-                    if normalized in SENSITIVE_CONFIG_KEYS:
+                    normalized = str(key).lower().replace("-", "_")
+                    if normalized in SENSITIVE_CONFIG_KEYS or any(
+                        normalized.endswith("_" + marker) or normalized.startswith(marker + "_")
+                        for marker in ("password", "token", "secret", "api_key", "apikey", "authorization", "private_key", "access_key")
+                    ):
                         yield normalized
                     yield from sensitive_keys(nested)
             elif isinstance(value, list):
