@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.models import DetectionExecution, DetectionSchedule
 from app.services.detection_engine import run_ssh_brute_force_detection
+from app.services.audit_chain import append_audit_entry
 
 logger = logging.getLogger("aegissoc.scheduler")
 LEASE_MINUTES = 15
@@ -87,6 +88,11 @@ def run_due_schedules_once(
                 rules_evaluated=result["rules_evaluated"],
                 error=None,
             ))
+            append_audit_entry(db, actor="scheduler", action="detection.schedule_executed", resource_type="detection_schedule", resource_id=str(schedule_id), details={
+                "status": "success", "schedule_owner": schedule.created_by,
+                "events_evaluated": result["events_evaluated"], "alerts_created": result["alerts_created"],
+                "alerts_updated": result["alerts_updated"], "rules_evaluated": result["rules_evaluated"],
+            })
             db.commit()
             completed_count += 1
         except Exception as exc:  # keep one bad schedule from stopping the worker
@@ -115,6 +121,10 @@ def run_due_schedules_once(
                 events_evaluated=0, alerts_created=0, alerts_updated=0,
                 rules_evaluated=[], error=schedule.last_error,
             ))
+            append_audit_entry(db, actor="scheduler", action="detection.schedule_failed", resource_type="detection_schedule", resource_id=str(schedule_id), details={
+                "schedule_owner": schedule.created_by, "error_type": type(exc).__name__,
+                "consecutive_failures": schedule.consecutive_failures,
+            })
             db.commit()
             logger.error("scheduled_detection_failed schedule_id=%s error_type=%s", schedule_id, type(exc).__name__)
     return completed_count
