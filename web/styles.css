@@ -610,3 +610,47 @@ input:focus, select:focus, textarea:focus { border-color: #7899A4; box-shadow: 0
   .case-form-grid, .case-detail-controls, .detection-rule-controls { grid-template-columns: 1fr; }
   .case-row { padding: 13px; }
 }
+
+
+/* Compact navigation remains fully usable at tablet and phone widths. */
+@media(max-width:820px) {
+  .nav-link:not(.active) { display: flex; }
+  .nav-link { width: 38px; min-width: 38px; }
+}
+@media(max-width:560px) {
+  .sidebar {
+    display: flex;
+    position: sticky;
+    top: 0;
+    z-index: 12;
+    width: 100%;
+    height: auto;
+    min-height: 52px;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    background: #0C1015;
+  }
+  .brand { flex: 0 0 auto; padding: 0 8px 0 0; border: 0; }
+  .brand-symbol { width: 25px; height: 25px; }
+  .brand-symbol svg { width: 24px; height: 24px; }
+  .brand-copy, .workspace-switch, .nav-caption { display: none; }
+  .nav-group { display: flex; flex: 0 0 auto; gap: 4px; }
+  .nav-link, .nav-link:not(.active) {
+    display: flex;
+    width: auto;
+    min-width: max-content;
+    min-height: 34px;
+    padding: 0 9px;
+    border-radius: 4px;
+    font-size: 10px;
+  }
+  .nav-icon { display: none; }
+  .sidebar-bottom { display: none; }
+  .main-content { margin: 0; padding: 0 14px 28px; }
+  .topbar { position: sticky; top: 52px; z-index: 9; }
+}
