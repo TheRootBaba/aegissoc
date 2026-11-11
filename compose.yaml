@@ -25,7 +25,11 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:-dev-only-change-this-aegissoc-secret-key}
       ACCESS_TOKEN_MINUTES: ${ACCESS_TOKEN_MINUTES:-30}
-      DATABASE_URL: postgresql+psycopg://aegis:${POSTGRES_PASSWORD:-aegis_dev_password}@db:5432/aegissoc
+      DATABASE_URL: postgresql+psycopg://aegis_runtime:${RUNTIME_DB_PASSWORD:-aegis_runtime_dev_password}@db:5432/aegissoc
+      RUNTIME_DATABASE_URL: postgresql+psycopg://aegis_runtime:${RUNTIME_DB_PASSWORD:-aegis_runtime_dev_password}@db:5432/aegissoc
+      MIGRATION_DATABASE_URL: postgresql+psycopg://aegis:${POSTGRES_PASSWORD:-aegis_dev_password}@db:5432/aegissoc
+      RUNTIME_DB_USER: ${RUNTIME_DB_USER:-aegis_runtime}
+      RUNTIME_DB_PASSWORD: ${RUNTIME_DB_PASSWORD:-aegis_runtime_dev_password}
     ports:
       - "8000:8000"
     depends_on:
@@ -49,7 +53,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:-dev-only-change-this-aegissoc-secret-key}
       ACCESS_TOKEN_MINUTES: ${ACCESS_TOKEN_MINUTES:-30}
-      DATABASE_URL: postgresql+psycopg://aegis:${POSTGRES_PASSWORD:-aegis_dev_password}@db:5432/aegissoc
+      DATABASE_URL: postgresql+psycopg://aegis_runtime:${RUNTIME_DB_PASSWORD:-aegis_runtime_dev_password}@db:5432/aegissoc
     depends_on:
       db:
         condition: service_healthy
@@ -64,7 +68,7 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+psycopg://aegis:${POSTGRES_PASSWORD:-aegis_dev_password}@db:5432/aegissoc
+      DATABASE_URL: postgresql+psycopg://aegis_runtime:${RUNTIME_DB_PASSWORD:-aegis_runtime_dev_password}@db:5432/aegissoc
       WORKER_POLL_SECONDS: ${WORKER_POLL_SECONDS:-5}
     depends_on:
       db:
@@ -81,7 +85,7 @@ services:
     command: ["--output-dir", "/backups"]
     profiles: ["backup"]
     environment:
-      DATABASE_URL: postgresql+psycopg://aegis:${POSTGRES_PASSWORD:-aegis_dev_password}@db:5432/aegissoc
+      DATABASE_URL: postgresql+psycopg://aegis_runtime:${RUNTIME_DB_PASSWORD:-aegis_runtime_dev_password}@db:5432/aegissoc
     volumes:
       - aegis_backups:/backups
     depends_on:
