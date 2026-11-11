@@ -1235,6 +1235,8 @@ def test_connector_registry_validates_external_credentials_and_routes_ingest(cli
     })
     assert ingested.status_code == 201
     assert ingested.json()["source"] == "syslog-prod"
+    observed = client.get("/api/v1/connectors")
+    assert observed.json()[0]["health_status"] == "observed"
 
 
 def test_connector_rejects_inline_secrets_and_invalid_wazuh_configuration(client):
@@ -1294,3 +1296,31 @@ def test_retention_preserves_latest_execution_for_each_schedule(client):
     finally:
         db.close()
 
+
+
+
+def test_disabled_connector_cannot_be_bypassed_through_canonical_ingest(client):
+    created = client.post("/api/v1/connectors", json={
+        "connector_key": "disabled-source",
+        "connector_type": "generic",
+        "display_name": "Disabled source",
+        "config": {},
+        "enabled": True,
+    })
+    assert created.status_code == 201
+    connector_id = created.json()["id"]
+    disabled = client.patch(f"/api/v1/connectors/{connector_id}", json={"enabled": False})
+    assert disabled.status_code == 200
+    rejected = client.post("/api/v1/events", json=sample_event(source="disabled-source"))
+    assert rejected.status_code == 422
+    assert "disabled" in rejected.json()["detail"].lower()
+
+
+def test_connector_rejects_nested_secret_fields(client):
+    response = client.post("/api/v1/connectors", json={
+        "connector_key": "nested-secret",
+        "connector_type": "generic",
+        "display_name": "Nested secret",
+        "config": {"auth": {"clientSecret": "not-allowed"}},
+    })
+    assert response.status_code == 422
