@@ -1190,7 +1190,7 @@ async function createFinding(event) {
 }
 async function createPlaybook(event) {
   event.preventDefault();
-  const steps = $("playbook-steps").value.split("\\n").map((title) => title.trim()).filter(Boolean);
+  const steps = $("playbook-steps").value.split(/\r?\n/).map((title) => title.trim()).filter(Boolean);
   try {
     await api("/api/v1/asset-risk/playbooks", { method: "POST", body: JSON.stringify({
       title: $("playbook-title").value.trim(), case_id: $("playbook-case").value || null,
