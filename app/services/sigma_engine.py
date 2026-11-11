@@ -304,6 +304,9 @@ def _upsert_sigma_alert(db: Session, *, rule: SigmaRule, fingerprint: str,
             evidence_event_ids=[str(item.id) for item in ordered[-100:]],
         )
         db.add(alert)
+        # Some worker/test sessions disable autoflush. Persist the alert before
+        # returning so subsequent reads in the same transaction can observe it.
+        db.flush()
         return True, False
     alert.event_count = len(ordered)
     alert.first_seen = _utc(ordered[0].timestamp)
