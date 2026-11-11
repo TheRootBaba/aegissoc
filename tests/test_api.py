@@ -23,12 +23,16 @@ def client():
     TestingSessionLocal = sessionmaker(bind=test_engine, autoflush=False, autocommit=False)
     Base.metadata.create_all(bind=test_engine)
     # Mirror the defaults inserted by Alembic revision 0010 in the isolated test DB.
-    from app.models import RetentionPolicy
+    from app.models import DetectionRuleConfig, RetentionPolicy
     seed_session = TestingSessionLocal()
     seed_session.add_all([
         RetentionPolicy(data_kind="events", retention_days=90, enabled=True, preserve_active_evidence=True, updated_by="system"),
         RetentionPolicy(data_kind="executions", retention_days=180, enabled=True, preserve_active_evidence=True, updated_by="system"),
         RetentionPolicy(data_kind="jobs", retention_days=90, enabled=True, preserve_active_evidence=False, updated_by="system"),
+        *[
+            DetectionRuleConfig(rule_id=rule_id, enabled=True, updated_by="system")
+            for rule_id in ("AUTH-SSH-001", "AUTH-SSH-002", "AUTH-CHAIN-001", "PRIV-ESC-001", "PROC-SUSP-001")
+        ],
     ])
     seed_session.commit()
     seed_session.close()
@@ -1324,3 +1328,95 @@ def test_connector_rejects_nested_secret_fields(client):
         "config": {"auth": {"clientSecret": "not-allowed"}},
     })
     assert response.status_code == 422
+
+
+
+def test_incident_case_lifecycle_links_alerts_notes_and_audit_timeline(client):
+    now = datetime.now(timezone.utc)
+    for attempt in range(5):
+        created = client.post("/api/v1/events", json=sample_event(
+            timestamp=(now - timedelta(seconds=5 - attempt)).isoformat(),
+            message=f"SSH authentication failure {attempt}",
+        ))
+        assert created.status_code == 201
+    detection = client.post("/api/v1/detections/run", json={"window_minutes": 10, "threshold": 5})
+    assert detection.status_code == 200
+    alert_id = next(item["id"] for item in detection.json()["alerts"] if item["rule_id"] == "AUTH-SSH-001")
+
+    created_case = client.post("/api/v1/cases", json={
+        "title": "Repeated SSH access attempts",
+        "description": "Investigate authentication activity against the Linux edge host.",
+        "priority": "p1",
+        "severity": "high",
+        "tags": ["credential-access", " SSH ", "credential-access"],
+    })
+    assert created_case.status_code == 201
+    case = created_case.json()
+    assert case["case_number"].startswith("AEG-")
+    assert case["tags"] == ["credential-access", "ssh"]
+
+    linked = client.post(f"/api/v1/cases/{case['id']}/alerts/{alert_id}")
+    assert linked.status_code == 201
+    duplicate = client.post(f"/api/v1/cases/{case['id']}/alerts/{alert_id}")
+    assert duplicate.status_code == 409
+
+    note = client.post(f"/api/v1/cases/{case['id']}/notes", json={"body": "Validated source IP and preserved event evidence."})
+    assert note.status_code == 201
+    updated = client.patch(f"/api/v1/cases/{case['id']}", json={"status": "investigating", "assignee": "analyst-1"})
+    assert updated.status_code == 200
+    assert updated.json()["status"] == "investigating"
+
+    detail = client.get(f"/api/v1/cases/{case['id']}")
+    assert detail.status_code == 200
+    assert len(detail.json()["alerts"]) == 1
+    assert len(detail.json()["notes"]) == 1
+    assert {item["action"] for item in detail.json()["timeline"]} >= {
+        "case.created", "case.alert_linked", "case.note_added", "case.updated"
+    }
+    assert client.get("/api/v1/cases?status=investigating&priority=p1").json()[0]["id"] == case["id"]
+
+
+def test_incident_case_rejects_invalid_transitions_and_read_only_cannot_mutate(client):
+    created = client.post("/api/v1/cases", json={"title": "Case transition guard"})
+    assert created.status_code == 201
+    case_id = created.json()["id"]
+    invalid = client.patch(f"/api/v1/cases/{case_id}", json={"status": "recovered"})
+    assert invalid.status_code == 409
+    assert client.get(f"/api/v1/cases/{case_id}").status_code == 200
+
+
+def test_detection_rule_governance_controls_engine_enablement_and_tuning(client):
+    rules = client.get("/api/v1/detection-rules")
+    assert rules.status_code == 200
+    assert len(rules.json()) == 5
+
+    disabled = client.patch("/api/v1/detection-rules/AUTH-SSH-001", json={"enabled": False})
+    assert disabled.status_code == 200
+    assert disabled.json()["enabled"] is False
+
+    now = datetime.now(timezone.utc)
+    for attempt in range(5):
+        client.post("/api/v1/events", json=sample_event(
+            timestamp=(now - timedelta(seconds=5 - attempt)).isoformat(),
+            message=f"SSH authentication failure {attempt}",
+        ))
+    run = client.post("/api/v1/detections/run", json={"window_minutes": 10, "threshold": 5})
+    assert run.status_code == 200
+    assert "AUTH-SSH-001" not in {item["rule_id"] for item in run.json()["alerts"]}
+    assert "AUTH-SSH-001" not in run.json()["rules_evaluated"]
+
+    enabled = client.patch("/api/v1/detection-rules/AUTH-SSH-001", json={
+        "enabled": True, "threshold_override": 2, "severity_override": "critical",
+    })
+    assert enabled.status_code == 200
+    rerun = client.post("/api/v1/detections/run", json={"window_minutes": 10, "threshold": 5})
+    brute_force = next(item for item in rerun.json()["alerts"] if item["rule_id"] == "AUTH-SSH-001")
+    assert brute_force["severity"] == "critical"
+    assert brute_force["event_count"] == 5
+
+
+def test_detection_rule_tuning_is_bounded_and_unknown_rules_are_not_mutable(client):
+    invalid = client.patch("/api/v1/detection-rules/AUTH-SSH-001", json={"threshold_override": 1})
+    unknown = client.patch("/api/v1/detection-rules/UNKNOWN-001", json={"enabled": False})
+    assert invalid.status_code == 422
+    assert unknown.status_code == 404
