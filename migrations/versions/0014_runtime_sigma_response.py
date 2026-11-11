@@ -61,6 +61,19 @@ def upgrade() -> None:
     op.create_index("ix_sigma_rules_level", "sigma_rules", ["level"])
     op.create_index("ix_sigma_rules_enabled", "sigma_rules", ["enabled"])
     op.create_table(
+        "scanner_import_runs",
+        sa.Column("id", sa.Uuid(as_uuid=True), nullable=False),
+        sa.Column("scanner_name", sa.String(120), nullable=False),
+        sa.Column("scan_id", sa.String(160), nullable=False),
+        sa.Column("result", sa.JSON(), nullable=False),
+        sa.Column("created_by", sa.String(64), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("scanner_name", "scan_id", name="uq_scanner_import_runs_scanner_scan"),
+    )
+    op.create_index("ix_scanner_import_runs_scanner_name", "scanner_import_runs", ["scanner_name"])
+    op.create_index("ix_scanner_import_runs_scan_id", "scanner_import_runs", ["scan_id"])
+    op.create_table(
         "response_action_requests",
         sa.Column("id", sa.Uuid(as_uuid=True), nullable=False),
         sa.Column("case_id", sa.Uuid(as_uuid=True), nullable=True),
@@ -87,6 +100,9 @@ def upgrade() -> None:
         op.create_index("ix_response_action_requests_" + col, "response_action_requests", [col])
 
 def downgrade() -> None:
+    op.drop_index("ix_scanner_import_runs_scan_id", table_name="scanner_import_runs")
+    op.drop_index("ix_scanner_import_runs_scanner_name", table_name="scanner_import_runs")
+    op.drop_table("scanner_import_runs")
     for col in ("status", "connector_key", "case_id"):
         op.drop_index("ix_response_action_requests_" + col, table_name="response_action_requests")
     op.drop_table("response_action_requests")
