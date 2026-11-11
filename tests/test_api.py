@@ -550,6 +550,21 @@ def test_event_search_can_filter_by_external_source_identifier(client):
 
 
 def test_admin_can_create_user_and_user_can_login(client):
+    from types import SimpleNamespace
+    from fastapi import Depends
+    from sqlalchemy import select
+    from app.core.security import get_current_user
+    from app.models import Workspace
+
+    # This test's admin identity must have a real workspace context. The global
+    # auth fixture intentionally bypasses authentication and otherwise leaves
+    # provisioning without a workspace membership.
+    def workspace_admin(db=Depends(get_db)):
+        workspace = db.scalar(select(Workspace).where(Workspace.slug == "default"))
+        db.info["workspace_id"] = str(workspace.id)
+        return SimpleNamespace(id=uuid4(), username="test-admin", role="admin", is_active=True)
+
+    app.dependency_overrides[get_current_user] = workspace_admin
     created = client.post("/api/v1/auth/users", json={
         "username": "new-analyst",
         "password": "strong-test-password-2026",
@@ -565,7 +580,6 @@ def test_admin_can_create_user_and_user_can_login(client):
     })
     assert login.status_code == 200
     token = login.json()["access_token"]
-    from app.core.security import get_current_user
     app.dependency_overrides.pop(get_current_user, None)
     identity = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert identity.status_code == 200
