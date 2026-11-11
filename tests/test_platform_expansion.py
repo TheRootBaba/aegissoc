@@ -10,7 +10,7 @@ from app.core.security import get_current_user
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
-from app.models import ConnectorConfig, ManagedAsset, SecurityEvent, ThreatIndicator
+from app.models import ConnectorConfig, ManagedAsset, SecurityEvent, ThreatIndicator, Workspace
 from app.services.integrations import get_adapter
 from app.services.sigma_engine import parse_sigma_document, rule_matches
 
@@ -20,6 +20,10 @@ def isolated_db():
     factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     Base.metadata.create_all(bind=engine)
     session = factory()
+    default_workspace = Workspace(slug='default', name='Default Workspace', is_active=True)
+    session.add(default_workspace)
+    session.commit()
+    session.info['workspace_id'] = str(default_workspace.id)
     yield session
     session.close()
     Base.metadata.drop_all(bind=engine)
