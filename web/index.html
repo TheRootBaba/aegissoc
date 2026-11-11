@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0a1020">
+  <meta name="theme-color" content="#0B0D10">
   <meta name="description" content="AegisSOC security operations and incident response workspace">
   <title>AegisSOC — Security Operations</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
   <script src="/static/app.js" defer></script>
 </head>
@@ -24,6 +24,8 @@
       <nav class="nav-group" aria-label="Main navigation">
         <a class="nav-link active" href="#overview" data-nav="overview"><span class="nav-icon">◫</span>Overview</a>
         <a class="nav-link" href="#sources" data-nav="sources"><span class="nav-icon">⌘</span>Data sources<span class="nav-count" id="nav-source-count">0</span></a>
+        <a class="nav-link" href="#operations" data-nav="operations"><span class="nav-icon">▤</span>Operations & retention</a>
+        <a class="nav-link" href="#connectors" data-nav="connectors"><span class="nav-icon">⌘</span>Integrations</a>
         <a class="nav-link" href="#schedules" data-nav="schedules"><span class="nav-icon">◷</span>Detection schedules</a>
         <a class="nav-link" href="#alerts" data-nav="alerts"><span class="nav-icon">◎</span>Alert queue<span class="nav-count" id="nav-alert-count">0</span></a>
         <a class="nav-link" href="#audit" data-nav="audit"><span class="nav-icon">⌑</span>Audit trail</a>
@@ -77,6 +79,46 @@
         </div>
       </section>
 
+
+      <section class="section-block" id="operations">
+        <div class="section-heading"><div><div class="section-kicker">02 / RELIABILITY & GOVERNANCE</div><h2>Operational health</h2><p>Ingestion throughput, detection execution, retention policy, and maintenance history.</p></div><div class="section-heading-side"><span class="data-chip" id="operations-status">Awaiting telemetry</span><button class="button button-secondary" id="run-retention" type="button" hidden>Run cleanup</button></div></div>
+        <div class="operations-metrics" id="operations-metrics">
+          <article class="ops-metric"><span>EVENTS · 1H</span><strong id="ops-events-hour">—</strong><small>Created in the last hour</small></article>
+          <article class="ops-metric"><span>EVENTS · 24H</span><strong id="ops-events-day">—</strong><small>Created in the last day</small></article>
+          <article class="ops-metric"><span>DETECTION FAILURES</span><strong id="ops-detection-failures">—</strong><small>Failed executions · 24h</small></article>
+          <article class="ops-metric"><span>INGEST REJECTIONS</span><strong id="ops-ingest-rejected">—</strong><small>Lifetime source counter</small></article>
+        </div>
+        <div class="operations-grid">
+          <div class="surface-card retention-panel">
+            <div class="card-toolbar"><div class="toolbar-title"><span class="toolbar-mark">⌁</span><span><strong>Retention policies</strong><small>Expiry windows with active evidence protection</small></span></div><span class="data-chip">ADMIN CONTROL</span></div>
+            <div id="retention-policies" class="retention-policies"><div class="source-empty">Loading retention policy…</div></div>
+          </div>
+          <div class="surface-card jobs-panel">
+            <div class="card-toolbar"><div class="toolbar-title"><span class="toolbar-mark">◷</span><span><strong>Maintenance history</strong><small>Retention and recovery job outcomes</small></span></div><span class="result-count" id="job-count">0 runs</span></div>
+            <div id="operations-jobs" class="operations-jobs"><div class="source-empty">No maintenance history yet.</div></div>
+            <div class="recovery-note"><strong>Backup & restore verification</strong><p>Run <code>docker compose --profile backup run --rm backup</code> to create a PostgreSQL dump, restore it into an isolated temporary database, verify required tables, and write a SHA-256 manifest. Copy the backup volume off-host.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-block" id="connectors">
+        <div class="section-heading"><div><div class="section-kicker">03 / SOURCE ADAPTER FRAMEWORK</div><h2>Integration registry</h2><p>Manage connector contracts and external credential references. Health checks validate configuration, not remote connectivity.</p></div><span class="result-count" id="connector-count">0 connectors</span></div>
+        <div class="surface-card connector-workspace">
+          <div class="connector-create-panel" id="connector-create-panel" hidden>
+            <div class="schedule-create-heading"><strong>Register an integration</strong><span>ADMINISTRATOR CONTROL</span></div>
+            <form id="connector-create-form" class="connector-create-form">
+              <label>Connector key<input id="connector-key" maxlength="80" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" placeholder="wazuh-prod" required></label>
+              <label>Display name<input id="connector-display-name" maxlength="120" placeholder="Production Wazuh" required></label>
+              <label>Adapter<select id="connector-type"><option value="wazuh">Wazuh</option><option value="syslog">Syslog</option><option value="http_event">HTTP event source</option><option value="generic">Generic</option></select></label>
+              <label>External credential reference<input id="connector-credential-ref" maxlength="255" placeholder="vault://soc/wazuh-prod"></label>
+              <label class="connector-config-label">Adapter configuration (JSON)<textarea id="connector-config" rows="3">{ "manager_url": "https://wazuh.example.internal" }</textarea></label>
+              <button class="button button-primary" type="submit" id="connector-create-button">Register connector</button>
+            </form>
+            <div id="connector-feedback" class="query-feedback" aria-live="polite"></div>
+          </div>
+          <div id="connector-list" class="connector-list"><div class="source-empty">Loading integration registry…</div></div>
+        </div>
+      </section>
       <section class="section-block" id="schedules">
         <div class="section-heading"><div><div class="section-kicker">02 / CONTINUOUS DETECTION</div><h2>Detection schedules</h2><p>Recurring rule execution, durable run history, and operational retry state.</p></div><span class="result-count" id="schedule-count">0 schedules</span></div>
         <div class="surface-card schedule-workspace">
