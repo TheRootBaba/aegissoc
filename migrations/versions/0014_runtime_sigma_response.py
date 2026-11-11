@@ -84,6 +84,7 @@ def upgrade() -> None:
         sa.Column("status", sa.String(20), nullable=False, server_default="pending"),
         sa.Column("requested_by", sa.String(64), nullable=False),
         sa.Column("approved_by", sa.String(64), nullable=True),
+        sa.Column("decided_by", sa.String(64), nullable=True),
         sa.Column("decision_note", sa.String(500), nullable=True),
         sa.Column("execution_status", sa.String(24), nullable=True),
         sa.Column("response_code", sa.Integer(), nullable=True),
