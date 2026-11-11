@@ -2,7 +2,7 @@
 
 const $ = (id) => document.getElementById(id);
 const state = {
-  alerts: [], events: [], sources: [], eventStats: {}, alertStats: {}, users: [],
+  alerts: [], events: [], sources: [], schedules: [], eventStats: {}, alertStats: {}, users: [],
   savedQueries: [], queryFields: [], queryResult: null, pendingSavedQuery: null,
   selectedId: null, token: null, user: null, toastTimer: null,
 };
@@ -264,6 +264,104 @@ function renderSources() {
   }).join("") : '<div class="source-empty">No sources registered yet. Register a producer or send its first event to discover it automatically.</div>';
 }
 
+function renderSchedules() {
+  const schedules = state.schedules || [];
+  const isAdmin = state.user?.role === "admin";
+  $("schedule-create-panel").hidden = !isAdmin;
+  $("schedule-count").textContent = count(schedules.length) + " schedules";
+  $("schedules-grid").innerHTML = schedules.length ? schedules.map((schedule) => {
+    const status = schedule.last_status || (schedule.enabled ? "pending" : "paused");
+    const statusClass = status === "success" ? "healthy" : status === "failed" ? "failing" : "inactive";
+    const interval = schedule.interval_seconds < 3600
+      ? Math.round(schedule.interval_seconds / 60) + " min"
+      : schedule.interval_seconds % 3600 === 0
+        ? schedule.interval_seconds / 3600 + " hr" : Math.round(schedule.interval_seconds / 60) + " min";
+    return '<article class="schedule-card"><div class="schedule-card-head"><div><strong>' +
+      esc(schedule.name) + '</strong><small>Every ' + esc(interval) + ' · ' +
+      esc(schedule.window_minutes) + 'm window · threshold ' + esc(schedule.threshold) +
+      '</small></div><span class="source-state ' + statusClass + '">' + esc(status.replaceAll("_", " ")) +
+      '</span></div><div class="schedule-timing"><span>Next run<strong>' +
+      esc(date(schedule.next_run_at)) + '</strong></span><span>Last run<strong>' +
+      esc(schedule.last_run_at ? date(schedule.last_run_at) : "Never") + '</strong></span><span>Failures<strong>' +
+      count(schedule.consecutive_failures) + '</strong></span></div>' +
+      (schedule.last_error ? '<div class="schedule-error">' + esc(schedule.last_error) + '</div>' : '') +
+      '<div class="schedule-actions"><button class="button button-quiet" type="button" data-schedule-history="' +
+      esc(schedule.id) + '">Run history</button>' +
+      (isAdmin ? '<button class="button button-secondary" type="button" data-schedule-toggle="' +
+      esc(schedule.id) + '" data-enabled="' + esc(schedule.enabled) + '">' +
+      (schedule.enabled ? "Pause" : "Enable") + '</button><button class="button button-quiet schedule-delete" type="button" data-schedule-delete="' +
+      esc(schedule.id) + '">Delete</button>' : '') + '</div></article>';
+  }).join("") : '<div class="source-empty">No detection schedules configured. Administrators can create the first recurring detection job here.</div>';
+}
+async function createDetectionSchedule(event) {
+  event.preventDefault();
+  const button = $("schedule-create-button");
+  button.disabled = true;
+  $("schedule-create-feedback").textContent = "Creating schedule…";
+  try {
+    await api("/api/v1/detection-schedules", { method: "POST", body: JSON.stringify({
+      name: $("schedule-name").value.trim(),
+      interval_seconds: Number($("schedule-interval").value),
+      window_minutes: Number($("schedule-window").value),
+      threshold: Number($("schedule-threshold").value),
+      enabled: true,
+    }) });
+    $("schedule-create-form").reset();
+    $("schedule-create-feedback").textContent = "Schedule created. Its first run is due after the configured interval.";
+    showToast("Detection schedule created.");
+    await refreshDashboard();
+  } catch (error) {
+    $("schedule-create-feedback").textContent = error.message;
+    showToast(error.message, "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+async function loadScheduleHistory(scheduleId) {
+  try {
+    const executions = await api("/api/v1/detection-schedules/" + encodeURIComponent(scheduleId) + "/executions?limit=20");
+    const schedule = state.schedules.find((item) => item.id === scheduleId);
+    const panel = $("schedule-history");
+    panel.hidden = false;
+    panel.innerHTML = '<div class="schedule-history-heading"><strong>' +
+      esc(schedule?.name || "Detection schedule") + ' · Execution history</strong><button class="button button-quiet" id="close-schedule-history" type="button">Close</button></div>' +
+      (executions.length ? '<div class="schedule-history-list">' + executions.map((run) =>
+        '<div class="schedule-run"><span class="source-state ' + (run.status === "success" ? "healthy" : "failing") +
+        '">' + esc(run.status) + '</span><span><strong>' + esc(date(run.started_at)) +
+        '</strong><small>' + count(run.events_evaluated) + ' events · ' + count(run.alerts_created) +
+        ' new alerts · ' + count(run.alerts_updated) + ' updated</small></span><span class="run-duration">' +
+        count(run.duration_ms) + ' ms</span>' +
+        (run.error ? '<small class="schedule-error">' + esc(run.error) + '</small>' : '') +
+        '</div>').join("") + '</div>' : '<div class="source-empty">No executions have been recorded yet.</div>');
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+async function handleScheduleAction(event) {
+  const history = event.target.closest("[data-schedule-history]");
+  if (history) { await loadScheduleHistory(history.dataset.scheduleHistory); return; }
+  if (event.target.closest("#close-schedule-history")) { $("schedule-history").hidden = true; return; }
+  const toggle = event.target.closest("[data-schedule-toggle]");
+  if (toggle) {
+    try {
+      await api("/api/v1/detection-schedules/" + encodeURIComponent(toggle.dataset.scheduleToggle), {
+        method: "PATCH", body: JSON.stringify({ enabled: toggle.dataset.enabled !== "true" }),
+      });
+      showToast("Detection schedule updated.");
+      await refreshDashboard();
+    } catch (error) { showToast(error.message, "error"); }
+    return;
+  }
+  const remove = event.target.closest("[data-schedule-delete]");
+  if (remove && window.confirm("Delete this detection schedule and its execution history?")) {
+    try {
+      await api("/api/v1/detection-schedules/" + encodeURIComponent(remove.dataset.scheduleDelete), { method: "DELETE" });
+      $("schedule-history").hidden = true;
+      showToast("Detection schedule deleted.");
+      await refreshDashboard();
+    } catch (error) { showToast(error.message, "error"); }
+  }
+}
 function renderUsers() {
   $("member-count").textContent = state.users.length + " members";
   $("users-list").innerHTML = state.users.length ? state.users.map((user) =>
@@ -573,7 +671,7 @@ $("run-detections").addEventListener("click", async () => {
   }
 });
 $("create-user-form").addEventListener("submit", createUser);
-$("source-create-form").addEventListener("submit", registerSource);
+$("source-create-form").addEventListener("submit", registerSource);\n$("schedule-create-form").addEventListener("submit", createDetectionSchedule);\n$("schedules-grid").addEventListener("click", handleScheduleAction);\n$("schedule-history").addEventListener("click", handleScheduleAction);
 $("run-event-query").addEventListener("click", () => runEventQuery());
 $("reset-event-query").addEventListener("click", () => {
   $("event-query-text").value = "";
