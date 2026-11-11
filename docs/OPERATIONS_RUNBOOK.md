@@ -56,7 +56,7 @@ A restore drill should use an isolated PostgreSQL instance. Never restore over t
 
 ## Retention safety
 
-- Event retention defaults to 90 days; execution history defaults to 180 days.
+- Event retention defaults to 90 days; execution history defaults to 180 days; operational job history defaults to 90 days.
 - Cleanup is bounded to 1,000 candidate rows per dataset per run.
 - Event IDs referenced by open, acknowledged, or in-progress alerts are protected when the policy's evidence-preservation switch is enabled.
 - The latest execution per schedule is always preserved.
