@@ -96,6 +96,8 @@ def test_runtime_role_cannot_read_or_mutate_another_workspace():
             ), {"id": event_two})
             assert changed.rowcount == 0
 
+            connection.execute(text("SELECT set_config('aegis.workspace_id', :value, true)"),
+                               {"value": str(workspace_two)})
             alert_two = uuid4()
             connection.execute(text("""
                 INSERT INTO detection_alerts
