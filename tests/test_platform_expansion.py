@@ -115,7 +115,13 @@ def test_threat_feed_connector_poll_updates_indicator(isolated_db, monkeypatch):
     assert connector_runtime.run_due_connectors_once(isolated_db, batch_size=1) == 1
     indicator = isolated_db.query(ThreatIndicator).filter_by(value="203.0.113.77").one()
     assert indicator.confidence == 90
-    assert connector_runtime.run_due_connectors_once(isolated_db, batch_size=1) == 0
+    indicator.status = "revoked"
+    isolated_db.get(connector_runtime.ConnectorRuntimeState, connector.id).next_run_at = datetime.now(timezone.utc)
+    isolated_db.commit()
+    assert connector_runtime.run_due_connectors_once(isolated_db, batch_size=1) == 1
+    isolated_db.refresh(indicator)
+    assert indicator.status == "revoked"
+    assert "feed:test-feed" in indicator.tags
 
 def test_sigma_api_import_test_and_enable(api_client):
     source = """title: SSH Authentication Failure
@@ -176,10 +182,12 @@ def test_response_action_requires_separate_approval_and_explicit_execution(api_c
     assert approved.status_code == 200
     class FakeResponse:
         status_code = 202
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
     class FakeClient:
         def __enter__(self): return self
         def __exit__(self, *args): return False
-        def post(self, *args, **kwargs): return FakeResponse()
+        def stream(self, *args, **kwargs): return FakeResponse()
     monkeypatch.setattr(response_actions.httpx, "Client", lambda **kwargs: FakeClient())
     executed = api_client.post(f"/api/v1/response-actions/{request_id}/execute")
     assert executed.status_code == 200
