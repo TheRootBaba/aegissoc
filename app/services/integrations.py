@@ -20,9 +20,18 @@ class IntegrationAdapter:
     connector_type = "generic"
 
     def validate_config(self, config: dict) -> AdapterCheck:
-        forbidden = SENSITIVE_CONFIG_KEYS.intersection(
-            str(key).lower() for key in config
-        )
+        def sensitive_keys(value):
+            if isinstance(value, dict):
+                for key, nested in value.items():
+                    normalized = str(key).lower()
+                    if normalized in SENSITIVE_CONFIG_KEYS:
+                        yield normalized
+                    yield from sensitive_keys(nested)
+            elif isinstance(value, list):
+                for nested in value:
+                    yield from sensitive_keys(nested)
+
+        forbidden = set(sensitive_keys(config))
         if forbidden:
             return AdapterCheck(False, "Secret material is not accepted in connector config; use credential_ref.")
         return AdapterCheck(True, "Configuration is structurally valid.")
