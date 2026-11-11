@@ -137,7 +137,7 @@ class MISPAdapter(HttpPollAdapter):
         tags = [str(item.get("name", "")) for item in raw_tags if isinstance(item, dict)] if isinstance(raw_tags, list) else []
         return {
             "type": mapped,
-            "value": attribute.get("value", ""),
+            "value": str(attribute.get("value", "")).split("|", 1)[0],
             "confidence": 80 if attribute.get("to_ids") else 50,
             "severity": "high" if attribute.get("to_ids") else "medium",
             "source": "MISP",
@@ -162,7 +162,7 @@ class OpenCTIAdapter(HttpPollAdapter):
         item = payload.get("node") if isinstance(payload.get("node"), dict) else payload
         pattern = str(item.get("pattern") or "")
         match = __import__("re").search(
-            r"\\[(?:ipv4-addr|ipv6-addr|domain-name|file):(?:value|hashes\\.(?:MD5|SHA-1|SHA-256))\\s*=\\s*'([^']+)'\\]",
+            r"\[(?:ipv4-addr|ipv6-addr|domain-name|file):(?:value|hashes\.(?:MD5|SHA-1|SHA-256))\s*=\s*'([^']+)'\]",
             pattern,
             __import__("re").I,
         )
@@ -178,6 +178,7 @@ class OpenCTIAdapter(HttpPollAdapter):
         else:
             kind = str(item.get("type") or item.get("indicator_type") or "").lower()
             value = item.get("value", "")
+        labels = item.get("labels") if isinstance(item.get("labels"), list) else []
         return {
             "type": kind,
             "value": value,
@@ -185,7 +186,7 @@ class OpenCTIAdapter(HttpPollAdapter):
             "severity": item.get("severity", "medium"),
             "source": "OpenCTI",
             "description": str(item.get("description") or "")[:500],
-            "tags": item.get("labels") if isinstance(item.get("labels"), list) else [],
+            "tags": [str(label.get("value", "")) for label in labels if isinstance(label, dict)],
             "expires_at": item.get("valid_until"),
         }
 
