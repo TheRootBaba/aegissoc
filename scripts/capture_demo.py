@@ -71,6 +71,7 @@ def main() -> int:
                 print(f"Skipping unavailable dashboard section: {section}")
                 continue
             link.click()
+            page.locator(f'a[data-nav="{section}"].active').wait_for(state="visible", timeout=5000)
             page.wait_for_timeout(900)
             page.screenshot(
                 path=str(args.output_dir / f"{section}.png"),
