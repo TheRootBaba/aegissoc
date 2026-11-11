@@ -1,4 +1,6 @@
+import logging
 from contextlib import asynccontextmanager
+from time import perf_counter
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
@@ -9,6 +11,7 @@ from app.core.logging_config import configure_logging, request_id_var
 
 
 configure_logging(settings.log_level)
+logger = logging.getLogger("aegissoc.http")
 
 
 @asynccontextmanager
@@ -27,13 +30,23 @@ app = FastAPI(
 
 @app.middleware("http")
 async def attach_request_id(request: Request, call_next):
-    """Attach a server-generated correlation ID to each request and response."""
+    """Attach a server-generated correlation ID and log request completion."""
     request_id = str(uuid4())
     token = request_id_var.set(request_id)
     request.state.request_id = request_id
+    started_at = perf_counter()
     try:
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
+        logger.info(
+            "http_request_completed",
+            extra={
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": response.status_code,
+                "duration_ms": round((perf_counter() - started_at) * 1000, 2),
+            },
+        )
         return response
     finally:
         request_id_var.reset(token)
