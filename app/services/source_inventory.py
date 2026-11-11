@@ -7,6 +7,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from app.models import SourceRegistry
+from app.db.session import workspace_id_for_session
 
 
 def record_ingestion(
@@ -21,6 +22,7 @@ def record_ingestion(
     """Atomically upsert one source's request outcome and cumulative counters."""
     now = datetime.now(timezone.utc)
     values = {
+        "workspace_id": workspace_id_for_session(db),
         "source_name": source_name,
         "source_type": "wazuh" if source_name.lower() == "wazuh" else "generic",
         "display_name": source_name,
@@ -52,7 +54,7 @@ def record_ingestion(
             else_=SourceRegistry.health_status,
         )
         db.execute(statement.on_conflict_do_update(
-            index_elements=[SourceRegistry.source_name],
+            index_elements=[SourceRegistry.workspace_id, SourceRegistry.source_name],
             set_={
                 "health_status": next_status,
                 "last_attempt_at": excluded.last_attempt_at,
