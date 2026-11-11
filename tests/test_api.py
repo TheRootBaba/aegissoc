@@ -22,6 +22,7 @@ def client():
     )
     TestingSessionLocal = sessionmaker(bind=test_engine, autoflush=False, autocommit=False)
     Base.metadata.create_all(bind=test_engine)
+    app.state.testing_session_factory = TestingSessionLocal
 
     def override_get_db():
         db = TestingSessionLocal()
@@ -34,6 +35,7 @@ def client():
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+    app.state.testing_session_factory = None
     Base.metadata.drop_all(bind=test_engine)
 
 
@@ -938,3 +940,102 @@ def test_cross_event_detection_refreshes_one_stable_alert_on_replay(client):
     assert second.json()["alerts_created"] == 0
     assert second.json()["alerts_updated"] == 1
     assert first_alert["id"] == second_alert["id"]
+
+
+def test_detection_schedule_crud_and_execution_history(client):
+    created = client.post("/api/v1/detection-schedules", json={
+        "name": "Five-minute lab detection",
+        "interval_seconds": 300,
+        "window_minutes": 10,
+        "threshold": 5,
+    })
+    assert created.status_code == 201
+    schedule = created.json()
+    assert schedule["enabled"] is True
+    assert schedule["last_status"] is None
+
+    duplicate = client.post("/api/v1/detection-schedules", json={
+        "name": "Five-minute lab detection",
+        "interval_seconds": 600,
+    })
+    assert duplicate.status_code == 409
+
+    updated = client.patch(
+        f"/api/v1/detection-schedules/{schedule['id']}",
+        json={"enabled": False, "interval_seconds": 600},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["enabled"] is False
+    assert updated.json()["interval_seconds"] == 600
+    assert client.get(f"/api/v1/detection-schedules/{schedule['id']}/executions").json() == []
+
+    deleted = client.delete(f"/api/v1/detection-schedules/{schedule['id']}")
+    assert deleted.status_code == 204
+    assert client.get("/api/v1/detection-schedules").json() == []
+
+
+def test_scheduler_worker_executes_due_schedule_and_persists_result(client):
+    from app.models import DetectionSchedule
+    from app.services.detection_scheduler import run_due_schedules_once
+
+    now = datetime.now(timezone.utc)
+    created = client.post("/api/v1/detection-schedules", json={
+        "name": "Due SSH detector",
+        "interval_seconds": 300,
+        "window_minutes": 10,
+        "threshold": 5,
+    })
+    schedule_id = created.json()["id"]
+    for attempt in range(5):
+        response = client.post("/api/v1/events", json=sample_event(
+            timestamp=(now - timedelta(seconds=5 - attempt)).isoformat(),
+            message=f"SSH authentication failure {attempt}",
+        ))
+        assert response.status_code == 201
+
+    with app.state.testing_session_factory() as db:
+        schedule = db.get(DetectionSchedule, UUID(schedule_id))
+        schedule.next_run_at = now - timedelta(seconds=1)
+        db.commit()
+        assert run_due_schedules_once(db, now=now) == 1
+
+    executions = client.get(f"/api/v1/detection-schedules/{schedule_id}/executions")
+    assert executions.status_code == 200
+    assert len(executions.json()) == 1
+    execution = executions.json()[0]
+    assert execution["status"] == "success"
+    assert execution["events_evaluated"] == 5
+    assert execution["alerts_created"] == 1
+
+    refreshed = client.get("/api/v1/detection-schedules").json()[0]
+    assert refreshed["last_status"] == "success"
+    assert refreshed["consecutive_failures"] == 0
+    assert refreshed["locked_until"] if "locked_until" in refreshed else True
+
+
+def test_scheduler_failure_is_recorded_and_retried_without_leaking_exception_text(client):
+    from app.models import DetectionSchedule
+    from app.services.detection_scheduler import run_due_schedules_once
+
+    now = datetime.now(timezone.utc)
+    created = client.post("/api/v1/detection-schedules", json={
+        "name": "Invalid legacy detector",
+        "interval_seconds": 300,
+        "window_minutes": 10,
+        "threshold": 5,
+    })
+    schedule_id = UUID(created.json()["id"])
+    with app.state.testing_session_factory() as db:
+        schedule = db.get(DetectionSchedule, schedule_id)
+        schedule.threshold = 1
+        schedule.next_run_at = now - timedelta(seconds=1)
+        db.commit()
+        assert run_due_schedules_once(db, now=now) == 0
+
+    execution = client.get(f"/api/v1/detection-schedules/{schedule_id}/executions").json()[0]
+    assert execution["status"] == "failed"
+    assert execution["error"] == "Detection execution failed (ValueError)"
+    refreshed = client.get("/api/v1/detection-schedules").json()[0]
+    assert refreshed["consecutive_failures"] == 1
+    assert refreshed["last_status"] == "failed"
+    assert refreshed["next_run_at"] > now.isoformat()
