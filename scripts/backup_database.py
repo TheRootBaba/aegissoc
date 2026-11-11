@@ -112,7 +112,7 @@ def create_backup(output_dir: Path) -> Path:
                 admin.execute(f'DROP DATABASE IF EXISTS "{verify_name}" WITH (FORCE)')
 
         manifest = backup_path.with_suffix(".sha256")
-        manifest.write_text(f"{digest}  {backup_path.name}\\n", encoding="utf-8")
+        manifest.write_text(f"{digest}  {backup_path.name}\n", encoding="utf-8")
         _record_job(url, status="success", started_at=started_at, error_type=None, details={
             "backup_file": backup_path.name, "sha256": digest,
             "restore_verification": "passed",
