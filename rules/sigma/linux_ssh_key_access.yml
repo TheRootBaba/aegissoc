@@ -1,0 +1,16 @@
+title: Linux SSH Private Key Access
+id: AEGIS-LNX-SSHKEY-001
+status: experimental
+description: Detects process command lines referencing common SSH private key paths.
+logsource:
+  product: linux
+  category: process_creation
+detection:
+  selection:
+    event_type: process.started
+    CommandLine|contains: id_rsa
+  condition: selection
+level: medium
+tags:
+  - attack.credential_access
+  - attack.t1552.004
