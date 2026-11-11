@@ -54,6 +54,9 @@ class AlertDetail(BaseModel):
     fingerprint: str
     title: str
     description: str
+    attack_tactic: str | None
+    attack_technique_id: str | None
+    attack_technique_name: str | None
     severity: Literal["low", "medium", "high", "critical", "info"]
     status: AlertStatus
     source_ip: str | None

@@ -338,3 +338,191 @@ def test_analyst_dashboard_and_static_assets_are_served(client):
     assert script.status_code == 200
     assert "/api/v1/detections/run" in script.text
     assert stylesheet.status_code == 200
+
+
+def wazuh_alert(**overrides):
+    payload = {
+        "id": "1710000000.12345",
+        "timestamp": "2026-11-11T12:30:00Z",
+        "rule": {
+            "id": "5710",
+            "level": 10,
+            "description": "sshd: authentication failed",
+            "groups": ["authentication_failed", "sshd"],
+        },
+        "agent": {"id": "007", "name": "ubuntu-wazuh-01"},
+        "data": {"srcip": "198.51.100.24", "dstuser": "root"},
+        "full_log": "Nov 11 sshd[123]: Failed password for root from 198.51.100.24 port 22",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_wazuh_adapter_normalizes_native_alert_and_preserves_raw(client):
+    response = client.post("/api/v1/events/ingest/wazuh", json=wazuh_alert())
+    assert response.status_code == 201
+    event = response.json()
+    assert event["source"] == "wazuh"
+    assert event["external_id"] == "1710000000.12345"
+    assert event["event_type"] == "authentication.failure"
+    assert event["severity"] == "medium"
+    assert event["hostname"] == "ubuntu-wazuh-01"
+    assert event["source_ip"] == "198.51.100.24"
+    assert event["username"] == "root"
+    assert event["raw"]["rule"]["id"] == "5710"
+    assert event["raw"]["data"]["srcip"] == "198.51.100.24"
+
+
+def test_wazuh_ingestion_is_idempotent_for_replayed_alert_ids(client):
+    first = client.post("/api/v1/events/ingest/wazuh", json=wazuh_alert())
+    replay = client.post("/api/v1/events/ingest/wazuh", json=wazuh_alert())
+    listed = client.get("/api/v1/events?source=wazuh")
+    assert first.status_code == 201
+    assert replay.status_code == 200
+    assert replay.json()["id"] == first.json()["id"]
+    assert len(listed.json()) == 1
+
+
+@pytest.mark.parametrize(
+    ("level", "expected"),
+    [(0, "info"), (3, "info"), (4, "low"), (7, "low"), (8, "medium"), (11, "medium"), (12, "high"), (14, "high"), (15, "critical")],
+)
+def test_wazuh_rule_level_maps_to_canonical_severity(client, level, expected):
+    payload = wazuh_alert(id=f"wazuh-level-{level}")
+    payload["rule"]["level"] = level
+    response = client.post("/api/v1/events/ingest/wazuh", json=payload)
+    assert response.status_code == 201
+    assert response.json()["severity"] == expected
+
+
+def test_wazuh_non_ssh_alert_is_not_misclassified_as_ssh_authentication(client):
+    payload = wazuh_alert(id="wazuh-firewall-01")
+    payload["rule"]["description"] = "Firewall policy changed"
+    payload["rule"]["groups"] = ["firewall", "configuration_changed"]
+    payload["full_log"] = "Firewall policy was updated"
+    response = client.post("/api/v1/events/ingest/wazuh", json=payload)
+    assert response.status_code == 201
+    assert response.json()["event_type"] == "wazuh.alert"
+
+
+@pytest.mark.parametrize("level", [-1, 16, "urgent", None])
+def test_wazuh_invalid_rule_level_is_rejected(client, level):
+    payload = wazuh_alert(id=f"invalid-level-{level}")
+    payload["rule"]["level"] = level
+    response = client.post("/api/v1/events/ingest/wazuh", json=payload)
+    assert response.status_code == 422
+
+
+def test_wazuh_missing_timestamp_is_rejected(client):
+    payload = wazuh_alert(id="missing-timestamp")
+    payload.pop("timestamp")
+    response = client.post("/api/v1/events/ingest/wazuh", json=payload)
+    assert response.status_code == 422
+
+
+def test_detection_alerts_include_mitre_attack_mapping(client):
+    now = datetime.now(timezone.utc)
+    for attempt in range(5):
+        payload = sample_event(
+            timestamp=(now - timedelta(seconds=attempt)).isoformat(),
+            message=f"sshd: Failed password attempt {attempt + 1}",
+            username=f"account-{attempt}",
+        )
+        client.post("/api/v1/events", json=payload)
+    run = client.post("/api/v1/detections/run", json={"window_minutes": 10, "threshold": 5})
+    assert run.status_code == 200
+    mappings = {item["rule_id"]: item for item in run.json()["alerts"]}
+    assert mappings["AUTH-SSH-001"]["attack_tactic"] == "Credential Access"
+    assert mappings["AUTH-SSH-001"]["attack_technique_id"] == "T1110"
+    assert mappings["AUTH-SSH-001"]["attack_technique_name"] == "Brute Force"
+    assert mappings["AUTH-SSH-002"]["attack_technique_id"] == "T1110.003"
+    detail = client.get(f"/api/v1/alerts/{mappings['AUTH-SSH-002']['id']}")
+    assert detail.json()["attack_technique_id"] == "T1110.003"
+
+
+def test_wazuh_alerts_flow_through_detection_engine_with_attack_mapping(client):
+    now = datetime.now(timezone.utc)
+    for attempt in range(5):
+        payload = wazuh_alert(id=f"wazuh-ssh-{attempt}")
+        payload["timestamp"] = (now - timedelta(seconds=attempt)).isoformat()
+        payload["data"]["dstuser"] = f"wazuh-user-{attempt}"
+        response = client.post("/api/v1/events/ingest/wazuh", json=payload)
+        assert response.status_code == 201
+
+    run = client.post("/api/v1/detections/run", json={"window_minutes": 10, "threshold": 5})
+    assert run.status_code == 200
+    brute_force = next(a for a in run.json()["alerts"] if a["rule_id"] == "AUTH-SSH-001")
+    assert brute_force["attack_technique_id"] == "T1110"
+    assert brute_force["event_count"] == 5
+
+
+def test_source_event_id_is_scoped_to_source_name(client):
+    first = client.post("/api/v1/events", json=sample_event(source="wazuh-a", external_id="same-id"))
+    duplicate = client.post("/api/v1/events", json=sample_event(source="wazuh-a", external_id="same-id"))
+    other_source = client.post("/api/v1/events", json=sample_event(source="wazuh-b", external_id="same-id"))
+    assert first.status_code == 201
+    assert duplicate.status_code == 200
+    assert duplicate.json()["id"] == first.json()["id"]
+    assert other_source.status_code == 201
+    assert other_source.json()["id"] != first.json()["id"]
+
+
+def test_wazuh_missing_rule_level_is_rejected(client):
+    payload = wazuh_alert(id="missing-level")
+    payload["rule"].pop("level")
+    response = client.post("/api/v1/events/ingest/wazuh", json=payload)
+    assert response.status_code == 422
+
+
+def test_alert_search_filters_by_attack_technique_and_status(client):
+    now = datetime.now(timezone.utc)
+    for attempt in range(5):
+        client.post(
+            "/api/v1/events",
+            json=sample_event(
+                timestamp=(now - timedelta(seconds=attempt)).isoformat(),
+                username=f"filter-user-{attempt}",
+                message=f"sshd: Failed password attempt {attempt}",
+            ),
+        )
+    run = client.post("/api/v1/detections/run", json={"window_minutes": 10, "threshold": 5})
+    brute = next(a for a in run.json()["alerts"] if a["rule_id"] == "AUTH-SSH-001")
+    filtered = client.get("/api/v1/alerts", params={"attack_technique_id": "T1110", "status": "open"})
+    assert filtered.status_code == 200
+    assert [a["id"] for a in filtered.json()] == [brute["id"]]
+
+    wrong = client.get("/api/v1/alerts", params={"attack_technique_id": "T1110.003", "rule_id": "AUTH-SSH-001"})
+    assert wrong.status_code == 200
+    assert wrong.json() == []
+
+
+def test_aggregate_stats_report_all_events_and_alerts(client):
+    now = datetime.now(timezone.utc)
+    for attempt in range(5):
+        client.post(
+            "/api/v1/events",
+            json=sample_event(
+                timestamp=(now - timedelta(seconds=attempt)).isoformat(),
+                username=f"stats-user-{attempt}",
+                message=f"sshd: Failed password attempt {attempt}",
+            ),
+        )
+    client.post("/api/v1/detections/run", json={"window_minutes": 10, "threshold": 5})
+
+    event_stats = client.get("/api/v1/events/stats")
+    alert_stats = client.get("/api/v1/alerts/stats")
+    assert event_stats.status_code == 200
+    assert event_stats.json()["total_events"] == 5
+    assert event_stats.json()["by_severity"]["medium"] == 5
+    assert alert_stats.status_code == 200
+    assert alert_stats.json()["total_alerts"] == 2
+    assert alert_stats.json()["by_status"]["open"] == 2
+    assert alert_stats.json()["by_severity"]["high"] == 1
+
+
+def test_event_search_can_filter_by_external_source_identifier(client):
+    client.post("/api/v1/events", json=sample_event(external_id="wazuh-alert-lookup"))
+    response = client.get("/api/v1/events", params={"external_id": "wazuh-alert-lookup"})
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+    assert response.json()[0]["external_id"] == "wazuh-alert-lookup"

@@ -12,6 +12,11 @@ from app.models import DetectionAlert, SecurityEvent
 
 SSH_BRUTE_FORCE_RULE_ID = "AUTH-SSH-001"
 SSH_PASSWORD_SPRAY_RULE_ID = "AUTH-SSH-002"
+ATTACK_MAPPINGS = {
+    SSH_BRUTE_FORCE_RULE_ID: {"attack_tactic": "Credential Access", "attack_technique_id": "T1110", "attack_technique_name": "Brute Force"},
+    SSH_PASSWORD_SPRAY_RULE_ID: {"attack_tactic": "Credential Access", "attack_technique_id": "T1110.003", "attack_technique_name": "Password Spraying"},
+}
+
 SSH_FAILURE_TYPES = {
     "authentication.failure",
     "ssh.authentication.failure",
@@ -44,6 +49,7 @@ def _upsert_alert(db, *, rule_id, title, source_ip, hostname, events, usernames,
             fingerprint=fingerprint,
             title=title,
             description=description,
+            **ATTACK_MAPPINGS[rule_id],
             severity=severity,
             status="open",
             source_ip=source_ip,
@@ -61,6 +67,8 @@ def _upsert_alert(db, *, rule_id, title, source_ip, hostname, events, usernames,
         alert.evidence_event_ids = evidence_ids
         alert.username = ", ".join(usernames)[:255] or None
         alert.description = description
+        for field, value in ATTACK_MAPPINGS[rule_id].items():
+            setattr(alert, field, value)
         if severity == "high":
             alert.severity = "high"
 

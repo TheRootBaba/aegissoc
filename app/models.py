@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, JSON, String, Text
+from sqlalchemy import DateTime, ForeignKey, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
@@ -10,6 +10,7 @@ from app.db.base import Base
 
 class SecurityEvent(Base):
     __tablename__ = "security_events"
+    __table_args__ = (UniqueConstraint("source", "external_id", name="uq_security_events_source_external_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     source: Mapped[str] = mapped_column(String(80), index=True)
@@ -19,6 +20,7 @@ class SecurityEvent(Base):
     hostname: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     source_ip: Mapped[str | None] = mapped_column(String(45), nullable=True, index=True)
     username: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    external_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     message: Mapped[str] = mapped_column(Text)
     raw: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(
@@ -34,6 +36,9 @@ class DetectionAlert(Base):
     fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
+    attack_tactic: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    attack_technique_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    attack_technique_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
     severity: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="open", index=True)
     assigned_to: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)

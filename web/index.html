@@ -32,12 +32,12 @@
       <section class="metrics" id="overview">
         <article class="metric"><div class="metric-label">OPEN ALERTS <span>↗</span></div><div class="metric-value" id="metric-open">—</div><div class="metric-foot">Require analyst attention</div></article>
         <article class="metric"><div class="metric-label">HIGH / CRITICAL <span class="accent-red">●</span></div><div class="metric-value" id="metric-high">—</div><div class="metric-foot">Elevated severity alerts</div></article>
-        <article class="metric"><div class="metric-label">EVENTS INGESTED <span>⌁</span></div><div class="metric-value" id="metric-events">—</div><div class="metric-foot">Latest 200 records</div></article>
+        <article class="metric"><div class="metric-label">EVENTS INGESTED <span>⌁</span></div><div class="metric-value" id="metric-events">—</div><div class="metric-foot">All-time total · latest 25 shown</div></article>
         <article class="metric"><div class="metric-label">IN INVESTIGATION <span>◷</span></div><div class="metric-value" id="metric-progress">—</div><div class="metric-foot">Assigned / actively reviewed</div></article>
       </section>
 
       <section class="section" id="alerts">
-        <div class="section-heading"><div><div class="eyebrow">DETECTION OUTPUT</div><h2>Alert queue</h2></div><div class="section-tools"><select id="severity-filter" aria-label="Filter alerts by severity"><option value="">All severities</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="info">Info</option></select><span class="count" id="alert-count">0 alerts</span></div></div>
+        <div class="section-heading"><div><div class="eyebrow">DETECTION OUTPUT</div><h2>Alert queue</h2></div><div class="section-tools"><select id="severity-filter" aria-label="Filter alerts by severity"><option value="">All severities</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="info">Info</option></select><select id="attack-filter" aria-label="Filter alerts by ATT&CK technique"><option value="">All ATT&amp;CK</option><option value="T1110">T1110 · Brute Force</option><option value="T1110.003">T1110.003 · Password Spraying</option></select><span class="count" id="alert-count">0 alerts</span></div></div>
         <div class="workspace-grid">
           <div class="panel table-panel">
             <div class="panel-top"><span>DETECTED ACTIVITY</span><span class="muted">Newest first</span></div>
