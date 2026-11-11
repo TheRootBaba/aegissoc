@@ -177,9 +177,6 @@ def test_normalized_ingest_rejects_invalid_source_payload_with_422(client):
     assert response.status_code == 422
 
 
-from datetime import datetime, timedelta, timezone
-
-
 def test_detection_run_endpoint_creates_alert_and_alert_api_returns_evidence(client):
     now = datetime.now(timezone.utc)
     for attempt in range(5):
@@ -339,5 +336,5 @@ def test_analyst_dashboard_and_static_assets_are_served(client):
     assert "AegisSOC" in dashboard.text
     assert "/static/app.js" in dashboard.text
     assert script.status_code == 200
-    assert "Run detections" in script.text
+    assert "/api/v1/detections/run" in script.text
     assert stylesheet.status_code == 200
