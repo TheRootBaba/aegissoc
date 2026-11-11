@@ -232,9 +232,7 @@ def _value_matches(value, wanted, mode: str) -> bool:
     if value is None:
         return False
     if mode == "exists":
-        return bool(value) if isinstance(wanted, bool) and wanted else (
-            value is None if isinstance(wanted, bool) else value is not None
-        )
+        return (value is not None) is bool(wanted) if isinstance(wanted, bool) else value is not None
     if mode == "cidr":
         try:
             return ipaddress.ip_address(str(value)) in ipaddress.ip_network(str(wanted), strict=False)
@@ -358,13 +356,18 @@ def _run_correlations(db: Session, rules: list[SigmaRule], events: list[Security
 
 def run_sigma_rules(db: Session, *, lookback_minutes: int = 15, limit: int = 1000) -> dict:
     now = datetime.now(timezone.utc)
-    events = list(db.scalars(
-        select(SecurityEvent).where(SecurityEvent.timestamp >= now - timedelta(minutes=lookback_minutes))
-        .order_by(SecurityEvent.timestamp.asc(), SecurityEvent.id.asc()).limit(limit)
-    ).all())
     rules = list(db.scalars(
         select(SigmaRule).where(SigmaRule.enabled.is_(True))
         .order_by(SigmaRule.rule_id.asc()).limit(100)
+    ).all())
+    effective_lookback = max(
+        [lookback_minutes] + [
+            item.correlation["window_minutes"] for item in rules if item.correlation
+        ]
+    )
+    events = list(db.scalars(
+        select(SecurityEvent).where(SecurityEvent.timestamp >= now - timedelta(minutes=effective_lookback))
+        .order_by(SecurityEvent.timestamp.asc(), SecurityEvent.id.asc()).limit(limit)
     ).all())
     created = updated = matches = 0
     for rule in rules:
