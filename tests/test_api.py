@@ -1420,3 +1420,60 @@ def test_detection_rule_tuning_is_bounded_and_unknown_rules_are_not_mutable(clie
     unknown = client.patch("/api/v1/detection-rules/UNKNOWN-001", json={"enabled": False})
     assert invalid.status_code == 422
     assert unknown.status_code == 404
+
+def test_threat_indicator_registry_validation_audit_and_event_matching(client):
+    event = client.post("/api/v1/events", json=sample_event(
+        source="sensor-a", source_ip="198.51.100.24",
+        message="Synthetic SSH authentication failure from 198.51.100.24",
+    ))
+    assert event.status_code == 201
+    created = client.post("/api/v1/threat-intel/indicators", json={
+        "indicator_type": "ip", "value": "198.51.100.24", "confidence": 92,
+        "severity": "high", "source": "analyst-lab", "description": "Synthetic IOC",
+        "tags": ["credential-access"],
+    })
+    assert created.status_code == 201
+    indicator = created.json()
+    assert indicator["confidence"] == 92
+    duplicate = client.post("/api/v1/threat-intel/indicators", json={
+        "indicator_type": "ip", "value": "198.51.100.24", "source": "another-feed",
+    })
+    assert duplicate.status_code == 409
+    matches = client.get("/api/v1/threat-intel/matches")
+    assert matches.status_code == 200
+    assert any(item["event_id"] == event.json()["id"] for item in matches.json())
+    lookup = client.get("/api/v1/threat-intel/lookup?value=198.51.100.24")
+    assert len(lookup.json()) == 1
+    revoked = client.patch("/api/v1/threat-intel/indicators/" + indicator["id"], json={"status": "revoked"})
+    assert revoked.status_code == 200
+    assert client.get("/api/v1/threat-intel/lookup?value=198.51.100.24").json() == []
+    assert client.get("/api/v1/audit?limit=20").status_code == 200
+
+
+def test_threat_indicator_rejects_invalid_ip_and_hash_values(client):
+    invalid_ip = client.post("/api/v1/threat-intel/indicators", json={
+        "indicator_type": "ip", "value": "999.999.999.999", "source": "test-feed",
+    })
+    invalid_hash = client.post("/api/v1/threat-intel/indicators", json={
+        "indicator_type": "hash", "value": "not-a-hash", "source": "test-feed",
+    })
+    assert invalid_ip.status_code == 422
+    assert invalid_hash.status_code == 422
+
+
+def test_entity_correlation_groups_same_identity_across_sources(client):
+    first = client.post("/api/v1/events", json=sample_event(
+        source="sensor-alpha", source_ip="203.0.113.77", hostname="edge-01", username="svc-api",
+    ))
+    second = client.post("/api/v1/events", json=sample_event(
+        source="sensor-beta", source_ip="203.0.113.77", hostname="edge-01", username="svc-api",
+        event_type="process.started", message="Synthetic process execution",
+    ))
+    assert first.status_code == second.status_code == 201
+    response = client.get("/api/v1/threat-intel/entities?type=ip&min_events=2")
+    assert response.status_code == 200
+    entity = next(item for item in response.json() if item["value"] == "203.0.113.77")
+    assert entity["event_count"] == 2
+    assert entity["source_count"] == 2
+    assert set(entity["sources"]) == {"sensor-alpha", "sensor-beta"}
+    assert len(entity["event_ids"]) == 2

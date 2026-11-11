@@ -489,3 +489,21 @@ Verification recomputes every entry, checks sequence continuity and previous-has
 ## Dashboard interface system
 
 The dashboard now uses a matte charcoal palette, Geist / Geist Mono typography, 4 px spacing increments, restrained 6 px surfaces, 1 px separators, and muted semantic telemetry colors. The full implementation guide and token values are in [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md).
+
+## Phase 1.20 — Threat intelligence and IOC enrichment
+
+- Curated IOC registry for IPv4/IPv6 addresses, domains, and MD5/SHA-1/SHA-256 hashes.
+- Confidence, severity, source provenance, tags, expiry and active/revoked lifecycle.
+- Exact lookups and deterministic local matching against a bounded recent event sample.
+- Indicator changes are recorded in the tamper-evident audit chain. No external reputation service is called implicitly.
+- API details and operational boundaries: [Threat intelligence guide](docs/THREAT_INTELLIGENCE.md).
+
+## Phase 1.21 — Cross-source entity correlation
+
+- Evidence-backed pivots for source IP, hostname and username across the latest 30 days of normalized events.
+- Event/alert counts, source diversity, first/last seen and capped event/alert evidence identifiers.
+- Bounded query scope; the feature does not claim probabilistic identity resolution or require a graph database.
+
+## Dashboard design system v3
+
+The analyst workspace moves to a light mineral canvas (#F3F5F2), deep blue-green navigation (#173746), and focused teal actions (#0B8D83), following a 60/30/10 composition. Inter is used for interface copy and IBM Plex Mono for technical identifiers. The refreshed design guide is in [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md).

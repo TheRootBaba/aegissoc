@@ -46,20 +46,19 @@ def test_dashboard_styles_include_responsive_and_reduced_motion_support():
     assert ".source-state.failing" in styles
 
 
-def test_dashboard_uses_a_premium_matte_graphite_visual_system():
+def test_dashboard_uses_a_light_60_30_10_design_system():
     html = (WEB / "index.html").read_text(encoding="utf-8")
     styles = (WEB / "styles.css").read_text(encoding="utf-8")
-    assert "Geist" in html
-    assert "Geist+Mono" in html
+    assert "Inter:wght@400;500;600;650;700;750" in html
+    assert "IBM+Plex+Mono" in html
     assert "Security operations." in html
-    assert "--bg: #0B0D10" in styles
-    assert "--surface: #11151A" in styles
-    assert "--green: #3C9B76" in styles
+    assert "--bg: #F3F5F2" in styles
+    assert "--navy: #173746" in styles
+    assert "--teal: #0B8D83" in styles
+    assert "60% warm mineral canvas" in styles
     assert ".metrics-grid" in styles
     assert ".source-layout" in styles
-    assert "linear-gradient" not in styles
     assert "backdrop-filter" not in styles
-
 
 def test_dashboard_exposes_investigation_workbench_controls():
     html = (WEB / "index.html").read_text(encoding="utf-8")
@@ -122,16 +121,15 @@ def test_dashboard_exposes_retention_operations_and_connector_workspaces():
     assert "function renderConnectors()" in script
 
 
-def test_dashboard_uses_sharp_matte_surfaces_and_geist_typography():
+def test_dashboard_uses_clear_modern_typography_and_matte_surfaces():
     html = (WEB / "index.html").read_text(encoding="utf-8")
     styles = (WEB / "styles.css").read_text(encoding="utf-8")
-    assert "Geist" in html
-    assert "Geist+Mono" in html
+    assert "Inter:wght@400;500;600;650;700;750" in html
+    assert "IBM+Plex+Mono" in html
     assert "border-radius: 6px" in styles
-    assert "--line: #242B33" in styles
-    assert "--focus: #6B9A9A" in styles
+    assert "--line: #DCE4E0" in styles
+    assert "--focus: #0B8D83" in styles
     assert "box-shadow: var(--shadow-float)" in styles
-
 
 def test_dashboard_exposes_case_management_and_rule_governance_workspaces():
     html = (WEB / "index.html").read_text(encoding="utf-8")
@@ -150,19 +148,26 @@ def test_dashboard_exposes_case_management_and_rule_governance_workspaces():
     assert "function selectCase(" in script
 
 
-def test_dashboard_visual_system_v2_refines_type_scale_spacing_and_graphite_palette():
+def test_dashboard_visual_system_v3_improves_readability_and_spacing():
     styles = (WEB / "styles.css").read_text(encoding="utf-8")
-    assert "--bg: #090C10" in styles
-    assert "--surface: #10151B" in styles
-    assert "--elevated: #161D25" in styles
-    assert "--text: #E9EDF2" in styles
-    assert "--muted: #A0AAB6" in styles
-    assert "--green: #4B9B7A" in styles
-    assert "--amber: #C4934E" in styles
-    assert "--red: #C77780" in styles
-    assert "--blue: #7699BB" in styles
-    assert "font-size: 34px" in styles
-    assert "min-height: 38px" in styles
+    assert "--text: #172A32" in styles
+    assert "--muted: #52666C" in styles
+    assert "line-height: 1.65" in styles
+    assert "font-size: 25px" in styles
+    assert "min-height: 40px" in styles
     assert ".case-layout" in styles
     assert ".detection-rule-list" in styles
-    assert "}\\n@media" not in styles
+
+
+def test_dashboard_exposes_threat_intelligence_and_entity_correlation():
+    html = (WEB / "index.html").read_text(encoding="utf-8")
+    script = (WEB / "app.js").read_text(encoding="utf-8")
+    for element_id in ("threat-intel", "indicator-form", "indicator-list", "indicator-matches",
+                       "entity-correlation", "entity-type", "entity-search", "entities-body"):
+        assert f'id="{element_id}"' in html
+    assert 'data-nav="threat-intel"' in html
+    assert 'data-nav="entity-correlation"' in html
+    assert 'api("/api/v1/threat-intel/indicators?limit=200")' in script
+    assert 'api("/api/v1/threat-intel/entities?min_events=1&limit=200")' in script
+    assert "function renderThreatIntel()" in script
+    assert "function renderEntities()" in script

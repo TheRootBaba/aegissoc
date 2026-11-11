@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#090C10">
+  <meta name="theme-color" content="#F3F5F2">
   <meta name="description" content="AegisSOC security operations and incident response workspace">
   <title>AegisSOC — Security Operations</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650;700;750&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
   <script src="/static/app.js" defer></script>
 </head>
@@ -30,6 +30,8 @@
         <a class="nav-link" href="#alerts" data-nav="alerts"><span class="nav-icon">◎</span>Alert queue<span class="nav-count" id="nav-alert-count">0</span></a>
         <a class="nav-link" href="#cases" data-nav="cases"><span class="nav-icon">▣</span>Incident cases</a>
         <a class="nav-link" href="#detection-rules" data-nav="detection-rules"><span class="nav-icon">⌘</span>Detection rules</a>
+        <a class="nav-link" href="#threat-intel" data-nav="threat-intel"><span class="nav-icon">⌖</span>Threat intelligence</a>
+        <a class="nav-link" href="#entity-correlation" data-nav="entity-correlation"><span class="nav-icon">◇</span>Entity correlation</a>
         <a class="nav-link" href="#audit" data-nav="audit"><span class="nav-icon">⌑</span>Audit trail</a>
         <a class="nav-link" href="#events" data-nav="events"><span class="nav-icon">⌁</span>Event telemetry</a>
         <a class="nav-link admin-nav" href="#team" data-nav="team" id="team-nav"><span class="nav-icon">♙</span>Team & access</a>
@@ -183,6 +185,43 @@
           <span class="result-count" id="rule-count">0 rules</span>
         </div>
         <div id="detection-rule-list" class="detection-rule-list"><div class="source-empty">Loading detection rule inventory…</div></div>
+      </section>
+
+      <section class="section-block intel-workspace" id="threat-intel">
+        <div class="section-heading">
+          <div><div class="section-kicker">07 / THREAT INTELLIGENCE</div><h2>Indicator registry</h2><p>Curated IPs, domains and file hashes with provenance, confidence and expiry controls.</p></div>
+          <span class="result-count" id="indicator-count">0 indicators</span>
+        </div>
+        <div class="intel-layout">
+          <div class="surface-card intel-register">
+            <div class="card-toolbar"><div class="toolbar-title"><strong>Register indicator</strong><small>Analyst-managed intelligence · no external lookups</small></div></div>
+            <form id="indicator-form" class="intel-form">
+              <label>Indicator type<select id="indicator-type"><option value="ip">IP address</option><option value="domain">Domain</option><option value="hash">File hash</option></select></label>
+              <label>Indicator value<input id="indicator-value" placeholder="198.51.100.24" maxlength="255" required></label>
+              <div class="intel-form-row"><label>Confidence<input id="indicator-confidence" type="number" min="0" max="100" value="70"></label><label>Severity<select id="indicator-severity"><option>low</option><option selected>medium</option><option>high</option><option>critical</option></select></label></div>
+              <label>Source / provenance<input id="indicator-source" placeholder="Analyst, feed name, case reference" required></label>
+              <label>Context<textarea id="indicator-description" rows="2" maxlength="500" placeholder="Why this indicator is trusted"></textarea></label>
+              <button class="button button-primary" type="submit" id="indicator-submit">Add indicator</button>
+              <p id="indicator-feedback" class="query-feedback" aria-live="polite"></p>
+            </form>
+          </div>
+          <div class="surface-card intel-results">
+            <div class="card-toolbar"><div class="toolbar-title"><strong>Threat indicator inventory</strong><small>Active and revoked records</small></div><button class="button button-secondary" id="refresh-intel" type="button">Refresh</button></div>
+            <div id="indicator-list" class="indicator-list"><div class="source-empty">Sign in to load the IOC registry.</div></div>
+            <div class="intel-matches"><div class="subsection-heading"><strong>Recent evidence matches</strong><span id="indicator-match-count">0 matches</span></div><div id="indicator-matches"><div class="source-empty">No matches loaded.</div></div></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-block" id="entity-correlation">
+        <div class="section-heading">
+          <div><div class="section-kicker">08 / CROSS-SOURCE ANALYTICS</div><h2>Entity correlation</h2><p>Pivot between source IPs, hosts and users to expose shared activity across telemetry sources.</p></div>
+          <span class="result-count" id="entity-count">0 entities</span>
+        </div>
+        <div class="surface-card entity-card">
+          <div class="entity-toolbar"><label>Entity type<select id="entity-type"><option value="">All entities</option><option value="ip">Source IP</option><option value="host">Hostname</option><option value="user">Username</option></select></label><label>Search<input id="entity-search" placeholder="Filter entity value"></label><button class="button button-secondary" id="refresh-entities" type="button">Run correlation</button></div>
+          <div class="table-wrap"><table class="data-table"><thead><tr><th>Entity</th><th>Value</th><th>Events</th><th>Alerts</th><th>Sources</th><th>Last observed</th></tr></thead><tbody id="entities-body"><tr><td colspan="6" class="table-empty">Sign in to build cross-source pivots.</td></tr></tbody></table></div>
+        </div>
       </section>
 
       <section class="section-block" id="audit">
