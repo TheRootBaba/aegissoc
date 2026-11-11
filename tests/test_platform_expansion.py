@@ -466,3 +466,53 @@ def test_nessus_export_endpoint_reconciles_only_known_assets(api_client):
     findings = api_client.get(f"/api/v1/asset-risk/assets/{asset.json()['id']}/findings")
     assert findings.status_code == 200
     assert findings.json()[0]["vulnerability_id"] == "CVE-2026-44123"
+
+def test_response_worker_retries_transient_receiver_failure_with_stable_idempotency(isolated_db, monkeypatch):
+    from datetime import timedelta
+    from app.models import ResponseActionRequest
+    from app.services import response_execution
+
+    connector = ConnectorConfig(
+        connector_key="retry-webhook", connector_type="response_webhook",
+        display_name="Retry receiver",
+        config={"endpoint": "https://response.example/actions", "allowed_hosts": ["response.example"]},
+        enabled=True, health_status="observed",
+    )
+    now = datetime.now(timezone.utc)
+    request = ResponseActionRequest(
+        connector_key="retry-webhook", action_type="notify", target="soc@example.invalid",
+        parameters={}, status="approved", execution_status="queued",
+        next_attempt_at=now, requested_by="analyst", approved_by="admin",
+        idempotency_key="a" * 64,
+    )
+    isolated_db.add_all([connector, request])
+    isolated_db.commit()
+    statuses = iter([503, 202])
+
+    class FakeResponse:
+        headers = {}
+        def __init__(self, status_code): self.status_code = status_code
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+    class FakeClient:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def stream(self, *args, **kwargs): return FakeResponse(next(statuses))
+    monkeypatch.setattr(response_execution.httpx, "Client", lambda **kwargs: FakeClient())
+
+    assert response_execution.run_due_response_actions_once(isolated_db, now=now) == 1
+    isolated_db.refresh(request)
+    assert request.status == "approved"
+    assert request.execution_status == "retry_scheduled"
+    assert request.execution_attempts == 1
+    retry_at = request.next_attempt_at
+    assert retry_at is not None and retry_at > now
+    original_key = request.idempotency_key
+
+    assert response_execution.run_due_response_actions_once(
+        isolated_db, now=retry_at + timedelta(seconds=1)
+    ) == 1
+    isolated_db.refresh(request)
+    assert request.status == "succeeded"
+    assert request.execution_attempts == 2
+    assert request.idempotency_key == original_key
