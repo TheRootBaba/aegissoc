@@ -58,6 +58,7 @@ def test_dashboard_uses_a_light_60_30_10_design_system():
     assert "60% warm mineral canvas" in styles
     assert ".metrics-grid" in styles
     assert ".source-layout" in styles
+    assert "backdrop-filter" not in styles
 
 def test_dashboard_exposes_investigation_workbench_controls():
     html = (WEB / "index.html").read_text(encoding="utf-8")
