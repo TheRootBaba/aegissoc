@@ -29,6 +29,13 @@ def import_rule(payload: SigmaImportRequest, db: Session = Depends(get_db), user
         raise HTTPException(422, str(exc)) from exc
     if db.get(SigmaRule, parsed["rule_id"]):
         raise HTTPException(409, "Sigma rule ID already exists")
+    if parsed["correlation"]:
+        referenced = set(db.scalars(select(SigmaRule.rule_id).where(
+            SigmaRule.rule_id.in_(parsed["correlation"]["rules"])
+        )).all())
+        missing = set(parsed["correlation"]["rules"]) - referenced
+        if missing:
+            raise HTTPException(422, "Correlation references unknown Sigma rules: " + ", ".join(sorted(missing)))
     rule = SigmaRule(**parsed, enabled=payload.enabled, created_by=user.username)
     db.add(rule)
     db.flush()
