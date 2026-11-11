@@ -85,7 +85,7 @@ async function bootstrap(){
     state.user=await api("/api/v1/auth/me");
     $("auth-overlay").classList.add("hidden");
     $("session-label").textContent=state.user.username+" · "+state.user.role;
-    if(state.user.role==="read_only")$("run-detections").hidden=true;
+    $("run-detections").hidden=state.user.role==="read_only";
     await refresh();
   }catch(error){
     sessionStorage.removeItem("aegis_token");state.token=null;state.user=null;
