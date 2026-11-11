@@ -1,5 +1,7 @@
 # Integration adapters
 
+> Related product captures: [AegisSOC screenshot gallery](SCREENSHOT_GALLERY.md).
+
 This page distinguishes inbound event contracts from outbound polling adapters. A connector record describes a configured source; it does not imply that AegisSOC is listening on every transport or can speak every vendor API.
 
 ## Adapter inventory
