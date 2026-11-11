@@ -3,7 +3,7 @@
 const $ = (id) => document.getElementById(id);
 const state = {
   alerts: [], events: [], sources: [], schedules: [], eventStats: {}, alertStats: {}, users: [],
-  savedQueries: [], queryFields: [], queryResult: null, pendingSavedQuery: null,
+  savedQueries: [], queryFields: [], queryResult: null, pendingSavedQuery: null,\n  auditEntries: [], auditVerification: null,
   selectedId: null, token: null, user: null, toastTimer: null,
 };
 const esc = (value) => String(value ?? "—").replace(/[&<>"']/g, (char) => ({
@@ -68,7 +68,7 @@ function clearSession() {
   $("source-grid").innerHTML = '<div class="source-empty">Sign in to inspect source health.</div>';
   $("schedule-create-panel").hidden = true;
   $("schedules-grid").innerHTML = '<div class="source-empty">Sign in to inspect detection schedules.</div>';
-  $("schedule-history").hidden = true;
+  $("schedule-history").hidden = true;\n  $("verify-audit").hidden = true;\n  $("audit-list").innerHTML = '<div class="source-empty">Sign in to inspect the security audit trail.</div>';\n  $("audit-status").textContent = "Not verified";\n  $("audit-count").textContent = "0 records";
   $("source-register-panel").hidden = true;
   $("detail-panel").innerHTML = '<div class="investigation-empty"><span class="empty-radar">◎</span><span class="section-kicker">INVESTIGATION WORKSPACE</span><h3>Nothing selected</h3><p>Sign in to inspect alerts and investigations.</p></div>';
   showAuth();
@@ -370,6 +370,42 @@ async function handleScheduleAction(event) {
     } catch (error) { showToast(error.message, "error"); }
   }
 }
+function renderAudit() {
+  const entries = state.auditEntries || [];
+  $("audit-count").textContent = count(entries.length) + " recent records";
+  $("verify-audit").hidden = state.user?.role !== "admin";
+  const verification = state.auditVerification;
+  const status = $("audit-status");
+  status.classList.toggle("audit-valid", Boolean(verification?.valid));
+  status.classList.toggle("audit-invalid", Boolean(verification && !verification.valid));
+  status.textContent = verification
+    ? verification.valid ? "Verified · " + count(verification.checked_entries) + " entries"
+      : "Integrity failure · sequence " + verification.first_invalid_sequence
+    : "Not verified";
+  $("audit-list").innerHTML = entries.length ? entries.map((entry) =>
+    '<article class="audit-entry"><span class="audit-sequence">#' +
+    String(entry.sequence).padStart(6, "0") + '</span><div class="audit-entry-main"><strong>' +
+    esc(entry.action) + '</strong><small>' + esc(entry.actor) + ' · ' + esc(entry.resource_type) +
+    (entry.resource_id ? ' · ' + esc(entry.resource_id) : '') + '</small></div><time>' +
+    esc(date(entry.occurred_at)) + '</time><span class="audit-hash" title="' +
+    esc(entry.entry_hash) + '">' + esc(entry.entry_hash.slice(0, 12)) + '…</span></article>'
+  ).join("") : '<div class="source-empty">No operator actions recorded yet.</div>';
+}
+async function verifyAuditChain() {
+  const button = $("verify-audit");
+  button.disabled = true;
+  button.textContent = "Verifying…";
+  try {
+    state.auditVerification = await api("/api/v1/audit/verify");
+    renderAudit();
+    showToast(state.auditVerification.message, state.auditVerification.valid ? "success" : "error");
+  } catch (error) {
+    showToast(error.message, "error");
+  } finally {
+    button.disabled = false;
+    button.textContent = "Verify chain";
+  }
+}
 function renderUsers() {
   $("member-count").textContent = state.users.length + " members";
   $("users-list").innerHTML = state.users.length ? state.users.map((user) =>
@@ -480,7 +516,7 @@ async function loadInvestigation(id) {
 }
 async function refreshDashboard() {
   try {
-    const [alerts, events, eventStats, alertStats, sources, savedQueries, queryFields, schedules] = await Promise.all([
+    const [alerts, events, eventStats, alertStats, sources, savedQueries, queryFields, schedules, auditEntries] = await Promise.all([
       api("/api/v1/alerts?limit=200"),
       api("/api/v1/events?limit=25"),
       api("/api/v1/events/stats"),
@@ -642,7 +678,7 @@ function setActiveNav() {
   });
   $("page-breadcrumb").textContent = current === "team" ? "Team & access" :
     current === "alerts" ? "Alert queue" : current === "events" ? "Event telemetry" :
-    current === "sources" ? "Data source health" : current === "schedules" ? "Detection schedules" : "Overview";
+    current === "sources" ? "Data source health" : current === "schedules" ? "Detection schedules" : current === "audit" ? "Security audit trail" : "Overview";
 }
 
 $("login-form").addEventListener("submit", signIn);
@@ -685,7 +721,7 @@ $("create-user-form").addEventListener("submit", createUser);
 $("source-create-form").addEventListener("submit", registerSource);
 $("schedule-create-form").addEventListener("submit", createDetectionSchedule);
 $("schedules-grid").addEventListener("click", handleScheduleAction);
-$("schedule-history").addEventListener("click", handleScheduleAction);
+$("schedule-history").addEventListener("click", handleScheduleAction);\n$("verify-audit").addEventListener("click", verifyAuditChain);
 $("run-event-query").addEventListener("click", () => runEventQuery());
 $("reset-event-query").addEventListener("click", () => {
   $("event-query-text").value = "";
