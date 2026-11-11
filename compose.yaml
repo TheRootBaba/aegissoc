@@ -81,6 +81,8 @@ services:
   response-worker:
     build: .
     command: ["python", "-m", "scripts.response_worker"]
+    env_file:
+      - .env
     environment:
       APP_NAME: ${APP_NAME:-AegisSOC API}
       APP_ENV: ${APP_ENV:-development}
