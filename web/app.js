@@ -51,6 +51,8 @@ function clearSession() {
   state.queryFields = [];
   state.queryResult = null;
   state.pendingSavedQuery = null;
+  state.auditEntries = [];
+  state.auditVerification = null;
   state.eventStats = {};
   state.alertStats = {};
   state.users = [];
