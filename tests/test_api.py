@@ -599,3 +599,87 @@ def test_login_returns_generic_failure_and_throttles_repeated_attempts(client):
     limited = client.post("/api/v1/auth/login", json=payload)
     assert limited.status_code == 429
     clear_login_rate_limit("testclient")
+
+
+def test_source_inventory_tracks_single_and_bulk_ingestion_outcomes(client):
+    first = client.post("/api/v1/events/ingest/inventory-lab", json={
+        "@timestamp": datetime.now(timezone.utc).isoformat(),
+        "event": {"action": "process.started", "severity": "info"},
+        "host": {"name": "sensor-01"},
+        "id": "inventory-event-1",
+        "message": "Synthetic process start",
+    })
+    assert first.status_code == 201
+
+    batch = {"events": [
+        {
+            "@timestamp": datetime.now(timezone.utc).isoformat(),
+            "event": {"action": "network.connection", "severity": "low"},
+            "host": {"name": "sensor-01"},
+            "id": "inventory-event-2",
+            "message": "Synthetic connection",
+        },
+        {
+            "@timestamp": datetime.now(timezone.utc).isoformat(),
+            "event": {"action": "network.connection", "severity": "low"},
+            "host": {"name": "sensor-01"},
+            "id": "inventory-event-2",
+            "message": "Replay of the previous event",
+        },
+        {"id": "invalid-record", "message": "Missing timestamp and event severity"},
+    ]}
+    result = client.post("/api/v1/events/ingest/inventory-lab/bulk", json=batch)
+    assert result.status_code == 200
+    assert result.json()["accepted"] == 1
+    assert result.json()["duplicates"] == 0
+    assert result.json()["rejected"] == 1
+
+    inventory = client.get("/api/v1/sources")
+    assert inventory.status_code == 200
+    source = next(item for item in inventory.json() if item["source_name"] == "inventory-lab")
+    assert source["health_status"] == "healthy"
+    assert source["accepted_events"] == 2
+    assert source["duplicate_events"] == 0
+    assert source["rejected_events"] == 1
+    assert source["last_attempt_at"] is not None
+    assert source["last_successful_event_at"] is not None
+
+    detail = client.get("/api/v1/sources/inventory-lab")
+    assert detail.status_code == 200
+    assert detail.json()["source_name"] == "inventory-lab"
+
+
+def test_source_registration_is_admin_only_and_rejects_duplicates(client):
+    created = client.post("/api/v1/sources", json={
+        "source_name": "registered-edr",
+        "display_name": "Endpoint Detection",
+        "source_type": "endpoint",
+        "description": "Synthetic endpoint telemetry source",
+    })
+    assert created.status_code == 201
+    assert created.json()["health_status"] == "inactive"
+
+    duplicate = client.post("/api/v1/sources", json={
+        "source_name": "registered-edr",
+        "display_name": "Duplicate source",
+        "source_type": "generic",
+    })
+    assert duplicate.status_code == 409
+
+    invalid = client.post("/api/v1/sources", json={
+        "source_name": "not a safe source name",
+        "display_name": "Invalid",
+    })
+    assert invalid.status_code == 422
+
+
+def test_source_inventory_reports_failed_and_unknown_sources(client):
+    rejected = client.post("/api/v1/events/ingest/broken-sensor/bulk", json={
+        "events": [{"id": "bad", "message": "missing required fields"}]
+    })
+    assert rejected.status_code == 200
+    source = client.get("/api/v1/sources/broken-sensor")
+    assert source.status_code == 200
+    assert source.json()["health_status"] == "failing"
+    assert source.json()["rejected_events"] == 1
+    assert client.get("/api/v1/sources/does-not-exist").status_code == 404
