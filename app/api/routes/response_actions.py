@@ -3,7 +3,6 @@ import hmac
 import ipaddress
 import json
 import os
-import re
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 import httpx
@@ -16,6 +15,7 @@ from app.models import ConnectorConfig, IncidentCase, ResponseActionRequest, Use
 from app.schemas.response_actions import ResponseActionCreate, ResponseActionDecision, ResponseActionRead
 from app.services.audit_chain import append_audit_entry
 from app.services.integrations import get_adapter
+from app.services.secrets import resolve_secret_reference
 
 router = APIRouter(prefix="/api/v1/response-actions", tags=["response-governance"],
                    dependencies=[Depends(require_roles("admin", "analyst", "read_only"))])
@@ -144,17 +144,13 @@ def execute(request_id: UUID, db: Session = Depends(get_db), user: User = Depend
     }
     encoded = json.dumps(body, separators=(",", ":"), sort_keys=True).encode()
     headers = {"Content-Type": "application/json", "Idempotency-Key": request.idempotency_key}
-    reference = connector.credential_ref
-    if reference:
-        if not reference.startswith("env://"):
-            raise HTTPException(422, "Response connector credential_ref must use env://NAME")
-        variable = reference[6:]
-        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", variable):
-            raise HTTPException(422, "Response connector credential reference is invalid")
-        secret = os.getenv(variable)
-        if not secret:
-            raise HTTPException(503, "Response connector credential is unavailable in the worker environment")
-        headers["X-Aegis-Signature"] = "sha256=" + hmac.new(secret.encode(), encoded, hashlib.sha256).hexdigest()
+    if connector.credential_ref:
+        try:
+            secret = resolve_secret_reference(connector.credential_ref)
+        except ValueError as exc:
+            raise HTTPException(503, str(exc)) from exc
+        if secret:
+            headers["X-Aegis-Signature"] = "sha256=" + hmac.new(secret.encode(), encoded, hashlib.sha256).hexdigest()
     request.status = "executing"
     request.execution_status = "submitted"
     _audit(db, user, "response_action.execution_started", request, {"connector_key": connector.connector_key})
