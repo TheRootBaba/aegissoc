@@ -73,7 +73,7 @@ def operations_metrics(db: Session = Depends(get_db)):
             "last_24_hours": db.scalar(select(func.count()).select_from(SecurityEvent).where(SecurityEvent.created_at >= since_day)) or 0,
         },
         "alerts": {
-            "open": db.scalar(select(func.count()).select_from(__import__("app.models", fromlist=["DetectionAlert"]).DetectionAlert).where(__import__("app.models", fromlist=["DetectionAlert"]).DetectionAlert.status == "open")) or 0,
+            "open": db.scalar(select(func.count()).select_from(DetectionAlert).where(DetectionAlert.status == "open")) or 0,
         },
         "detection_executions": {
             "last_24_hours": db.scalar(select(func.count()).select_from(DetectionExecution).where(DetectionExecution.started_at >= since_day)) or 0,
