@@ -2,7 +2,8 @@
 
 const $ = (id) => document.getElementById(id);
 const state = {
-  alerts: [], events: [], sources: [], eventStats: {}, alertStats: {}, users: [],\n  savedQueries: [], queryFields: [], queryResult: null, pendingSavedQuery: null,
+  alerts: [], events: [], sources: [], eventStats: {}, alertStats: {}, users: [],
+  savedQueries: [], queryFields: [], queryResult: null, pendingSavedQuery: null,
   selectedId: null, token: null, user: null, toastTimer: null,
 };
 const esc = (value) => String(value ?? "—").replace(/[&<>"']/g, (char) => ({
@@ -572,7 +573,8 @@ $("run-detections").addEventListener("click", async () => {
   }
 });
 $("create-user-form").addEventListener("submit", createUser);
-$("source-create-form").addEventListener("submit", registerSource);\n$("run-event-query").addEventListener("click", () => runEventQuery());
+$("source-create-form").addEventListener("submit", registerSource);
+$("run-event-query").addEventListener("click", () => runEventQuery());
 $("reset-event-query").addEventListener("click", () => {
   $("event-query-text").value = "";
   $("event-query-severity").value = "";
