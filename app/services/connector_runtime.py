@@ -6,6 +6,7 @@ from time import perf_counter
 from urllib.parse import urlsplit
 import httpx
 from sqlalchemy import select, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.models import ConnectorConfig, ConnectorRuntimeState, ConnectorExecution, ThreatIndicator
 from app.services.integrations import get_adapter
@@ -153,8 +154,13 @@ def ensure_connector_states(db: Session, now: datetime | None = None) -> int:
     for connector in connectors:
         state = db.get(ConnectorRuntimeState, connector.id)
         if state is None:
-            db.add(ConnectorRuntimeState(connector_id=connector.id, next_run_at=run_at, cursor={}))
-            created += 1
+            try:
+                with db.begin_nested():
+                    db.add(ConnectorRuntimeState(connector_id=connector.id, next_run_at=run_at, cursor={}))
+                    db.flush()
+                created += 1
+            except IntegrityError:
+                continue
     if created:
         db.commit()
     return created
@@ -184,11 +190,23 @@ def run_due_connectors_once(db: Session, *, now: datetime | None = None, batch_s
         timer = perf_counter()
         connector = db.get(ConnectorConfig, connector_id)
         state = db.get(ConnectorRuntimeState, connector_id)
-        if connector is None or state is None or not connector.enabled:
+        if connector is None or state is None:
             continue
+        if not connector.enabled:
+            state.locked_until = None
+            db.commit()
+            continue
+        stale_runs = db.scalars(select(ConnectorExecution).where(
+            ConnectorExecution.connector_id == connector_id,
+            ConnectorExecution.status == "running",
+        )).all()
+        for stale in stale_runs:
+            stale.status = "failed"
+            stale.completed_at = started
+            stale.error_type = "WorkerLeaseExpired"
         execution = ConnectorExecution(connector_id=connector_id, status="running", started_at=started)
         db.add(execution)
-        db.flush()
+        db.commit()
         try:
             url, headers = _poll_url(connector)
             document = _read_response(url, headers)
