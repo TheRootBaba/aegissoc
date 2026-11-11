@@ -124,11 +124,12 @@ def test_bulk_ingest_rejects_empty_or_oversized_batches(bulk_client, events):
 def test_bulk_ingest_can_report_all_records_rejected_without_creating_rows(bulk_client):
     response = bulk_client.post(
         "/api/v1/events/ingest/lab-sensor/bulk",
-        json={"events": [{"message": "No required event fields"}]},
+        json={"events": [{"severity": "do-not-echo-this-value"}]},
     )
 
     assert response.status_code == 200
     assert response.json()["accepted"] == 0
     assert response.json()["duplicates"] == 0
     assert response.json()["rejected"] == 1
+    assert "do-not-echo-this-value" not in response.json()["results"][0]["error"]
     assert bulk_client.get("/api/v1/events/stats").json()["total_events"] == 0
