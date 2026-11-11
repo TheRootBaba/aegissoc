@@ -1,5 +1,6 @@
 """Password hashing, signed access tokens, and authentication dependencies."""
 import base64, hashlib, hmac, json, secrets, time
+from uuid import UUID
 from collections import defaultdict, deque
 from threading import Lock
 from fastapi import Depends, HTTPException, Request, status
@@ -93,7 +94,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(
         raise HTTPException(status_code=401, detail="Bearer access token required",
                             headers={"WWW-Authenticate": "Bearer"})
     claims = decode_access_token(credentials.credentials)
-    user = db.get(User, claims["sub"])
+    user = db.get(User, UUID(claims["sub"]))
     if user is None or not user.is_active or user.username != claims["username"]:
         raise HTTPException(status_code=401, detail="User is inactive or no longer exists")
     return user
