@@ -90,6 +90,7 @@ def test_scanner_import_reconciles_assets_and_is_idempotent(api_client):
     }
     first = api_client.post("/api/v1/asset-risk/scanner-imports", json=payload)
     assert first.status_code == 200
+    assert first.json()["findings_seen"] == 2
     assert first.json()["findings_created"] == 1
     assert first.json()["findings_rejected"] == 1
     replay = api_client.post("/api/v1/asset-risk/scanner-imports", json=payload)
