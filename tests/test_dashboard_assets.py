@@ -49,7 +49,7 @@ def test_dashboard_styles_include_responsive_and_reduced_motion_support():
 def test_dashboard_uses_a_light_60_30_10_design_system():
     html = (WEB / "index.html").read_text(encoding="utf-8")
     styles = (WEB / "styles.css").read_text(encoding="utf-8")
-    assert "Inter:wght@400;500;600;650;700;750" in html
+    assert "Inter:wght@400;500;600;700;800" in html
     assert "IBM+Plex+Mono" in html
     assert "Security operations." in html
     assert "--bg: #F3F5F2" in styles
@@ -124,7 +124,7 @@ def test_dashboard_exposes_retention_operations_and_connector_workspaces():
 def test_dashboard_uses_clear_modern_typography_and_matte_surfaces():
     html = (WEB / "index.html").read_text(encoding="utf-8")
     styles = (WEB / "styles.css").read_text(encoding="utf-8")
-    assert "Inter:wght@400;500;600;650;700;750" in html
+    assert "Inter:wght@400;500;600;700;800" in html
     assert "IBM+Plex+Mono" in html
     assert "border-radius: 6px" in styles
     assert "--line: #DCE4E0" in styles
@@ -153,7 +153,7 @@ def test_dashboard_visual_system_v3_improves_readability_and_spacing():
     assert "--text: #172A32" in styles
     assert "--muted: #52666C" in styles
     assert "line-height: 1.65" in styles
-    assert "font-size: 25px" in styles
+    assert "font-size: clamp(24px, 2vw, 27px)" in styles
     assert "min-height: 40px" in styles
     assert ".case-layout" in styles
     assert ".detection-rule-list" in styles
@@ -171,3 +171,22 @@ def test_dashboard_exposes_threat_intelligence_and_entity_correlation():
     assert 'api("/api/v1/threat-intel/entities?min_events=1&limit=200")' in script
     assert "function renderThreatIntel()" in script
     assert "function renderEntities()" in script
+
+
+def test_dashboard_exposes_asset_risk_and_response_playbook_workspaces():
+    html = (WEB / "index.html").read_text(encoding="utf-8")
+    script = (WEB / "app.js").read_text(encoding="utf-8")
+    for element_id in (
+        "asset-risk", "asset-form", "asset-inventory", "assets-body",
+        "finding-form", "finding-list", "response-playbooks", "playbook-form",
+        "playbook-list",
+    ):
+        assert f'id="{element_id}"' in html
+    assert 'data-nav="asset-risk"' in html
+    assert 'data-nav="response-playbooks"' in html
+    assert 'api("/api/v1/asset-risk/assets?limit=200")' in script
+    assert 'api("/api/v1/asset-risk/playbooks?limit=100")' in script
+    assert "function renderAssetRisk()" in script
+    assert "function renderPlaybooks()" in script
+    assert "styles.css?v=3.1" in html
+    assert "app.js?v=3.1" in html
