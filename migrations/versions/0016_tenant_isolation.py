@@ -89,6 +89,10 @@ def upgrade() -> None:
                   AND membership.user_id = NULLIF(current_setting('aegis.user_id', true), '')::uuid
                   AND membership.is_active = true
             )
+        )
+        WITH CHECK (
+            current_setting('aegis.worker', true) = 'on'
+            OR current_setting('aegis.manage_workspaces', true) = 'on'
         );
         ALTER TABLE workspace_memberships ENABLE ROW LEVEL SECURITY;
         ALTER TABLE workspace_memberships FORCE ROW LEVEL SECURITY;
@@ -100,6 +104,7 @@ def upgrade() -> None:
                 current_setting('aegis.manage_memberships', true) = 'on'
                 AND workspace_id = NULLIF(current_setting('aegis.workspace_id', true), '')::uuid
             )
+            OR current_setting('aegis.manage_workspaces', true) = 'on'
         )
         WITH CHECK (
             current_setting('aegis.worker', true) = 'on'
