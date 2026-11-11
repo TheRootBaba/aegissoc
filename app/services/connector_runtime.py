@@ -451,7 +451,8 @@ def run_due_connectors_once(db: Session, *, now: datetime | None = None, batch_s
             execution = db.get(ConnectorExecution, execution.id)
             finished = datetime.now(timezone.utc)
             failures = (state.consecutive_failures if state else 0) + 1
-            delay = min(60 * (2 ** min(failures - 1, 10)), 3600)
+            from app.services.scanner_export_jobs import ScannerRateLimited
+            delay = exc.retry_after if isinstance(exc, ScannerRateLimited) else min(60 * (2 ** min(failures - 1, 10)), 3600)
             if state:
                 state.consecutive_failures = failures
                 state.last_run_at = finished
