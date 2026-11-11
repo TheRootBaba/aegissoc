@@ -327,3 +327,17 @@ def test_alert_notes_validate_content_and_alert_existence(client):
         json={"author": "analyst-01", "body": "This alert does not exist."},
     )
     assert missing.status_code == 404
+
+
+
+def test_analyst_dashboard_and_static_assets_are_served(client):
+    dashboard = client.get("/dashboard")
+    script = client.get("/static/app.js")
+    stylesheet = client.get("/static/styles.css")
+
+    assert dashboard.status_code == 200
+    assert "AegisSOC" in dashboard.text
+    assert "/static/app.js" in dashboard.text
+    assert script.status_code == 200
+    assert "Run detections" in script.text
+    assert stylesheet.status_code == 200
