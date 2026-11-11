@@ -80,7 +80,7 @@ class SourceRegistry(Base):
     __tablename__ = "source_registry"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    source_name: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
+    source_name: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
     source_type: Mapped[str] = mapped_column(String(32), nullable=False, default="generic")
     display_name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
