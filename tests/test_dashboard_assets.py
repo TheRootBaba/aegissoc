@@ -120,16 +120,15 @@ def test_dashboard_exposes_retention_operations_and_connector_workspaces():
     assert "function renderConnectors()" in script
 
 
-def test_dashboard_uses_sharp_matte_surfaces_and_geist_typography():
+def test_dashboard_uses_clear_modern_typography_and_matte_surfaces():
     html = (WEB / "index.html").read_text(encoding="utf-8")
     styles = (WEB / "styles.css").read_text(encoding="utf-8")
-    assert "Geist" in html
-    assert "Geist+Mono" in html
+    assert "Inter:wght@400;500;600;650;700;750" in html
+    assert "IBM+Plex+Mono" in html
     assert "border-radius: 6px" in styles
-    assert "--line: #242B33" in styles
-    assert "--focus: #6B9A9A" in styles
+    assert "--line: #DCE4E0" in styles
+    assert "--focus: #0B8D83" in styles
     assert "box-shadow: var(--shadow-float)" in styles
-
 
 def test_dashboard_exposes_case_management_and_rule_governance_workspaces():
     html = (WEB / "index.html").read_text(encoding="utf-8")
