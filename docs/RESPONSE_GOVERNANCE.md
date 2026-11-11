@@ -1,5 +1,7 @@
 # Response action governance and execution
 
+> Related product captures: [AegisSOC screenshot gallery](SCREENSHOT_GALLERY.md).
+
 AegisSOC separates an analyst's request, an administrator's decision and the external delivery attempt. The application does not run shell commands or directly isolate endpoints. It sends a bounded request to an administrator-configured receiver.
 
 ## Request and approval path
