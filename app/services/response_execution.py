@@ -52,6 +52,52 @@ def _delivery(request: ResponseActionRequest, connector: ConnectorConfig) -> tup
     return endpoint, headers, encoded
 
 
+def _reconcile(request: ResponseActionRequest, connector: ConnectorConfig) -> dict | None:
+    """Query an allowlisted receiver status endpoint before replaying a leased action."""
+    config = dict(connector.config or {})
+    endpoint = config.get("reconciliation_endpoint")
+    if not endpoint:
+        return None
+    validation = get_adapter("response_webhook").validate_config(config)
+    if not validation.valid:
+        raise ValueError(validation.message)
+    secret = resolve_secret_reference(connector.credential_ref)
+    headers = {"Accept": "application/json", "Idempotency-Key": request.idempotency_key}
+    if secret:
+        signature = hmac.new(secret.encode(), request.idempotency_key.encode(), hashlib.sha256).hexdigest()
+        headers["X-Aegis-Signature"] = "sha256=" + signature
+    parsed = urlsplit(endpoint)
+    if parsed.hostname.lower() not in [str(host).lower() for host in config["allowed_hosts"]]:
+        raise ValueError("Response reconciliation endpoint host is not allowlisted")
+    with httpx.Client(timeout=httpx.Timeout(10.0, connect=5.0), follow_redirects=False, verify=True) as client:
+        with client.stream(
+            "GET", endpoint, params={"idempotency_key": request.idempotency_key}, headers=headers,
+        ) as response:
+            if response.status_code == 404:
+                return None
+            response.raise_for_status()
+            chunks, size = [], 0
+            for chunk in response.iter_bytes():
+                size += len(chunk)
+                if size > 65536:
+                    raise ValueError("Response reconciliation payload exceeds 64 KiB")
+                chunks.append(chunk)
+    document = json.loads(b"".join(chunks))
+    if not isinstance(document, dict) or document.get("idempotency_key") != request.idempotency_key:
+        raise ValueError("Response reconciliation payload does not match the idempotency key")
+    status = str(document.get("status", "")).lower()
+    if status not in {"succeeded", "delivered", "completed", "pending", "in_progress", "failed", "rejected", "not_found"}:
+        raise ValueError("Response reconciliation status is unsupported")
+    if status == "not_found":
+        return None
+    reference = document.get("reference")
+    return {
+        "status": status,
+        "response_code": document.get("response_code") if isinstance(document.get("response_code"), int) else None,
+        "reference": str(reference)[:160] if reference else None,
+    }
+
+
 def _retry_delay(attempt: int) -> int:
     return min(30 * (2 ** max(0, attempt - 1)), MAX_RETRY_SECONDS)
 
