@@ -226,7 +226,7 @@ def run_due_connectors_once(db: Session, *, now: datetime | None = None, batch_s
                     raise ValueError("Wazuh Indexer page_size must be between 1 and 1000")
                 body = {
                     "size": page_size,
-                    "sort": [{"@timestamp": "asc"}, {"_id": "asc"}],
+                    "sort": [{"@timestamp": "asc"}, {"id": "asc"}],
                     "query": {"range": {"@timestamp": {"gte": config.get("lookback", "now-7d")}}},
                 }
                 if (state.cursor or {}).get("search_after"):
