@@ -1,5 +1,7 @@
 # Demo and screenshot capture
 
+> Related product captures: [AegisSOC screenshot gallery](SCREENSHOT_GALLERY.md).
+
 The screenshots in this project should come from the running application, with a real authenticated session and a controlled lab dataset. Do not use generated dashboard mockups as product evidence. Do not capture customer telemetry, access tokens, internal hostnames or credentials.
 
 ## Prepare a reviewable demo workspace
