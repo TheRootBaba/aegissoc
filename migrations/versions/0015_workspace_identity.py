@@ -23,7 +23,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("slug", name="uq_workspaces_slug"),
     )
-    op.create_index("ix_workspaces_slug", "workspaces", ["slug"])
 
     op.create_table(
         "workspace_memberships",
@@ -94,5 +93,4 @@ def downgrade() -> None:
     op.drop_index("ix_workspace_memberships_user_id", table_name="workspace_memberships")
     op.drop_index("ix_workspace_memberships_workspace_id", table_name="workspace_memberships")
     op.drop_table("workspace_memberships")
-    op.drop_index("ix_workspaces_slug", table_name="workspaces")
     op.drop_table("workspaces")
