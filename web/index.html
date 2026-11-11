@@ -32,6 +32,8 @@
         <a class="nav-link" href="#detection-rules" data-nav="detection-rules"><span class="nav-icon">⌘</span>Detection rules</a>
         <a class="nav-link" href="#threat-intel" data-nav="threat-intel"><span class="nav-icon">⌖</span>Threat intelligence</a>
         <a class="nav-link" href="#entity-correlation" data-nav="entity-correlation"><span class="nav-icon">◇</span>Entity correlation</a>
+        <a class="nav-link" href="#asset-risk" data-nav="asset-risk"><span class="nav-icon">▦</span>Asset risk</a>
+        <a class="nav-link" href="#response-playbooks" data-nav="response-playbooks"><span class="nav-icon">☷</span>Response playbooks</a>
         <a class="nav-link" href="#audit" data-nav="audit"><span class="nav-icon">⌑</span>Audit trail</a>
         <a class="nav-link" href="#events" data-nav="events"><span class="nav-icon">⌁</span>Event telemetry</a>
         <a class="nav-link admin-nav" href="#team" data-nav="team" id="team-nav"><span class="nav-icon">♙</span>Team & access</a>
@@ -224,6 +226,53 @@
         </div>
       </section>
 
+
+      <section class="section-block" id="asset-risk">
+        <div class="section-heading"><div><div class="section-kicker">09 / EXPOSURE MANAGEMENT</div><h2>Asset inventory & vulnerability risk</h2><p>Track managed systems, business criticality, ownership and source-attributed vulnerability findings.</p></div><span class="result-count" id="asset-count">0 assets</span></div>
+        <div class="asset-risk-layout">
+          <div class="surface-card asset-register">
+            <div class="card-toolbar"><div class="toolbar-title"><strong>Register managed asset</strong><small>Curated inventory · no network discovery implied</small></div></div>
+            <form id="asset-form" class="asset-form">
+              <label>Asset key<input id="asset-key" maxlength="160" placeholder="prod-web-01" required></label>
+              <label>Hostname<input id="asset-hostname" maxlength="255" placeholder="web-01.internal" required></label>
+              <div class="asset-form-row"><label>Environment<select id="asset-environment"><option>production</option><option>staging</option><option>development</option><option selected>unknown</option></select></label><label>Criticality<select id="asset-criticality"><option>low</option><option>medium</option><option>high</option><option selected>critical</option></select></label></div>
+              <label>Owner<input id="asset-owner" maxlength="120" placeholder="Platform team"></label>
+              <button class="button button-primary" type="submit">Add asset</button>
+              <p id="asset-feedback" class="query-feedback" aria-live="polite"></p>
+            </form>
+          </div>
+          <div class="surface-card asset-inventory">
+            <div class="card-toolbar"><div class="toolbar-title"><strong>Managed assets</strong><small>Inventory and vulnerability exposure</small></div><button class="button button-secondary" id="refresh-assets" type="button">Refresh</button></div>
+            <div class="table-wrap"><table class="data-table"><thead><tr><th>ASSET</th><th>ENVIRONMENT</th><th>CRITICALITY</th><th>OWNER</th><th>STATUS</th></tr></thead><tbody id="assets-body"><tr><td colspan="5" class="table-empty">Sign in to load asset inventory.</td></tr></tbody></table></div>
+          </div>
+        </div>
+        <div class="surface-card finding-workspace">
+          <div class="card-toolbar"><div class="toolbar-title"><strong>Record vulnerability finding</strong><small>Findings must come from an authorized scanner or analyst</small></div></div>
+          <form id="finding-form" class="finding-form">
+            <label>Asset<select id="finding-asset" required><option value="">Select managed asset…</option></select></label>
+            <label>Vulnerability ID<input id="finding-id" maxlength="64" placeholder="CVE-2026-12345" required></label>
+            <label>Title<input id="finding-title" maxlength="200" placeholder="Affected service vulnerability" required></label>
+            <label>Severity<select id="finding-severity"><option>low</option><option>medium</option><option>high</option><option selected>critical</option></select></label>
+            <label>Source<input id="finding-source" maxlength="120" placeholder="Scanner or analyst" required></label>
+            <button class="button button-primary" type="submit">Record finding</button>
+          </form>
+          <div id="finding-list" class="finding-list"><div class="source-empty">Select an asset to inspect its findings.</div></div>
+        </div>
+      </section>
+
+      <section class="section-block" id="response-playbooks">
+        <div class="section-heading"><div><div class="section-kicker">10 / RESPONSE EXECUTION</div><h2>Response playbooks</h2><p>Case-linked checklists with analyst attribution, completion state and audit history. No commands are executed automatically.</p></div><span class="result-count" id="playbook-count">0 runs</span></div>
+        <div class="surface-card playbook-workspace">
+          <form id="playbook-form" class="playbook-form">
+            <label>Playbook title<input id="playbook-title" maxlength="160" placeholder="Credential compromise response" required></label>
+            <label>Incident case<select id="playbook-case"><option value="">No linked case</option></select></label>
+            <label>Steps (one per line)<textarea id="playbook-steps" rows="4" maxlength="5000" placeholder="Validate identity and scope&#10;Preserve authentication evidence&#10;Coordinate containment approval" required></textarea></label>
+            <button class="button button-primary" type="submit">Start playbook</button>
+            <p id="playbook-feedback" class="query-feedback" aria-live="polite"></p>
+          </form>
+          <div id="playbook-list" class="playbook-list"><div class="source-empty">Sign in to inspect response playbook runs.</div></div>
+        </div>
+      </section>
       <section class="section-block" id="audit">
         <div class="section-heading"><div><div class="section-kicker">04 / GOVERNANCE & INTEGRITY</div><h2>Security audit trail</h2><p>Operator actions linked by a tamper-evident cryptographic hash chain.</p></div><div class="section-heading-side"><span class="data-chip" id="audit-status">Not verified</span><button class="button button-secondary" id="verify-audit" type="button" hidden>Verify chain</button></div></div>
         <div class="surface-card audit-card">
