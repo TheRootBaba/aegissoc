@@ -117,12 +117,12 @@ def _normalize_source_event(db: Session, source: str, payload: dict[str, Any]) -
     """Resolve a configured connector adapter while retaining legacy source ingest."""
     connector = _validate_registered_connector(db, source)
     if connector is None:
-        return normalize_wazuh_alert(payload) if source.lower() == "wazuh" else normalize_event(payload, source=source)
+        return normalize_wazuh_alert(payload) if source.lower() in {"wazuh", "wazuh_manager"} else normalize_event(payload, source=source)
     adapter = get_adapter(connector.connector_type)
     normalized_payload = adapter.normalize_payload(payload)
     normalized = (
         normalize_wazuh_alert(normalized_payload)
-        if connector.connector_type == "wazuh"
+        if connector.connector_type in {"wazuh", "wazuh_manager"}
         else normalize_event(normalized_payload, source=source)
     )
     normalized.source = source
