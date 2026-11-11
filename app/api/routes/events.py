@@ -55,6 +55,7 @@ def _persist_event(db: Session, payload: SecurityEventCreate) -> tuple[str, uuid
         if payload.external_id:
             existing_id = db.scalar(
                 select(SecurityEvent.id).where(
+                    SecurityEvent.workspace_id == values['workspace_id'],
                     SecurityEvent.source == payload.source,
                     SecurityEvent.external_id == payload.external_id,
                 )
@@ -68,7 +69,7 @@ def _persist_event(db: Session, payload: SecurityEventCreate) -> tuple[str, uuid
 
     event_id = db.scalar(
         statement.on_conflict_do_nothing(
-            index_elements=[SecurityEvent.source, SecurityEvent.external_id]
+            index_elements=[SecurityEvent.workspace_id, SecurityEvent.source, SecurityEvent.external_id]
         ).returning(SecurityEvent.id)
     )
     if event_id is not None:
