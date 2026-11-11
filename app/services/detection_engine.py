@@ -132,6 +132,7 @@ def _process_command(event: SecurityEvent) -> str:
 def run_ssh_brute_force_detection(
     db: Session, *, window_minutes: int = 10, threshold: int = 5,
     now: datetime | None = None,
+    commit: bool = True,
 ) -> dict:
     """Run the SSH, authentication-sequence, privilege, and process rules."""
     if not 1 <= window_minutes <= 1440:
@@ -242,7 +243,10 @@ def run_ssh_brute_force_detection(
             description=f"Process telemetry matched suspicious execution pattern '{indicator}' on {hostname or 'an unspecified host'}.",
         )
 
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     matched_alerts = []
     created = updated = 0
     for alert, is_new in matches:
