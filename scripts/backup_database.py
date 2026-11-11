@@ -63,7 +63,8 @@ def create_backup(output_dir: Path) -> Path:
     started_at = datetime.now(timezone.utc)
     backup_path = None
     try:
-        output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        os.chmod(output_dir, 0o700)
         stamp = started_at.strftime("%Y%m%dT%H%M%SZ")
         backup_path = output_dir / f"aegissoc-{stamp}.dump"
         env = _postgres_env(url)
@@ -78,6 +79,7 @@ def create_backup(output_dir: Path) -> Path:
             check=True, env=env, stdout=subprocess.DEVNULL,
         )
 
+        os.chmod(backup_path, 0o600)
         digest = hashlib.sha256(backup_path.read_bytes()).hexdigest()
         verify_name = f"aegis_restore_verify_{uuid.uuid4().hex[:12]}"
         admin_url = url.set(database="postgres")
