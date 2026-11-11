@@ -1,17 +1,13 @@
-import uuid
 from datetime import datetime, timezone
-
+import uuid
 from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, JSON, String, Text, UniqueConstraint, false, true
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
-
 from app.db.base import Base
-
 
 class SecurityEvent(Base):
     __tablename__ = "security_events"
     __table_args__ = (UniqueConstraint("source", "external_id", name="uq_security_events_source_external_id"),)
-
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     source: Mapped[str] = mapped_column(String(80), index=True)
     event_type: Mapped[str] = mapped_column(String(120), index=True)
@@ -25,10 +21,8 @@ class SecurityEvent(Base):
     raw: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
-
 class DetectionAlert(Base):
     __tablename__ = "detection_alerts"
-
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     rule_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
@@ -52,20 +46,16 @@ class DetectionAlert(Base):
     evidence_event_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
-
 class AlertNote(Base):
     __tablename__ = "alert_notes"
-
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     alert_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("detection_alerts.id", ondelete="CASCADE"), nullable=False, index=True)
     author: Mapped[str] = mapped_column(String(120), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
-
 class AlertAuditLog(Base):
     __tablename__ = "alert_audit_logs"
-
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     alert_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("detection_alerts.id", ondelete="CASCADE"), nullable=False, index=True)
     actor: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -73,12 +63,8 @@ class AlertAuditLog(Base):
     details: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
-
 class SourceRegistry(Base):
-    """Persistent inventory and ingestion-health counters for an event producer."""
-
     __tablename__ = "source_registry"
-
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     source_name: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
     source_type: Mapped[str] = mapped_column(String(32), nullable=False, default="generic")
@@ -93,11 +79,9 @@ class SourceRegistry(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
-
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (UniqueConstraint("username", name="uq_users_username"),)
-
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     username: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(256), nullable=False)
@@ -106,13 +90,9 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
-
 class SavedEventQuery(Base):
-    """Reusable analyst investigation query with owner or workspace visibility."""
-
     __tablename__ = "saved_event_queries"
     __table_args__ = (UniqueConstraint("created_by", "name", name="uq_saved_event_queries_owner_name"),)
-
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -122,13 +102,9 @@ class SavedEventQuery(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
-
 class DetectionSchedule(Base):
-    """Durable recurring execution configuration for the detection engine."""
-
     __tablename__ = "detection_schedules"
     __table_args__ = (UniqueConstraint("created_by", "name", name="uq_detection_schedules_owner_name"),)
-
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     interval_seconds: Mapped[int] = mapped_column(nullable=False)
@@ -145,17 +121,10 @@ class DetectionSchedule(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
-
 class DetectionExecution(Base):
-    """Immutable outcome record for one scheduled detection attempt."""
-
     __tablename__ = "detection_executions"
-
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    schedule_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("detection_schedules.id", ondelete="CASCADE"),
-        nullable=False, index=True,
-    )
+    schedule_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("detection_schedules.id", ondelete="CASCADE"), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -166,24 +135,16 @@ class DetectionExecution(Base):
     rules_evaluated: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     error: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
-
 class AuditChainState(Base):
-    """Single serialized head pointer for the global tamper-evident audit chain."""
-
     __tablename__ = "audit_chain_state"
-
     id: Mapped[int] = mapped_column(primary_key=True)
     head_sequence: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     head_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
-
 class SecurityAuditEntry(Base):
-    """Immutable hash-chained record of a security-relevant operator action."""
-
     __tablename__ = "security_audit_entries"
     __table_args__ = (UniqueConstraint("sequence", name="uq_security_audit_entries_sequence"),)
-
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     sequence: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
@@ -195,13 +156,8 @@ class SecurityAuditEntry(Base):
     previous_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     entry_hash: Mapped[str] = mapped_column(String(64), nullable=False)
 
-
-
 class RetentionPolicy(Base):
-    """Per-dataset retention controls; active evidence is protected independently."""
-
     __tablename__ = "retention_policies"
-
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     data_kind: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
     retention_days: Mapped[int] = mapped_column(nullable=False, default=90)
@@ -210,12 +166,8 @@ class RetentionPolicy(Base):
     updated_by: Mapped[str] = mapped_column(String(64), nullable=False, default="system")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
-
 class OperationalJobRun(Base):
-    """Sanitized outcome of a maintenance or recovery-related worker execution."""
-
     __tablename__ = "operational_job_runs"
-
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     job_name: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
@@ -225,12 +177,8 @@ class OperationalJobRun(Base):
     error_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
     details: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
-
 class ConnectorConfig(Base):
-    """Non-secret connector configuration; credentials live in an external secret store."""
-
     __tablename__ = "connector_configs"
-
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     connector_key: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
     connector_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
@@ -245,12 +193,8 @@ class ConnectorConfig(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
-
 class IncidentCase(Base):
-    """Analyst-owned incident that groups alerts, notes, and response state."""
-
     __tablename__ = "incident_cases"
-
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     case_number: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -265,40 +209,46 @@ class IncidentCase(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-
 class CaseAlertLink(Base):
-    """Many-to-many link between incident cases and evidence alerts."""
-
     __tablename__ = "case_alert_links"
     __table_args__ = (UniqueConstraint("case_id", "alert_id", name="uq_case_alert_links_case_alert"),)
-
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     case_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("incident_cases.id", ondelete="CASCADE"), nullable=False, index=True)
     alert_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("detection_alerts.id", ondelete="CASCADE"), nullable=False, index=True)
     linked_by: Mapped[str] = mapped_column(String(64), nullable=False)
     linked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
-
 class CaseNote(Base):
-    """Append-only analyst note attached to an incident case."""
-
     __tablename__ = "case_notes"
-
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     case_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("incident_cases.id", ondelete="CASCADE"), nullable=False, index=True)
     author: Mapped[str] = mapped_column(String(64), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
-
 class DetectionRuleConfig(Base):
-    """Operator-controlled enablement and bounded tuning for a built-in detection."""
-
     __tablename__ = "detection_rule_configs"
-
     rule_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=true())
     severity_override: Mapped[str | None] = mapped_column(String(16), nullable=True)
     threshold_override: Mapped[int | None] = mapped_column(nullable=True)
     updated_by: Mapped[str] = mapped_column(String(64), nullable=False, default="system")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+class ThreatIndicator(Base):
+    """Curated IOC record; provider lookups remain explicit and never happen implicitly."""
+    __tablename__ = "threat_indicators"
+    __table_args__ = (UniqueConstraint("indicator_type", "value", name="uq_threat_indicators_type_value"),)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    indicator_type: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    value: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    confidence: Mapped[int] = mapped_column(nullable=False, default=50)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False, default="medium")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active", index=True)
+    source: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    tags: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    created_by: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
