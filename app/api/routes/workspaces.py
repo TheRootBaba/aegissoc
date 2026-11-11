@@ -2,6 +2,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user, require_roles
@@ -79,7 +80,11 @@ def create_workspace(
         raise HTTPException(status_code=409, detail="Workspace slug already exists")
     workspace = Workspace(slug=payload.slug, name=payload.name.strip(), is_active=True)
     db.add(workspace)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Workspace slug already exists") from exc
     set_workspace_context(
         db, workspace.id, user_id=current_user.id,
         manage_memberships=True, manage_workspaces=True,
@@ -127,6 +132,7 @@ def add_workspace_member(
             workspace_id=workspace_id, user_id=user.id, role=payload.role, is_active=True,
         )
         db.add(membership)
+    db.flush()
     append_audit_entry(
         db, actor=current_user.username, action="workspace.member_added",
         resource_type="workspace_membership", resource_id=str(membership.id),
