@@ -13,7 +13,7 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
 def set_workspace_context(db: Session, workspace_id: UUID | str | None, *,
-                          user_id: UUID | str | None = None, worker: bool = False, manage_memberships: bool = False) -> None:
+                          user_id: UUID | str | None = None, worker: bool = False, manage_memberships: bool = False, manage_workspaces: bool = False) -> None:
     """Bind the current transaction and future transactions to one workspace."""
     if workspace_id is not None:
         db.info["workspace_id"] = UUID(str(workspace_id))
@@ -23,19 +23,23 @@ def set_workspace_context(db: Session, workspace_id: UUID | str | None, *,
         db.info["worker"] = True
     if manage_memberships:
         db.info["manage_memberships"] = True
+    if manage_workspaces:
+        db.info["manage_workspaces"] = True
     if db.get_bind().dialect.name == "postgresql":
         db.execute(
             text(
                 "SELECT set_config('aegis.workspace_id', :workspace_id, true), "
                 "set_config('aegis.user_id', :user_id, true), "
                 "set_config('aegis.worker', :worker, true), "
-                "set_config('aegis.manage_memberships', :manage_memberships, true)"
+                "set_config('aegis.manage_memberships', :manage_memberships, true), "
+                "set_config('aegis.manage_workspaces', :manage_workspaces, true)"
             ),
             {
                 "workspace_id": str(db.info.get("workspace_id") or ""),
                 "user_id": str(db.info.get("user_id") or ""),
                 "worker": "on" if db.info.get("worker") else "off",
                 "manage_memberships": "on" if db.info.get("manage_memberships") else "off",
+                "manage_workspaces": "on" if db.info.get("manage_workspaces") else "off",
             },
         )
 
@@ -71,6 +75,7 @@ def _apply_transaction_context(session, transaction, connection):
             "user_id": str(session.info.get("user_id") or ""),
             "worker": "on" if session.info.get("worker") else "off",
             "manage_memberships": "on" if session.info.get("manage_memberships") else "off",
+            "manage_workspaces": "on" if session.info.get("manage_workspaces") else "off",
         },
     )
 
