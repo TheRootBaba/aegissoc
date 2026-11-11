@@ -2,7 +2,7 @@
 
 This runbook is for the local Docker Compose deployment. Adapt credentials, storage, RPO, and RTO before production use.
 
-## First deployment of the retention and backup workers
+## First deployment of the API and workers
 
 The API container applies Alembic migrations with the migration-owner connection, provisions a separate non-owner runtime role, and then starts Uvicorn with the runtime connection. Preserve the database volume and ensure `POSTGRES_PASSWORD` in `.env` matches the existing `aegis` database role when reusing an initialized volume.
 
@@ -10,11 +10,11 @@ The API container applies Alembic migrations with the migration-owner connection
 docker compose up --build -d db api
 docker compose ps
 docker compose exec api alembic current
-docker compose up -d scheduler retention-worker response-worker integration-worker response-worker
+docker compose up -d scheduler retention-worker integration-worker response-worker
 docker compose ps
 ```
 
-Wait for the API health check to pass before running the backup profile. The retention worker also waits for the `retention_policies` table, but that guard is a startup safety net—not a replacement for explicitly applying migrations.
+Wait for the API health check to pass before running the backup profile. The retention worker waits for the migrated schema as a startup safety net. Confirm the Alembic revision before starting worker processes.
 
 ## Health and incident triage
 
@@ -47,12 +47,12 @@ A restore drill should use an isolated PostgreSQL instance. Never restore over t
 
 ## Recovery sequence
 
-1. Stop API and worker writes: `docker compose stop api scheduler retention-worker integration-worker`.
+1. Stop API and worker writes: `docker compose stop api scheduler retention-worker integration-worker response-worker`.
 2. Preserve the failed database volume and logs before attempting repair.
 3. Provision a clean PostgreSQL target and restore the latest backup.
 4. Confirm the restored Alembic revision and required tables; verify audit-chain integrity using the admin audit verification endpoint.
 5. Start API first: `docker compose up -d api`; wait for `/health/ready`.
-6. Start workers: `docker compose up -d scheduler retention-worker`.
+6. Start workers: `docker compose up -d scheduler retention-worker integration-worker response-worker`.
 7. Confirm source ingestion resumes, scheduled detections complete, and operational health returns to normal.
 8. Record the incident, restore point, data-loss window, and follow-up actions in the audit trail/runbook.
 
