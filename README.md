@@ -525,3 +525,28 @@ The analyst workspace moves to a light mineral canvas (#F3F5F2), deep blue-green
 - API and operational boundaries: [Asset risk and response playbooks](docs/ASSET_RISK_AND_PLAYBOOKS.md).
 
 Migration `0013_asset_risk_playbooks` follows `0012_threat_intel_correlation`.
+
+
+## Integration and response engineering
+
+The platform now includes an independently deployed integration worker, scheduled JSON event polling, threat-feed synchronization, scanner-neutral vulnerability imports, a bounded Sigma detection subset, and approval-gated response webhooks. These capabilities are described in the engineering documents:
+
+- [Integration runtime](docs/INTEGRATION_RUNTIME.md)
+- [Vulnerability scanner imports](docs/VULNERABILITY_IMPORTS.md)
+- [Threat feed synchronization](docs/THREAT_FEED_SYNC.md)
+- [Sigma detection engineering](docs/SIGMA_DETECTION.md)
+- [Response action governance](docs/RESPONSE_GOVERNANCE.md)
+- [Worker scaling and operations](docs/SCALING_AND_WORKERS.md)
+
+Apply the schema before starting the integration worker:
+
+```powershell
+docker compose up --build -d db api
+docker compose exec api alembic upgrade head
+docker compose up -d integration-worker
+docker compose logs -f integration-worker
+```
+
+The polling worker supports administrator-allowlisted HTTPS JSON endpoints, optional environment-backed credentials, bounded response sizes, leases, retry backoff and replay-safe event ingestion. Scanner imports are keyed by scanner and scan ID. Threat feeds reconcile indicators by type and value. Sigma imports use safe YAML parsing and an explicitly limited condition/field subset; this is not full Sigma specification support. Response actions require a different administrator to approve the request and a separate explicit execution call to an allowlisted webhook receiver.
+
+The integration runtime is a foundation for vendor-specific adapters. It does not claim that every vendor protocol, pagination scheme, Syslog transport listener or endpoint response action is implemented. Multi-tenant workspace isolation is not part of this release.
