@@ -252,3 +252,52 @@ class ThreatIndicator(Base):
     created_by: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class ManagedAsset(Base):
+    """Known infrastructure under monitoring; inventory metadata is analyst-curated."""
+    __tablename__ = "managed_assets"
+    __table_args__ = (UniqueConstraint("asset_key", name="uq_managed_assets_asset_key"),)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    asset_key: Mapped[str] = mapped_column(String(160), nullable=False, unique=True, index=True)
+    hostname: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    asset_type: Mapped[str] = mapped_column(String(32), nullable=False, default="server")
+    environment: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown", index=True)
+    owner: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    criticality: Mapped[str] = mapped_column(String(16), nullable=False, default="medium", index=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active", index=True)
+    tags: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_by: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class VulnerabilityFinding(Base):
+    """A source-attributed vulnerability observation associated with one managed asset."""
+    __tablename__ = "vulnerability_findings"
+    __table_args__ = (UniqueConstraint("asset_id", "vulnerability_id", name="uq_vulnerability_findings_asset_vuln"),)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    asset_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("managed_assets.id", ondelete="CASCADE"), nullable=False, index=True)
+    vulnerability_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="open", index=True)
+    source: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class ResponsePlaybookRun(Base):
+    """Auditable checklist execution; steps are data, never executable commands."""
+    __tablename__ = "response_playbook_runs"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    case_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("incident_cases.id", ondelete="SET NULL"), nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String(160), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="in_progress", index=True)
+    steps: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    created_by: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
