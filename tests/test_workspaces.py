@@ -10,7 +10,7 @@ from app.core.security import get_current_user
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
-from app.models import Workspace, WorkspaceMembership
+from app.models import User, Workspace, WorkspaceMembership
 
 
 def test_workspace_listing_and_lookup_are_membership_scoped():
@@ -27,7 +27,12 @@ def test_workspace_listing_and_lookup_are_membership_scoped():
     user = SimpleNamespace(id=user_id, username="workspace-analyst", role="analyst", is_active=True)
     first = Workspace(slug="alpha", name="Alpha Workspace")
     second = Workspace(slug="bravo", name="Bravo Workspace")
-    db.add_all([first, second])
+    db.add_all([
+        User(id=user_id, username="workspace-analyst", password_hash="test-hash", role="analyst", is_active=True),
+        User(id=other_user_id, username="other-analyst", password_hash="test-hash", role="admin", is_active=True),
+        first,
+        second,
+    ])
     db.flush()
     db.add_all([
         WorkspaceMembership(workspace_id=first.id, user_id=user_id, role="analyst", is_active=True),
