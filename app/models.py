@@ -118,6 +118,6 @@ class SavedEventQuery(Base):
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
     query: Mapped[dict] = mapped_column(JSON, nullable=False)
     is_shared: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=true())
-    created_by: Mapped[str] = mapped_column(ForeignKey("users.username", ondelete="CASCADE"), nullable=False, index=True)
+    created_by: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
