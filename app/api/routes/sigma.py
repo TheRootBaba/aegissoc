@@ -27,7 +27,7 @@ def import_rule(payload: SigmaImportRequest, db: Session = Depends(get_db), user
         parsed = parse_sigma_document(payload.sigma_yaml)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
-    if db.get(SigmaRule, parsed["rule_id"]):
+    if db.scalar(select(SigmaRule).where(SigmaRule.rule_id == parsed["rule_id"])):
         raise HTTPException(409, "Sigma rule ID already exists")
     if parsed["correlation"]:
         referenced = set(db.scalars(select(SigmaRule.rule_id).where(
@@ -48,7 +48,7 @@ def import_rule(payload: SigmaImportRequest, db: Session = Depends(get_db), user
 @router.patch("/rules/{rule_id}/enabled", response_model=SigmaRuleRead,
               dependencies=[Depends(require_roles("admin"))])
 def set_rule_enabled(rule_id: str, enabled: bool, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    rule = db.get(SigmaRule, rule_id)
+    rule = db.scalar(select(SigmaRule).where(SigmaRule.rule_id == rule_id))
     if rule is None:
         raise HTTPException(404, "Sigma rule not found")
     rule.enabled = enabled
