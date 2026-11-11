@@ -22,7 +22,7 @@ flowchart TB
     scheduler -->|workspace-scoped jobs| pg
     retention -->|bounded cleanup| pg
     integration <-->|connector state and cursors| pg
-    integration -->|allowlisted provider requests| vendors["Wazuh Manager / Indexer\nMISP / OpenCTI / JSON feeds"]
+    integration -->|allowlisted provider requests| vendors["Wazuh Manager and Indexer; MISP; OpenCTI; JSON feeds"]
     response <-->|leases and outcomes| pg
     response -->|signed, idempotent request| receiver["Configured response receiver"]
     backup["Backup job (on demand)"] -->|pg_dump / restore verification| pg
@@ -80,7 +80,7 @@ flowchart TB
     query --> records[("Workspace-owned records")]
     worker["Background worker"] --> enumerate["Enumerate active workspaces"]
     enumerate --> context
-    role["aegis_runtime\nNOSUPERUSER / NOBYPASSRLS"] -.-> rls
+    role["aegis_runtime: NOSUPERUSER, NOBYPASSRLS"] -.-> rls
 ```
 
 A workspace ID header is a selector, not an authorization grant. Membership checks and database policy must both permit access. Worker jobs enumerate workspaces and set an explicit context before processing tenant-owned rows. SQLite is used by parts of the fast unit-test suite, but it does not implement PostgreSQL RLS and is not evidence of database-level tenant isolation. The PostgreSQL RLS integration tests are the relevant check for that boundary.
