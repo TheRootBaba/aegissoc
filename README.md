@@ -467,3 +467,25 @@ Migration `0009_audit_chain` creates a singleton chain-head row and immutable au
 Verification recomputes every entry, checks sequence continuity and previous-hash linkage, and compares the computed head with the persisted chain state. Tampering with an entry or removing/reordering records is detected.
 
 **Security boundary:** a hash chain is tamper-evident, not an external immutable archive. A database administrator able to rewrite both every audit row and the chain-head could reconstruct the chain. For stronger production assurance, periodically export/anchor the current head hash to an independently controlled WORM or external audit destination. Audit history should also be included in backup and recovery tests.
+
+
+## Phase 1.16 — Retention, observability, and operational recovery
+
+- Configurable event and detection-execution retention policies, with administrator-only changes and hash-chain audit records.
+- Bounded cleanup runs protect evidence referenced by open, acknowledged, and in-progress alerts; the most recent execution for each schedule is retained.
+- A dedicated retention worker runs hourly and records sanitized maintenance outcomes.
+- Authenticated operational health and metrics endpoints expose source states, event throughput, ingestion outcomes, schedule failures, and maintenance history.
+- PostgreSQL custom-format backups are catalog-checked and restored into a temporary database before a backup is reported as verified. SHA-256 manifests are written beside each dump.
+- Recovery steps, restore drills, retention safety boundaries, and off-host backup requirements are documented in [the operations runbook](docs/OPERATIONS_RUNBOOK.md).
+
+## Phase 1.17 — Integration adapter framework
+
+- Persistent connector registry with Wazuh, Syslog, HTTP event, and generic adapter contracts.
+- Config validation is adapter-specific; source ingestion resolves registered connector keys through the adapter registry while retaining the existing Wazuh normalization path.
+- Credentials are represented by external `credential_ref` identifiers. Inline secret fields are rejected; this release does not resolve or persist secret material.
+- Connector checks validate configuration only and intentionally do not claim endpoint reachability or credential validity.
+- Administrator-managed connector lifecycle and audit events are exposed under `/api/v1/connectors`.
+
+## Dashboard interface system
+
+The dashboard now uses a matte charcoal palette, Geist / Geist Mono typography, 4 px spacing increments, restrained 6 px surfaces, 1 px separators, and muted semantic telemetry colors. The full implementation guide and token values are in [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md).

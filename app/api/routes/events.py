@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user, require_roles
 from app.db.session import get_db
-from app.models import SavedEventQuery, SecurityEvent
+from app.models import ConnectorConfig, SavedEventQuery, SecurityEvent
 from app.services.source_inventory import record_ingestion
 from app.services.audit_chain import append_audit_entry
 from app.schemas.events import (
@@ -26,6 +26,7 @@ from app.schemas.events import (
 )
 from app.services.event_normalizer import normalize_event
 from app.services.wazuh_adapter import normalize_wazuh_alert
+from app.services.integrations import get_adapter
 
 router = APIRouter(
     prefix="/api/v1/events", tags=["events"],
@@ -92,6 +93,51 @@ def _validation_summary(exc: ValidationError) -> str:
     )
 
 
+def _validate_registered_connector(db: Session, source: str):
+    connector = db.scalar(
+        select(ConnectorConfig).where(ConnectorConfig.connector_key == source)
+    )
+    if connector is None:
+        return None
+    if not connector.enabled:
+        raise ValueError("The configured connector is disabled")
+    adapter = get_adapter(connector.connector_type)
+    adapter_config = dict(connector.config or {})
+    if connector.credential_ref:
+        adapter_config["credential_ref"] = connector.credential_ref
+    validation = adapter.validate_config(adapter_config)
+    if not validation.valid:
+        raise ValueError(validation.message)
+    return connector
+
+
+def _normalize_source_event(db: Session, source: str, payload: dict[str, Any]) -> SecurityEventCreate:
+    """Resolve a configured connector adapter while retaining legacy source ingest."""
+    connector = _validate_registered_connector(db, source)
+    if connector is None:
+        return normalize_wazuh_alert(payload) if source.lower() == "wazuh" else normalize_event(payload, source=source)
+    adapter = get_adapter(connector.connector_type)
+    normalized_payload = adapter.normalize_payload(payload)
+    normalized = (
+        normalize_wazuh_alert(normalized_payload)
+        if connector.connector_type == "wazuh"
+        else normalize_event(normalized_payload, source=source)
+    )
+    normalized.source = source
+    return normalized
+
+
+def _record_connector_observation(db: Session, source: str) -> None:
+    connector = db.scalar(
+        select(ConnectorConfig).where(ConnectorConfig.connector_key == source)
+    )
+    if connector is not None:
+        from datetime import timezone
+        connector.health_status = "observed"
+        connector.last_success_at = datetime.now(timezone.utc)
+        connector.last_error_type = None
+
+
 def _require_aware(value: datetime | None, parameter: str) -> datetime | None:
     if value is not None and (value.tzinfo is None or value.utcoffset() is None):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"{parameter} must include a timezone offset")
@@ -101,8 +147,13 @@ def _require_aware(value: datetime | None, parameter: str) -> datetime | None:
 @router.post("", response_model=SecurityEventRead, status_code=status.HTTP_201_CREATED,
              dependencies=[Depends(require_roles("admin", "analyst"))])
 def ingest_event(payload: SecurityEventCreate, response: Response, db: Session = Depends(get_db)):
+    try:
+        _validate_registered_connector(db, payload.source)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     outcome, event_id = _persist_event(db, payload)
     record_ingestion(db, payload.source, accepted=int(outcome == "accepted"), duplicates=int(outcome == "duplicate"), rejected=0, event_timestamp=payload.timestamp)
+    _record_connector_observation(db, payload.source)
     db.commit()
     if outcome == "duplicate":
         response.status_code = status.HTTP_200_OK
@@ -114,7 +165,7 @@ def ingest_event(payload: SecurityEventCreate, response: Response, db: Session =
 def ingest_normalized_event(payload: dict[str, Any], response: Response,
                             source: str = Path(min_length=1, max_length=80), db: Session = Depends(get_db)):
     try:
-        normalized = normalize_wazuh_alert(payload) if source.lower() == "wazuh" else normalize_event(payload, source=source)
+        normalized = _normalize_source_event(db, source, payload)
     except ValidationError as exc:
         record_ingestion(db, source, accepted=0, duplicates=0, rejected=1)
         db.commit()
@@ -125,6 +176,7 @@ def ingest_normalized_event(payload: dict[str, Any], response: Response,
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     outcome, event_id = _persist_event(db, normalized)
     record_ingestion(db, source, accepted=int(outcome == "accepted"), duplicates=int(outcome == "duplicate"), rejected=0, event_timestamp=normalized.timestamp)
+    _record_connector_observation(db, source)
     db.commit()
     if outcome == "duplicate":
         response.status_code = status.HTTP_200_OK
@@ -154,11 +206,7 @@ def ingest_event_batch(
 
     for index, raw_event in enumerate(batch.events):
         try:
-            normalized = (
-                normalize_wazuh_alert(raw_event)
-                if source.lower() == "wazuh"
-                else normalize_event(raw_event, source=source)
-            )
+            normalized = _normalize_source_event(db, source, raw_event)
             outcome, event_id = _persist_event(db, normalized)
             results.append({"index": index, "status": outcome, "event_id": event_id})
             if outcome == "accepted":
@@ -172,6 +220,8 @@ def ingest_event_batch(
             results.append({"index": index, "status": "rejected", "error": error})
 
     record_ingestion(db, source, accepted=accepted, duplicates=duplicates, rejected=rejected, event_timestamp=max(accepted_timestamps, default=None))
+    if accepted or duplicates:
+        _record_connector_observation(db, source)
     db.commit()
     return {
         "received": len(batch.events),

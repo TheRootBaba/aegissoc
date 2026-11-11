@@ -22,6 +22,16 @@ def client():
     )
     TestingSessionLocal = sessionmaker(bind=test_engine, autoflush=False, autocommit=False)
     Base.metadata.create_all(bind=test_engine)
+    # Mirror the defaults inserted by Alembic revision 0010 in the isolated test DB.
+    from app.models import RetentionPolicy
+    seed_session = TestingSessionLocal()
+    seed_session.add_all([
+        RetentionPolicy(data_kind="events", retention_days=90, enabled=True, preserve_active_evidence=True, updated_by="system"),
+        RetentionPolicy(data_kind="executions", retention_days=180, enabled=True, preserve_active_evidence=True, updated_by="system"),
+        RetentionPolicy(data_kind="jobs", retention_days=90, enabled=True, preserve_active_evidence=False, updated_by="system"),
+    ])
+    seed_session.commit()
+    seed_session.close()
     app.state.testing_session_factory = TestingSessionLocal
 
     def override_get_db():
@@ -1133,3 +1143,184 @@ def test_empty_audit_chain_verifies_and_read_only_cannot_verify(client):
     verified = client.get("/api/v1/audit/verify")
     assert listed.status_code == 200
     assert verified.status_code == 403
+
+def test_operations_metrics_and_health_endpoints(client):
+    health = client.get("/api/v1/operations/health")
+    metrics = client.get("/api/v1/operations/metrics")
+    policies = client.get("/api/v1/operations/retention")
+    assert health.status_code == 200
+    assert health.json()["status"] == "operational"
+    assert metrics.status_code == 200
+    assert metrics.json()["events"]["total"] == 0
+    assert metrics.json()["detection_executions"]["failed_last_24_hours"] == 0
+    assert policies.status_code == 200
+    assert {item["data_kind"] for item in policies.json()} == {"events", "executions", "jobs"}
+
+
+def test_admin_can_update_retention_policy_and_action_is_audited(client):
+    updated = client.put("/api/v1/operations/retention/events", json={
+        "retention_days": 45,
+        "enabled": True,
+        "preserve_active_evidence": True,
+    })
+    assert updated.status_code == 200
+    assert updated.json()["retention_days"] == 45
+    audit = client.get("/api/v1/audit?action=retention.policy_updated")
+    assert audit.status_code == 200
+    assert audit.json()[0]["resource_id"] == "events"
+
+
+def test_retention_cleanup_preserves_active_alert_evidence(client):
+    from app.models import DetectionAlert, SecurityEvent
+    factory = app.state.testing_session_factory
+    db = factory()
+    try:
+        now = datetime.now(timezone.utc)
+        protected = SecurityEvent(
+            source="retention-test", event_type="authentication.failure",
+            severity="high", timestamp=now - timedelta(days=200),
+            message="Evidence linked to an active alert", raw={},
+        )
+        expired = SecurityEvent(
+            source="retention-test", event_type="process.started",
+            severity="low", timestamp=now - timedelta(days=200),
+            message="Unreferenced expired event", raw={},
+        )
+        db.add_all([protected, expired])
+        db.flush()
+        alert = DetectionAlert(
+            rule_id="RETENTION-TEST", fingerprint="retention-test-fingerprint",
+            title="Active investigation", description="Evidence retention test",
+            severity="high", status="open", event_count=1,
+            first_seen=now, last_seen=now,
+            evidence_event_ids=[str(protected.id)],
+        )
+        db.add(alert)
+        db.commit()
+        protected_id, expired_id = protected.id, expired.id
+    finally:
+        db.close()
+
+    from app.services.retention import run_retention_cleanup
+    db = factory()
+    try:
+        result = run_retention_cleanup(db, now=datetime.now(timezone.utc), batch_size=100)
+        assert result["status"] == "success"
+        assert db.get(SecurityEvent, protected_id) is not None
+        assert db.get(SecurityEvent, expired_id) is None
+    finally:
+        db.close()
+
+
+def test_connector_registry_validates_external_credentials_and_routes_ingest(client):
+    created = client.post("/api/v1/connectors", json={
+        "connector_key": "syslog-prod",
+        "connector_type": "syslog",
+        "display_name": "Production Syslog",
+        "config": {"host": "syslog.example.internal", "port": 514, "transport": "udp"},
+        "enabled": True,
+    })
+    assert created.status_code == 201
+    connector_id = created.json()["id"]
+    checked = client.post(f"/api/v1/connectors/{connector_id}/check")
+    assert checked.status_code == 200
+    assert checked.json()["configuration_valid"] is True
+    assert "does not claim endpoint connectivity" in checked.json()["message"]
+
+    ingested = client.post("/api/v1/events/ingest/syslog-prod", json={
+        "@timestamp": datetime.now(timezone.utc).isoformat(),
+        "event": {"action": "process.started", "severity": "info"},
+        "host": {"name": "syslog-sensor-01"},
+        "message": "Synthetic syslog event",
+    })
+    assert ingested.status_code == 201
+    assert ingested.json()["source"] == "syslog-prod"
+    observed = client.get("/api/v1/connectors")
+    assert observed.json()[0]["health_status"] == "observed"
+
+
+def test_connector_rejects_inline_secrets_and_invalid_wazuh_configuration(client):
+    inline_secret = client.post("/api/v1/connectors", json={
+        "connector_key": "bad-connector",
+        "connector_type": "generic",
+        "display_name": "Bad connector",
+        "config": {"api_token": "must-not-be-stored"},
+    })
+    missing_credential = client.post("/api/v1/connectors", json={
+        "connector_key": "wazuh-incomplete",
+        "connector_type": "wazuh",
+        "display_name": "Incomplete Wazuh",
+        "config": {"manager_url": "https://wazuh.example.internal"},
+    })
+    assert inline_secret.status_code == 422
+    assert missing_credential.status_code == 422
+
+
+def test_retention_preserves_latest_execution_for_each_schedule(client):
+    from app.models import DetectionExecution, DetectionSchedule
+    from app.services.retention import run_retention_cleanup
+    factory = app.state.testing_session_factory
+    db = factory()
+    try:
+        now = datetime.now(timezone.utc)
+        schedule = DetectionSchedule(
+            name="retention execution test", interval_seconds=300,
+            window_minutes=10, threshold=5, enabled=True,
+            next_run_at=now, created_by="test-admin",
+        )
+        db.add(schedule)
+        db.flush()
+        old = DetectionExecution(
+            schedule_id=schedule.id, status="success",
+            started_at=now - timedelta(days=250), completed_at=now - timedelta(days=250),
+            duration_ms=10, events_evaluated=10, alerts_created=0,
+            alerts_updated=0, rules_evaluated=[], error=None,
+        )
+        latest = DetectionExecution(
+            schedule_id=schedule.id, status="success",
+            started_at=now - timedelta(days=200), completed_at=now - timedelta(days=200),
+            duration_ms=10, events_evaluated=12, alerts_created=0,
+            alerts_updated=0, rules_evaluated=[], error=None,
+        )
+        db.add_all([old, latest])
+        db.commit()
+        old_id, latest_id = old.id, latest.id
+    finally:
+        db.close()
+
+    db = factory()
+    try:
+        run_retention_cleanup(db, now=datetime.now(timezone.utc), batch_size=100)
+        assert db.get(DetectionExecution, old_id) is None
+        assert db.get(DetectionExecution, latest_id) is not None
+    finally:
+        db.close()
+
+
+
+
+def test_disabled_connector_cannot_be_bypassed_through_canonical_ingest(client):
+    created = client.post("/api/v1/connectors", json={
+        "connector_key": "disabled-source",
+        "connector_type": "generic",
+        "display_name": "Disabled source",
+        "config": {},
+        "enabled": True,
+    })
+    assert created.status_code == 201
+    connector_id = created.json()["id"]
+    disabled = client.patch(f"/api/v1/connectors/{connector_id}", json={"enabled": False})
+    assert disabled.status_code == 200
+    rejected = client.post("/api/v1/events", json=sample_event(source="disabled-source"))
+    assert rejected.status_code == 422
+    assert "disabled" in rejected.json()["detail"].lower()
+
+
+def test_connector_rejects_nested_secret_fields(client):
+    response = client.post("/api/v1/connectors", json={
+        "connector_key": "nested-secret",
+        "connector_type": "generic",
+        "display_name": "Nested secret",
+        "config": {"auth": {"clientSecret": "not-allowed"}},
+    })
+    assert response.status_code == 422

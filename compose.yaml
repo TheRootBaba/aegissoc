@@ -29,8 +29,49 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
     restart: unless-stopped
     mem_limit: 1g
+
+  retention-worker:
+    build: .
+    command: ["python", "-m", "scripts.retention_worker"]
+    environment:
+      APP_NAME: ${APP_NAME:-AegisSOC API}
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:-dev-only-change-this-aegissoc-secret-key}
+      ACCESS_TOKEN_MINUTES: ${ACCESS_TOKEN_MINUTES:-30}
+      DATABASE_URL: postgresql+psycopg://aegis:${POSTGRES_PASSWORD:-aegis_dev_password}@db:5432/aegissoc
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 256m
+
+  backup:
+    build:
+      context: .
+      dockerfile: Dockerfile.backup
+    command: ["--output-dir", "/backups"]
+    profiles: ["backup"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://aegis:${POSTGRES_PASSWORD:-aegis_dev_password}@db:5432/aegissoc
+    volumes:
+      - aegis_backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    mem_limit: 512m
 
   scheduler:
     build: .
@@ -50,3 +91,4 @@ services:
 
 volumes:
   aegis_postgres_data:
+  aegis_backups:

@@ -194,3 +194,53 @@ class SecurityAuditEntry(Base):
     details: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     previous_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     entry_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+
+class RetentionPolicy(Base):
+    """Per-dataset retention controls; active evidence is protected independently."""
+
+    __tablename__ = "retention_policies"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    data_kind: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
+    retention_days: Mapped[int] = mapped_column(nullable=False, default=90)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=true())
+    preserve_active_evidence: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=true())
+    updated_by: Mapped[str] = mapped_column(String(64), nullable=False, default="system")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class OperationalJobRun(Base):
+    """Sanitized outcome of a maintenance or recovery-related worker execution."""
+
+    __tablename__ = "operational_job_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    job_name: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    records_affected: Mapped[int] = mapped_column(nullable=False, default=0)
+    error_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    details: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+
+class ConnectorConfig(Base):
+    """Non-secret connector configuration; credentials live in an external secret store."""
+
+    __tablename__ = "connector_configs"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    connector_key: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
+    connector_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    display_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    config: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    credential_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=true())
+    health_status: Mapped[str] = mapped_column(String(24), nullable=False, default="unverified", index=True)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)

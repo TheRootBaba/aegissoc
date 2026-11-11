@@ -5,6 +5,7 @@ const state = {
   alerts: [], events: [], sources: [], schedules: [], eventStats: {}, alertStats: {}, users: [],
   savedQueries: [], queryFields: [], queryResult: null, pendingSavedQuery: null,
   auditEntries: [], auditVerification: null,
+  operationsHealth: {}, operationsMetrics: {}, retentionPolicies: [], operationJobs: [], connectors: [],
   selectedId: null, token: null, user: null, toastTimer: null,
 };
 const esc = (value) => String(value ?? "—").replace(/[&<>"']/g, (char) => ({
@@ -53,6 +54,11 @@ function clearSession() {
   state.pendingSavedQuery = null;
   state.auditEntries = [];
   state.auditVerification = null;
+  state.operationsHealth = {};
+  state.operationsMetrics = {};
+  state.retentionPolicies = [];
+  state.operationJobs = [];
+  state.connectors = [];
   state.eventStats = {};
   state.alertStats = {};
   state.users = [];
@@ -76,6 +82,12 @@ function clearSession() {
   $("audit-list").innerHTML = '<div class="source-empty">Sign in to inspect the security audit trail.</div>';
   $("audit-status").textContent = "Not verified";
   $("audit-count").textContent = "0 records";
+  $("operations-status").textContent = "Awaiting telemetry";
+  $("retention-policies").innerHTML = '<div class="source-empty">Sign in to inspect retention policies.</div>';
+  $("operations-jobs").innerHTML = '<div class="source-empty">Sign in to inspect maintenance history.</div>';
+  $("connector-list").innerHTML = '<div class="source-empty">Sign in to inspect integrations.</div>';
+  $("connector-create-panel").hidden = true;
+  $("run-retention").hidden = true;
   $("source-register-panel").hidden = true;
   $("detail-panel").innerHTML = '<div class="investigation-empty"><span class="empty-radar">◎</span><span class="section-kicker">INVESTIGATION WORKSPACE</span><h3>Nothing selected</h3><p>Sign in to inspect alerts and investigations.</p></div>';
   showAuth();
@@ -523,7 +535,7 @@ async function loadInvestigation(id) {
 }
 async function refreshDashboard() {
   try {
-    const [alerts, events, eventStats, alertStats, sources, savedQueries, queryFields, schedules, auditEntries] = await Promise.all([
+    const [alerts, events, eventStats, alertStats, sources, savedQueries, queryFields, schedules, auditEntries, operationsHealth, operationsMetrics, retentionPolicies, operationJobs, connectors] = await Promise.all([
       api("/api/v1/alerts?limit=200"),
       api("/api/v1/events?limit=25"),
       api("/api/v1/events/stats"),
@@ -533,6 +545,11 @@ async function refreshDashboard() {
       api("/api/v1/events/fields"),
       api("/api/v1/detection-schedules"),
       api("/api/v1/audit?limit=10"),
+      api("/api/v1/operations/health"),
+      api("/api/v1/operations/metrics"),
+      api("/api/v1/operations/retention"),
+      api("/api/v1/operations/jobs?limit=20"),
+      api("/api/v1/connectors"),
     ]);
     state.alerts = alerts;
     state.events = events;
@@ -541,6 +558,11 @@ async function refreshDashboard() {
     state.sources = sources;
     state.schedules = schedules;
     state.auditEntries = auditEntries;
+    state.operationsHealth = operationsHealth;
+    state.operationsMetrics = operationsMetrics;
+    state.retentionPolicies = retentionPolicies;
+    state.operationJobs = operationJobs;
+    state.connectors = connectors;
     state.savedQueries = savedQueries;
     state.queryFields = queryFields.fields || [];
     setHealth(true, "API operational");
@@ -551,6 +573,8 @@ async function refreshDashboard() {
     renderSources();
     renderSchedules();
     renderAudit();
+    renderOperations();
+    renderConnectors();
     renderSavedQueries();
     if (state.selectedId && state.alerts.some((alert) => alert.id === state.selectedId)) {
       await loadInvestigation(state.selectedId);
@@ -681,6 +705,137 @@ async function registerSource(event) {
   }
 }
 
+function renderOperations() {
+  const metrics = state.operationsMetrics || {};
+  const health = state.operationsHealth || {};
+  $("ops-events-hour").textContent = count(metrics.events?.last_hour);
+  $("ops-events-day").textContent = count(metrics.events?.last_24_hours);
+  $("ops-detection-failures").textContent = count(metrics.detection_executions?.failed_last_24_hours);
+  $("ops-ingest-rejected").textContent = count(metrics.ingestion?.rejected_total);
+  const status = health.status || "unknown";
+  $("operations-status").textContent = status.replaceAll("_", " ");
+  $("operations-status").className = "data-chip " + (status === "operational" ? "status-healthy" : "status-warning");
+  $("run-retention").hidden = state.user?.role !== "admin";
+  const admin = state.user?.role === "admin";
+  $("retention-policies").innerHTML = state.retentionPolicies.length
+    ? state.retentionPolicies.map((policy) => {
+      const editable = admin
+        ? '<input class="retention-days" id="retention-days-' + esc(policy.data_kind) + '" type="number" min="1" max="3650" value="' + esc(policy.retention_days) + '">' +
+          '<label class="retention-toggle"><input id="retention-enabled-' + esc(policy.data_kind) + '" type="checkbox" ' + (policy.enabled ? "checked" : "") + '> Enabled</label>' +
+          (policy.data_kind === "events" ? '<label class="retention-toggle"><input id="retention-preserve-' + esc(policy.data_kind) + '" type="checkbox" ' + (policy.preserve_active_evidence ? "checked" : "") + '> Preserve active evidence</label>' : "") +
+          '<button class="button button-secondary" type="button" data-retention-save="' + esc(policy.data_kind) + '">Save policy</button>'
+        : '<strong>' + count(policy.retention_days) + ' days</strong><span>' + (policy.enabled ? "Enabled" : "Disabled") + '</span>';
+      return '<div class="retention-row"><div class="retention-row-head"><strong>' + esc(policy.data_kind) + '</strong><small>Updated by ' + esc(policy.updated_by) + ' · ' + esc(date(policy.updated_at)) + '</small></div><div class="retention-controls">' + editable + '</div></div>';
+    }).join("")
+    : '<div class="source-empty">No retention policies are configured.</div>';
+  $("job-count").textContent = count(state.operationJobs.length) + " runs";
+  $("operations-jobs").innerHTML = state.operationJobs.length
+    ? state.operationJobs.slice(0, 10).map((job) =>
+      '<div class="operation-job"><span class="source-state ' + (job.status === "success" ? "healthy" : "failing") + '">' + esc(job.status) + '</span><div><strong>' + esc(job.job_name) + '</strong><small>' + esc(date(job.completed_at)) + ' · ' + count(job.records_affected) + ' rows</small></div><span class="job-error">' + esc(job.error_type || "—") + '</span></div>'
+    ).join("")
+    : '<div class="source-empty">No maintenance jobs have run yet.</div>';
+}
+
+function renderConnectors() {
+  const admin = state.user?.role === "admin";
+  $("connector-create-panel").hidden = !admin;
+  $("connector-count").textContent = count(state.connectors.length) + " connectors";
+  $("connector-list").innerHTML = state.connectors.length
+    ? state.connectors.map((connector) =>
+      '<article class="connector-row"><div class="connector-identity"><span class="connector-mark">' + esc(connector.connector_type.slice(0, 2).toUpperCase()) + '</span><div><strong>' + esc(connector.display_name) + '</strong><small>' + esc(connector.connector_key) + ' · ' + esc(connector.connector_type) + '</small></div></div><span class="source-state ' + (connector.health_status === "misconfigured" ? "failing" : connector.health_status === "disabled" ? "inactive" : connector.health_status === "observed" ? "healthy" : "stale") + '">' + esc(connector.health_status) + '</span><div class="connector-config-summary"><code>' + esc(JSON.stringify(connector.config || {})) + '</code><small>Credential ref: ' + esc(connector.credential_ref || "not configured") + '</small></div><div class="connector-actions">' +
+      (admin ? '<button class="button button-quiet" type="button" data-connector-check="' + esc(connector.id) + '">Validate config</button><button class="button button-quiet schedule-delete" type="button" data-connector-delete="' + esc(connector.id) + '">Delete</button>' : "") +
+      '</div></article>'
+    ).join("")
+    : '<div class="source-empty">No connectors registered. Add a Wazuh, Syslog, HTTP event, or generic adapter to bind a source key to its ingestion contract.</div>';
+}
+
+async function saveRetentionPolicy(kind) {
+  const button = document.querySelector('[data-retention-save="' + CSS.escape(kind) + '"]');
+  if (!button) return;
+  button.disabled = true;
+  try {
+    const payload = {
+      retention_days: Number($("retention-days-" + kind).value),
+      enabled: $("retention-enabled-" + kind).checked,
+      preserve_active_evidence: kind === "events"
+        ? $("retention-preserve-" + kind).checked
+        : (state.retentionPolicies.find((policy) => policy.data_kind === kind)?.preserve_active_evidence ?? false),
+    };
+    await api("/api/v1/operations/retention/" + encodeURIComponent(kind), {
+      method: "PUT", body: JSON.stringify(payload),
+    });
+    showToast("Retention policy updated and audit logged.");
+    await refreshDashboard();
+  } catch (error) {
+    showToast(error.message, "error");
+  } finally {
+    if (button.isConnected) button.disabled = false;
+  }
+}
+
+async function runRetentionNow() {
+  const button = $("run-retention");
+  button.disabled = true;
+  try {
+    const result = await api("/api/v1/operations/retention/run", { method: "POST" });
+    showToast("Retention completed · " + count(result.records_affected) + " records removed.");
+    await refreshDashboard();
+  } catch (error) {
+    showToast(error.message, "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function createConnector(event) {
+  event.preventDefault();
+  const button = $("connector-create-button");
+  const feedback = $("connector-feedback");
+  button.disabled = true;
+  feedback.textContent = "Validating adapter configuration…";
+  try {
+    const config = JSON.parse($("connector-config").value || "{}");
+    await api("/api/v1/connectors", {
+      method: "POST",
+      body: JSON.stringify({
+        connector_key: $("connector-key").value.trim(),
+        display_name: $("connector-display-name").value.trim(),
+        connector_type: $("connector-type").value,
+        credential_ref: $("connector-credential-ref").value.trim() || null,
+        config,
+        enabled: true,
+      }),
+    });
+    $("connector-create-form").reset();
+    feedback.textContent = "Connector registered. Configure the producer to ingest using this connector key.";
+    showToast("Integration registered.");
+    await refreshDashboard();
+  } catch (error) {
+    feedback.textContent = error instanceof SyntaxError ? "Configuration must be valid JSON." : error.message;
+    showToast(feedback.textContent, "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function handleConnectorAction(event) {
+  const check = event.target.closest("[data-connector-check]");
+  const remove = event.target.closest("[data-connector-delete]");
+  try {
+    if (check) {
+      const result = await api("/api/v1/connectors/" + encodeURIComponent(check.dataset.connectorCheck) + "/check", { method: "POST" });
+      showToast(result.message, result.configuration_valid ? "success" : "error");
+      await refreshDashboard();
+    } else if (remove && window.confirm("Delete this connector configuration? Source event history will not be deleted.")) {
+      await api("/api/v1/connectors/" + encodeURIComponent(remove.dataset.connectorDelete), { method: "DELETE" });
+      showToast("Connector removed.");
+      await refreshDashboard();
+    }
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
 function setActiveNav() {
   const current = location.hash.replace("#", "") || "overview";
   document.querySelectorAll("[data-nav]").forEach((link) => {
@@ -688,7 +843,9 @@ function setActiveNav() {
   });
   $("page-breadcrumb").textContent = current === "team" ? "Team & access" :
     current === "alerts" ? "Alert queue" : current === "events" ? "Event telemetry" :
-    current === "sources" ? "Data source health" : current === "schedules" ? "Detection schedules" : current === "audit" ? "Security audit trail" : "Overview";
+    current === "sources" ? "Data source health" : current === "operations" ? "Operational health" :
+    current === "connectors" ? "Integration registry" : current === "schedules" ? "Detection schedules" :
+    current === "audit" ? "Security audit trail" : "Overview";
 }
 
 $("login-form").addEventListener("submit", signIn);
@@ -733,6 +890,22 @@ $("schedule-create-form").addEventListener("submit", createDetectionSchedule);
 $("schedules-grid").addEventListener("click", handleScheduleAction);
 $("schedule-history").addEventListener("click", handleScheduleAction);
 $("verify-audit").addEventListener("click", verifyAuditChain);
+$("run-retention").addEventListener("click", runRetentionNow);
+$("retention-policies").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-retention-save]");
+  if (button) saveRetentionPolicy(button.dataset.retentionSave);
+});
+$("connector-create-form").addEventListener("submit", createConnector);
+$("connector-list").addEventListener("click", handleConnectorAction);
+$("connector-type").addEventListener("change", () => {
+  const examples = {
+    wazuh: '{ "manager_url": "https://wazuh.example.internal" }',
+    syslog: '{ "host": "syslog.example.internal", "port": 514, "transport": "udp" }',
+    http_event: '{ "ingest_path": "/api/v1/events/ingest" }',
+    generic: "{}",
+  };
+  $("connector-config").value = examples[$("connector-type").value] || "{}";
+});
 $("run-event-query").addEventListener("click", () => runEventQuery());
 $("reset-event-query").addEventListener("click", () => {
   $("event-query-text").value = "";
