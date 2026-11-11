@@ -17,7 +17,7 @@ router = APIRouter(tags=["detections", "alerts"],
              dependencies=[Depends(require_roles("admin", "analyst"))])
 def run_detections(request: DetectionRunRequest, db: Session = Depends(get_db),
                    current_user: User = Depends(require_roles("admin", "analyst"))):
-    result = run_ssh_brute_force_detection(db, window_minutes=request.window_minutes, threshold=request.threshold)
+    result = run_ssh_brute_force_detection(db, window_minutes=request.window_minutes, threshold=request.threshold, commit=False)
     append_audit_entry(db, actor=current_user.username, action="detection.manual_run", resource_type="detection", details={
         "window_minutes": request.window_minutes, "threshold": request.threshold,
         "events_evaluated": result["events_evaluated"], "alerts_created": result["alerts_created"],
