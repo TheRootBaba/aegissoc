@@ -6,7 +6,7 @@ from uuid import uuid4
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from app.api.routes import alert_workflow, audit, auth, cases, connectors, detections, detection_schedules, events, health, operations, sources, detection_rules, threat_intel, asset_risk
+from app.api.routes import alert_workflow, audit, auth, cases, connectors, detections, detection_schedules, events, health, operations, sources, detection_rules, threat_intel, asset_risk, sigma, response_actions
 from app.core.config import settings
 from app.core.logging_config import configure_logging, request_id_var
 configure_logging(settings.log_level)
@@ -41,6 +41,8 @@ app.include_router(cases.router)
 app.include_router(detection_rules.router)
 app.include_router(threat_intel.router)
 app.include_router(asset_risk.router)
+app.include_router(sigma.router)
+app.include_router(response_actions.router)
 app.include_router(audit.router)
 app.include_router(operations.router)
 app.include_router(connectors.router)

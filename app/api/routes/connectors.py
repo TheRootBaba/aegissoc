@@ -8,10 +8,11 @@ from sqlalchemy.orm import Session
 
 from app.core.security import require_roles
 from app.db.session import get_db
-from app.models import ConnectorConfig, User
+from app.models import ConnectorConfig, ConnectorExecution, ConnectorRuntimeState, User
 from app.schemas.connectors import ConnectorCheckRead, ConnectorCreate, ConnectorRead, ConnectorUpdate
 from app.services.audit_chain import append_audit_entry
 from app.services.integrations import get_adapter
+from app.schemas.runtime import ConnectorExecutionRead
 
 router = APIRouter(
     prefix="/api/v1/connectors",
@@ -170,3 +171,26 @@ def delete_connector(
     db.delete(connector)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/{connector_id}/executions", response_model=list[ConnectorExecutionRead])
+def connector_executions(connector_id: UUID, limit: int = 50, db: Session = Depends(get_db)):
+    if limit < 1 or limit > 200:
+        raise HTTPException(422, "limit must be between 1 and 200")
+    if db.get(ConnectorConfig, connector_id) is None:
+        raise HTTPException(404, "Connector not found")
+    return list(db.scalars(select(ConnectorExecution).where(
+        ConnectorExecution.connector_id == connector_id
+    ).order_by(ConnectorExecution.started_at.desc()).limit(limit)).all())
+
+@router.get("/runtime-health")
+def connector_runtime_health(db: Session = Depends(get_db)):
+    from sqlalchemy import func
+    rows = db.execute(select(ConnectorExecution.status, func.count()).group_by(ConnectorExecution.status)).all()
+    states = db.scalars(select(ConnectorRuntimeState)).all()
+    return {
+        "executions_by_status": {name: count for name, count in rows},
+        "scheduled_connectors": len(states),
+        "leased_connectors": sum(1 for item in states if item.locked_until is not None and item.locked_until > datetime.now(timezone.utc)),
+        "connectors_with_failures": sum(1 for item in states if item.consecutive_failures > 0),
+    }

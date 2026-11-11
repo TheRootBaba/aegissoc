@@ -5,12 +5,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.core.security import get_current_user, require_roles
 from app.db.session import get_db
-from app.models import IncidentCase, ManagedAsset, ResponsePlaybookRun, User, VulnerabilityFinding
+from app.models import IncidentCase, ManagedAsset, ResponsePlaybookRun, User, VulnerabilityFinding, ScannerImportRun
 from app.schemas.asset_risk import (
     AssetCreate, AssetRead, AssetUpdate, FindingCreate, FindingRead, FindingUpdate,
     PlaybookRunCreate, PlaybookRunRead, PlaybookStepUpdate,
 )
 from app.services.audit_chain import append_audit_entry
+from app.schemas.runtime import ScannerImportRequest, ScannerImportRead
 
 router = APIRouter(
     prefix="/api/v1/asset-risk",
@@ -196,3 +197,69 @@ def update_playbook_step(run_id: UUID, step_index: int, payload: PlaybookStepUpd
     db.commit()
     db.refresh(run)
     return run
+
+
+@router.post("/scanner-imports", response_model=ScannerImportRead,
+             dependencies=[Depends(require_roles("admin", "analyst"))])
+def import_scanner_results(payload: ScannerImportRequest, db: Session = Depends(get_db),
+                           user: User = Depends(get_current_user)):
+    total_findings = sum(len(asset.findings) for asset in payload.assets)
+    if total_findings > 5000:
+        raise HTTPException(422, "A scanner import is limited to 5,000 findings")
+    previous = db.scalar(select(ScannerImportRun).where(
+        ScannerImportRun.scanner_name == payload.scanner_name.strip(),
+        ScannerImportRun.scan_id == payload.scan_id.strip(),
+    ))
+    if previous is not None:
+        return previous.result
+
+    assets_seen = len(payload.assets)
+    assets_matched = findings_seen = findings_created = findings_updated = findings_rejected = 0
+    for scanned_asset in payload.assets:
+        findings_seen += len(scanned_asset.findings)
+        asset = db.scalar(select(ManagedAsset).where(
+            ManagedAsset.asset_key == scanned_asset.asset_key.strip().lower()
+        ))
+        if asset is None:
+            findings_rejected += len(scanned_asset.findings)
+            continue
+        assets_matched += 1
+        for item in scanned_asset.findings:
+            vuln_id = item.vulnerability_id.strip().upper()
+            finding = db.scalar(select(VulnerabilityFinding).where(
+                VulnerabilityFinding.asset_id == asset.id,
+                VulnerabilityFinding.vulnerability_id == vuln_id,
+            ))
+            if finding is None:
+                db.add(VulnerabilityFinding(
+                    asset_id=asset.id, vulnerability_id=vuln_id, title=item.title.strip(),
+                    severity=item.severity, source=payload.scanner_name.strip(),
+                    description=item.description.strip(), due_at=item.due_at,
+                ))
+                findings_created += 1
+            else:
+                finding.title = item.title.strip()
+                finding.severity = item.severity
+                finding.source = payload.scanner_name.strip()
+                finding.description = item.description.strip()
+                finding.due_at = item.due_at
+                if finding.status in {"remediated", "false_positive"}:
+                    finding.status = "open"
+                finding.updated_at = datetime.now(timezone.utc)
+                findings_updated += 1
+
+    result = {
+        "scan_id": payload.scan_id, "assets_seen": assets_seen, "assets_matched": assets_matched,
+        "findings_seen": findings_seen, "findings_created": findings_created,
+        "findings_updated": findings_updated, "findings_rejected": findings_rejected,
+    }
+    db.add(ScannerImportRun(
+        scanner_name=payload.scanner_name.strip(), scan_id=payload.scan_id.strip(),
+        result=result, created_by=user.username,
+    ))
+    db.flush()
+    append_audit_entry(db, actor=user.username, action="vulnerability.scan_imported",
+        resource_type="scanner_import", resource_id=payload.scanner_name.strip() + ":" + payload.scan_id.strip(),
+        details={key: value for key, value in result.items() if key != "scan_id"})
+    db.commit()
+    return result
