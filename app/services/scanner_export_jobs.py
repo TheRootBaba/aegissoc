@@ -16,6 +16,12 @@ from app.services.secrets import resolve_secret_reference
 MAX_EXPORT_BYTES = 5 * 1024 * 1024
 
 
+class ScannerRateLimited(RuntimeError):
+    def __init__(self, retry_after: int):
+        self.retry_after = retry_after
+        super().__init__('Scanner provider rate limit reached')
+
+
 def scanner_headers(provider: str, credential_ref: str | None) -> dict[str, str]:
     secret = resolve_secret_reference(credential_ref)
     if not secret:
@@ -57,6 +63,8 @@ def request_export_json(url: str, headers: dict[str, str], *, method: str = "GET
     """Perform one bounded, non-redirecting JSON API request."""
     with httpx.Client(timeout=httpx.Timeout(20.0, connect=5.0), follow_redirects=False, verify=True) as client:
         response = client.request(method, url, headers=headers, json=payload)
+        if response.status_code in {429, 503}:
+            raise ScannerRateLimited(retry_after_seconds(response.headers))
         response.raise_for_status()
         if len(response.content) > MAX_EXPORT_BYTES:
             raise ValueError("Scanner export API response exceeds 5 MiB")
