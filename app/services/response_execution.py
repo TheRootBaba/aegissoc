@@ -97,6 +97,22 @@ def run_due_response_actions_once(db: Session, *, now: datetime | None = None, b
         if request is None:
             continue
         started = datetime.now(timezone.utc)
+        if request.execution_attempts > MAX_ATTEMPTS:
+            request.status = "failed"
+            request.execution_status = "attempt_limit_exceeded"
+            request.last_error_type = "MaxAttemptsExceeded"
+            request.result_summary = "The response worker lease expired after the maximum delivery attempts."
+            request.executed_at = started
+            request.next_attempt_at = None
+            request.locked_until = None
+            append_audit_entry(
+                db, actor="response-worker", action="response_action.attempt_limit_reached",
+                resource_type="response_action", resource_id=str(request.id),
+                details={"attempts": request.execution_attempts},
+            )
+            db.commit()
+            completed += 1
+            continue
         connector = db.scalar(select(ConnectorConfig).where(
             ConnectorConfig.connector_key == request.connector_key,
             ConnectorConfig.connector_type == "response_webhook",
