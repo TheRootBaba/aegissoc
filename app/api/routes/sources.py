@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.security import require_roles
@@ -70,8 +71,12 @@ def register_source(payload: SourceCreate, db: Session = Depends(get_db), curren
         health_status="inactive",
     )
     db.add(source)
-    append_audit_entry(db, actor=current_user.username, action="source.registered", resource_type="source", resource_id=source.source_name, details={"source_type": source.source_type})
-    db.commit()
+    try:
+        append_audit_entry(db, actor=current_user.username, action="source.registered", resource_type="source", resource_id=source.source_name, details={"source_type": source.source_type})
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Source is already registered") from exc
     db.refresh(source)
     return _serialize(source)
 
