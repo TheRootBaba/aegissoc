@@ -10,7 +10,7 @@ const state = {
   selectedId: null, token: null, user: null, toastTimer: null,
   workspaces: [], workspaceId: null,
 };
-const currentRole = () => state.user?.workspace_role || currentRole() || "read_only";
+const currentRole = () => state.user?.workspace_role || state.user?.role || "read_only";
 const esc = (value) => String(value ?? "—").replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
 }[char]));
@@ -1375,6 +1375,10 @@ $("detection-rule-list").addEventListener("click", (event) => {
 $("connector-type").addEventListener("change", () => {
   const examples = {
     wazuh: '{ "manager_url": "https://wazuh.example.internal" }',
+    wazuh_manager: '{ "endpoint": "https://wazuh.example.internal/security/events", "allowed_hosts": ["wazuh.example.internal"], "interval_seconds": 60 }',
+    misp: '{ "endpoint": "https://misp.example.internal/attributes/restSearch", "allowed_hosts": ["misp.example.internal"], "auth_header": "X-MISP-Auth", "page_size": 1000, "interval_seconds": 300 }',
+    opencti: '{ "endpoint": "https://opencti.example.internal/graphql", "allowed_hosts": ["opencti.example.internal"], "interval_seconds": 300 }',
+    response_webhook: '{ "endpoint": "https://response.example.internal/actions", "allowed_hosts": ["response.example.internal"] }',
     syslog: '{ "host": "syslog.example.internal", "port": 514, "transport": "udp" }',
     http_event: '{ "ingest_path": "/api/v1/events/ingest" }',
     generic: "{}",
@@ -1412,7 +1416,20 @@ document.querySelectorAll("[data-nav]").forEach((link) => {
     link.classList.add("active");
   });
 });
+$("workspace-select").addEventListener("change", (event) => switchWorkspace(event.target.value));
+$("oidc-login-button").addEventListener("click", () => {
+  window.location.assign("/api/v1/auth/oidc/login");
+});
+async function loadAuthMethods() {
+  try {
+    const methods = await api("/api/v1/auth/methods");
+    $("oidc-login-button").hidden = !methods.oidc_enabled;
+  } catch (_) {
+    $("oidc-login-button").hidden = true;
+  }
+}
 window.addEventListener("hashchange", setActiveNav);
 setActiveNav();
+loadAuthMethods();
 bootstrap();
 window.setInterval(() => { if (state.token) refreshDashboard(); }, 60000);
