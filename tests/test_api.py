@@ -487,8 +487,6 @@ def test_alert_search_filters_by_attack_technique_and_status(client):
         )
     run = client.post("/api/v1/detections/run", json={"window_minutes": 10, "threshold": 5})
     brute = next(a for a in run.json()["alerts"] if a["rule_id"] == "AUTH-SSH-001")
-    spray = next(a for a in run.json()["alerts"] if a["rule_id"] == "AUTH-SSH-002")
-
     filtered = client.get("/api/v1/alerts", params={"attack_technique_id": "T1110", "status": "open"})
     assert filtered.status_code == 200
     assert [a["id"] for a in filtered.json()] == [brute["id"]]
