@@ -206,7 +206,7 @@ def run_ssh_brute_force_detection(
             )
         if len(set(usernames)) >= rule_threshold(SSH_PASSWORD_SPRAY_RULE_ID):
             _record_match(
-                db, matches, rule_id=SSH_PASSWORD_SPRAY_RULE_ID,
+                db, matches, rule_configs=rule_configs, rule_id=SSH_PASSWORD_SPRAY_RULE_ID,
                 title="SSH password-spray activity detected", source_ip=source_ip,
                 hostname=hostname, events=events, usernames=usernames,
                 window_minutes=window_minutes, severity="high",
