@@ -188,5 +188,5 @@ def test_dashboard_exposes_asset_risk_and_response_playbook_workspaces():
     assert 'api("/api/v1/asset-risk/playbooks?limit=100")' in script
     assert "function renderAssetRisk()" in script
     assert "function renderPlaybooks()" in script
-    assert "styles.css?v=3.1" in html
-    assert "app.js?v=3.1" in html
+    assert "styles.css?v=3.2" in html
+    assert "app.js?v=3.2" in html

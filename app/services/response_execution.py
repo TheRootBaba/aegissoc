@@ -139,6 +139,7 @@ def run_due_response_actions_once(db: Session, *, now: datetime | None = None, b
     expired_query = select(ResponseActionRequest).where(
         ResponseActionRequest.status.in_(("pending", "approved")),
         ResponseActionRequest.expires_at.is_not(None),
+        ResponseActionRequest.expires_at <= run_at,
     ).limit(batch_size)
     if db.get_bind().dialect.name == "postgresql":
         expired_query = expired_query.with_for_update(skip_locked=True)

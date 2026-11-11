@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base
-from app.models import DetectionAlert, SecurityEvent, Workspace
+from app.models import DetectionAlert, DetectionRuleConfig, SecurityEvent, Workspace
 from app.services.detection_engine import run_ssh_brute_force_detection
 
 
@@ -18,8 +19,11 @@ def _session():
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine)
     db = factory()
-    workspace = Workspace(slug='default', name='Default Workspace', is_active=True)
+    workspace = Workspace(id=uuid4(), slug='default', name='Default Workspace', is_active=True)
     db.add(workspace)
+    db.flush()
+    db.info['workspace_id'] = str(workspace.id)
+    db.add_all([DetectionRuleConfig(rule_id=rule_id, enabled=True, updated_by='test') for rule_id in ('AUTH-SSH-001', 'AUTH-SSH-002', 'AUTH-CHAIN-001', 'PRIV-ESC-001', 'PROC-SUSP-001')])
     db.commit()
     db.info['workspace_id'] = str(workspace.id)
     return db
