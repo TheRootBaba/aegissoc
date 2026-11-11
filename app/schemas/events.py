@@ -43,3 +43,25 @@ class SecurityEventRead(BaseModel):
     message: str
     raw: dict[str, Any]
     created_at: datetime
+
+
+
+class BulkEventIngest(BaseModel):
+    """A bounded envelope for partial-success source batch ingestion."""
+
+    events: list[dict[str, Any]] = Field(min_length=1, max_length=500)
+
+
+class BulkEventResult(BaseModel):
+    index: int
+    status: Literal["accepted", "duplicate", "rejected"]
+    event_id: uuid.UUID | None = None
+    error: str | None = None
+
+
+class BulkEventIngestResponse(BaseModel):
+    received: int
+    accepted: int
+    duplicates: int
+    rejected: int
+    results: list[BulkEventResult]
