@@ -29,9 +29,9 @@ def test_runtime_role_cannot_read_or_mutate_another_workspace():
             connection.execute(text("SELECT set_config('aegis.worker', 'on', true)"))
             for user_id, username in ((user_one, "rls-user-one"), (user_two, "rls-user-two")):
                 connection.execute(text("""
-                    INSERT INTO users (id, username, password_hash, role, is_active, created_at)
-                    VALUES (:id, :username, 'test-only-hash', 'analyst', true, :created_at)
-                """), {"id": user_id, "username": username, "created_at": now})
+                    INSERT INTO users (id, username, password_hash, role, is_active, created_at, updated_at)
+                    VALUES (:id, :username, 'test-only-hash', 'analyst', true, :created_at, :updated_at)
+                """), {"id": user_id, "username": username, "created_at": now, "updated_at": now})
             for workspace_id, slug in ((workspace_one, "rls-tenant-one"), (workspace_two, "rls-tenant-two")):
                 connection.execute(text("""
                     INSERT INTO workspaces (id, slug, name, is_active, created_at)
