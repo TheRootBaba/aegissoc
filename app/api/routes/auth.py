@@ -1,3 +1,4 @@
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -41,7 +42,7 @@ def create_user(payload: UserCreate, _admin: User = Depends(require_roles("admin
     db.flush()
     workspace_id = db.info.get('workspace_id')
     if workspace_id:
-        db.add(WorkspaceMembership(workspace_id=workspace_id, user_id=user.id, role=user.role, is_active=True))
+        db.add(WorkspaceMembership(workspace_id=UUID(str(workspace_id)), user_id=user.id, role=user.role, is_active=True))
     try:
         append_audit_entry(db, actor=_admin.username, action="user.created", resource_type="user", resource_id=user.username, details={"role": user.role})
         db.commit()
