@@ -165,3 +165,32 @@ class DetectionExecution(Base):
     alerts_updated: Mapped[int] = mapped_column(nullable=False, default=0)
     rules_evaluated: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+class AuditChainState(Base):
+    """Single serialized head pointer for the global tamper-evident audit chain."""
+
+    __tablename__ = "audit_chain_state"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    head_sequence: Mapped[int] = mapped_column(nullable=False, default=0)
+    head_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class SecurityAuditEntry(Base):
+    """Immutable hash-chained record of a security-relevant operator action."""
+
+    __tablename__ = "security_audit_entries"
+    __table_args__ = (UniqueConstraint("sequence", name="uq_security_audit_entries_sequence"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    sequence: Mapped[int] = mapped_column(nullable=False, index=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    actor: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    resource_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    resource_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    details: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    previous_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    entry_hash: Mapped[str] = mapped_column(String(64), nullable=False)
