@@ -67,7 +67,7 @@ def _records(document, config: dict, connector_type: str = "http_poll") -> list:
         raise ValueError("Every connector record must be a JSON object")
     return value
 
-def _poll_url(connector: ConnectorConfig) -> str:
+def _poll_url(connector: ConnectorConfig) -> tuple[str, dict]:
     config = dict(connector.config or {})
     adapter = get_adapter(connector.connector_type)
     check = adapter.validate_config({**config, **({"credential_ref": connector.credential_ref} if connector.credential_ref else {})})
@@ -82,7 +82,7 @@ def _poll_url(connector: ConnectorConfig) -> str:
     if secret:
         header = config.get("auth_header", "X-MISP-Auth" if connector.connector_type == "misp" else "Authorization")
         if header.lower() not in {"authorization", "x-api-key", "x-misp-auth", "x-apikeys"}:
-            raise ValueError("auth_header must be Authorization or X-API-Key")
+            raise ValueError("auth_header must be a supported authentication header")
         if header.lower() == "authorization" and config.get("auth_scheme") == "basic":
             import base64
             if ":" not in secret:
