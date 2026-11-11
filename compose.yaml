@@ -20,6 +20,7 @@ services:
     environment:
       APP_NAME: ${APP_NAME:-AegisSOC API}
       APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DATABASE_URL: postgresql+psycopg://aegis:${POSTGRES_PASSWORD:-aegis_dev_password}@db:5432/aegissoc
     ports:
       - "8000:8000"

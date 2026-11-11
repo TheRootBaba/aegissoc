@@ -1,73 +1,64 @@
-# AegisSOC — Phase 1
+# AegisSOC
 
-A local-first Security Operations Center platform foundation.
+A local-first Security Operations Center platform for collecting, normalizing, and investigating security events. The current release is an engineering foundation for a controlled lab; it is not yet a production SIEM.
 
-## Phase 1 scope
-- FastAPI backend
-- PostgreSQL event store
-- Normalized security event schema
-- Event ingestion and retrieval API
-- Health/readiness endpoints
-- Automated API tests
+## Current capabilities
 
-This is a development foundation, not a production SIEM. Authentication, authorization,
-rate limiting, durable migrations, endpoint agents, detection rules and Wazuh integration
-are intentionally scheduled for later phases.
+- FastAPI event ingestion and retrieval API backed by PostgreSQL.
+- Validated event payloads with timezone-aware timestamps.
+- Severity filtering and bounded pagination (`limit` 1–200, `offset` 0 or greater).
+- Liveness and database-readiness endpoints.
+- Alembic-managed database schema migrations.
+- Per-request `X-Request-ID` response header and JSON application logs.
+- Automated API tests using an isolated SQLite database.
 
 ## Architecture
 
 ```text
-Security event producers (later: Wazuh / Syslog / Windows agents)
+Event producers (manual lab input today; Wazuh adapter planned)
                          |
                          v
-                FastAPI ingestion API
-                         |
-                 Pydantic validation
+                 FastAPI API layer
+          validation / request correlation
                          |
                          v
-                  PostgreSQL
+                  PostgreSQL store
                          |
-              Query API / analyst UI (later)
+             query API / detection engine
+                    (planned)
 ```
 
 ## Requirements
+
 - Windows 10/11 with virtualization enabled
-- WSL2 + Ubuntu
-- Docker Desktop configured to use the WSL2 backend
+- WSL2 + Ubuntu and Docker Desktop using the WSL2 backend
 - Git
-- 8 GB free disk space recommended
+- Python 3.12 for running tests outside Docker
 
-## Run with Docker (recommended)
+## Run with Docker
 
-1. Copy `.env.example` to `.env`.
-2. From this directory, run:
+1. Copy the example environment file and set a strong local database password:
 
    ```powershell
    Copy-Item .env.example .env
+   ```
+
+2. Start the stack:
+
+   ```powershell
    docker compose up --build -d
    docker compose ps
    ```
 
-3. Open:
-   - API docs: http://localhost:8000/docs
-   - Liveness: http://localhost:8000/health/live
-   - Readiness: http://localhost:8000/health/ready
+   The API container applies pending Alembic migrations before starting Uvicorn.
 
-4. Stop:
+3. Open the API documentation at http://localhost:8000/docs. Liveness and readiness are available at `/health/live` and `/health/ready`.
 
-   ```powershell
-   docker compose down
-   ```
+4. Stop the stack with `docker compose down`. To delete the database volume as well (destructive), use `docker compose down -v`.
 
-5. Stop and delete the local database volume (destructive):
+## Run locally
 
-   ```powershell
-   docker compose down -v
-   ```
-
-## Run locally without Docker
-
-Use Python 3.11 or 3.12. PostgreSQL must be running and accessible.
+A PostgreSQL server must be running and `DATABASE_URL` in `.env` must point to it.
 
 ```powershell
 py -3.12 -m venv .venv
@@ -75,14 +66,24 @@ py -3.12 -m venv .venv
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 Copy-Item .env.example .env
+alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-Update `DATABASE_URL` in `.env` to point to your local PostgreSQL instance.
+## Configuration
 
-## API examples
+| Variable | Description | Default |
+|---|---|---|
+| `APP_NAME` | API title | `AegisSOC API` |
+| `APP_ENV` | `development`, `test`, `staging`, or `production` | `development` |
+| `DATABASE_URL` | SQLAlchemy database URL | local SQLite URL in code; Docker Compose supplies PostgreSQL |
+| `LOG_LEVEL` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` | `INFO` |
 
-### Ingest an event
+Do not commit `.env` or put real credentials, tokens, or production logs in the repository. Rotate any credential that has been exposed.
+
+## API usage
+
+### Ingest a synthetic event (PowerShell)
 
 ```powershell
 $body = @{
@@ -93,42 +94,38 @@ $body = @{
   hostname = "ubuntu-lab"
   source_ip = "192.0.2.25"
   username = "analyst"
-  message = "Three failed SSH login attempts observed in the isolated lab."
-  raw = @{
-    lab = $true
-    scenario = "simulated-ssh-failures"
-    attempt_count = 3
-  }
+  message = "Synthetic failed SSH login for detection testing."
+  raw = @{ synthetic = $true; scenario = "ssh-failures" }
 } | ConvertTo-Json -Depth 5
 
-Invoke-RestMethod -Method Post `
-  -Uri http://localhost:8000/api/v1/events `
-  -ContentType "application/json" `
-  -Body $body
+Invoke-RestMethod -Method Post -Uri http://localhost:8000/api/v1/events -ContentType "application/json" -Body $body
 ```
 
-### List events
+### List events with pagination
 
 ```powershell
-Invoke-RestMethod http://localhost:8000/api/v1/events
+Invoke-RestMethod "http://localhost:8000/api/v1/events?limit=25&offset=0"
+Invoke-RestMethod "http://localhost:8000/api/v1/events?severity=high&limit=25&offset=25"
 ```
 
-### Filter by severity
+Every HTTP response includes an `X-Request-ID` header. Use it to correlate a client request with its server-side log entries. The ID is generated by the API; caller-supplied IDs are not trusted.
 
-```powershell
-Invoke-RestMethod "http://localhost:8000/api/v1/events?severity=medium"
-```
+## Database migrations
 
-## Run tests locally
+Migrations are version-controlled under `migrations/versions`. For local development, run `alembic upgrade head` after installing dependencies and configuring `DATABASE_URL`. To inspect the current revision, run `alembic current`; to see pending history, run `alembic history`.
+
+Do not use `Base.metadata.create_all()` to provision application databases. Schema changes must be represented by reviewed Alembic revisions.
+
+## Tests
 
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-pytest -q
+python -m pytest -q
 ```
 
-Tests use an isolated SQLite database and do not need a running PostgreSQL server.
+Tests use an isolated in-memory SQLite database and do not require PostgreSQL.
 
 ## Repository layout
 
@@ -138,23 +135,27 @@ aegissoc/
 │   ├── api/routes/
 │   ├── core/
 │   ├── db/
+│   ├── models.py
 │   ├── schemas/
-│   ├── services/
 │   └── main.py
+├── migrations/
+│   ├── versions/
+│   └── env.py
 ├── tests/
-├── .env.example
-├── .gitignore
+├── alembic.ini
 ├── compose.yaml
 ├── Dockerfile
 └── requirements.txt
 ```
 
-## Safety
-Only ingest logs and events from systems you own or are explicitly authorized to monitor.
-Use synthetic events for initial testing. Do not upload secrets, credentials, personal data,
-or unredacted production logs to a public repository.
+## Security boundary
 
-## Next milestones
-- Phase 1.1: configuration hardening, pagination, request IDs and structured logging
-- Phase 2: normalization pipeline and rule-based detections
-- Phase 3: Wazuh integration in a resource-conscious lab
+Only ingest events from systems you own or are explicitly authorized to monitor. Use synthetic data during development. Authentication, authorization, rate limiting, retention controls, alerting, and production deployment hardening remain future work.
+
+## Roadmap
+
+1. Phase 1.1: migration discipline, validated configuration, request correlation, structured logs, bounded event queries.
+2. Phase 2: normalization contracts and deterministic, testable detection rules (starting with SSH authentication failures).
+3. Phase 3: alert lifecycle and analyst investigation workflow.
+4. Phase 4: MITRE ATT&CK references and Wazuh integration.
+5. Later: analyst UI and production security controls.
