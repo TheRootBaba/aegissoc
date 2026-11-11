@@ -245,3 +245,64 @@ def test_connector_worker_records_failure_and_backoff(isolated_db, monkeypatch):
     assert state.consecutive_failures == 1
     assert state.locked_until is None
     assert isolated_db.query(connector_runtime.ConnectorExecution).filter_by(status="failed").count() == 1
+
+def test_native_provider_adapters_validate_tls_and_normalize_indicators():
+    misp = get_adapter("misp")
+    valid = {
+        "endpoint": "https://misp.example/attributes/restSearch",
+        "allowed_hosts": ["misp.example"],
+        "interval_seconds": 60,
+        "credential_ref": "env://MISP_API_KEY",
+    }
+    assert misp.validate_config(valid).valid
+    assert not misp.validate_config({**valid, "endpoint": "http://misp.example/attributes/restSearch"}).valid
+    normalized = misp.normalize_indicator({"type": "ip-src|port", "value": "203.0.113.9|443", "to_ids": True})
+    assert normalized["type"] == "ip"
+    assert normalized["value"] == "203.0.113.9"
+
+    opencti = get_adapter("opencti")
+    normalized = opencti.normalize_indicator({
+        "node": {
+            "pattern": "[domain-name:value = 'malware.example']",
+            "confidence": 90,
+            "labels": [{"value": "tlp:amber"}],
+        }
+    })
+    assert normalized["type"] == "domain"
+    assert normalized["value"] == "malware.example"
+    assert normalized["tags"] == ["tlp:amber"]
+
+
+def test_scanner_export_normalizers_map_vendor_findings_to_managed_asset_contract():
+    from app.services.scanner_adapters import normalize_scanner_export
+
+    nessus = normalize_scanner_export("nessus", {
+        "info": {"uuid": "scan-nessus-001"},
+        "hosts": [{
+            "host-fqdn": "db01.example.internal",
+            "host-ip": "192.0.2.81",
+            "vulnerabilities": [{
+                "plugin_id": 12345,
+                "plugin_name": "Example remote code execution",
+                "severity": 4,
+                "cve": ["CVE-2026-12345"],
+                "description": "Synthetic scanner fixture",
+            }],
+        }],
+    })
+    assert nessus["scanner_name"] == "nessus"
+    assert nessus["scan_id"] == "scan-nessus-001"
+    assert nessus["assets"][0]["asset_key"] == "db01.example.internal"
+    assert nessus["assets"][0]["findings"][0]["vulnerability_id"] == "CVE-2026-12345"
+    assert nessus["assets"][0]["findings"][0]["severity"] == "critical"
+
+    qualys = normalize_scanner_export("qualys", {
+        "scan_id": "qualys-2026-01",
+        "assets": [{
+            "host_name": "web01.example.internal",
+            "ip": "192.0.2.82",
+            "detectionList": [{"qid": 9876, "title": "Outdated package", "severity": 3}],
+        }],
+    })
+    assert qualys["assets"][0]["findings"][0]["vulnerability_id"] == "QID-9876"
+    assert qualys["assets"][0]["findings"][0]["severity"] == "high"
