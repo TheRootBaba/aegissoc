@@ -109,7 +109,7 @@ def get_current_user(
 
     # Membership visibility is bound to the authenticated subject before resolving a workspace.
     set_workspace_context(db, None, user_id=user.id)
-    if request.url.path.startswith("/api/v1/workspaces"):
+    if request.url.path.startswith("/api/v1/workspaces") and request.method.upper() == "GET":
         return user
 
     memberships = db.execute(
@@ -138,7 +138,7 @@ def get_current_user(
             raise HTTPException(status_code=400, detail="X-Workspace-ID is required when the user belongs to multiple workspaces")
         selected = memberships[0]
 
-    set_workspace_context(db, selected.workspace_id, user_id=user.id, manage_memberships=(selected.role == 'admin'))
+    set_workspace_context(db, selected.workspace_id, user_id=user.id, manage_memberships=(selected.role == 'admin'), manage_workspaces=(selected.role == 'admin'))
     user.workspace_role = selected.role
     return user
 
