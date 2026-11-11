@@ -1,6 +1,6 @@
 from datetime import datetime
 from uuid import UUID
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 class ConnectorExecutionRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -23,15 +23,53 @@ class ScannerFindingInput(BaseModel):
     description: str = Field(default="", max_length=4000)
     due_at: datetime | None = None
 
+    @field_validator("vulnerability_id")
+    @classmethod
+    def normalize_vulnerability_id(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 3:
+            raise ValueError("Vulnerability identifier cannot be blank")
+        return value.upper()
+
+    @field_validator("title")
+    @classmethod
+    def strip_title(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 3:
+            raise ValueError("Finding title cannot be blank")
+        return value
+
 class ScannerAssetInput(BaseModel):
     asset_key: str = Field(min_length=2, max_length=160)
     hostname: str = Field(min_length=1, max_length=255)
     findings: list[ScannerFindingInput] = Field(default_factory=list, max_length=100)
 
+    @field_validator("asset_key", "hostname")
+    @classmethod
+    def strip_asset_identity(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Asset identity cannot be blank")
+        return value
+
 class ScannerImportRequest(BaseModel):
     scanner_name: str = Field(min_length=2, max_length=120)
     scan_id: str = Field(min_length=2, max_length=160)
     assets: list[ScannerAssetInput] = Field(min_length=1, max_length=500)
+
+    @field_validator("scanner_name", "scan_id")
+    @classmethod
+    def strip_identifiers(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 2:
+            raise ValueError("Identifier cannot be blank")
+        return value
+
+    @model_validator(mode="after")
+    def bound_total_findings(self):
+        if sum(len(asset.findings) for asset in self.assets) > 5000:
+            raise ValueError("A scanner import is limited to 5,000 findings")
+        return self
 
 class ScannerImportRead(BaseModel):
     scan_id: str

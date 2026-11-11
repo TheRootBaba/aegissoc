@@ -117,7 +117,7 @@ def run_sigma_rules(db: Session, *, lookback_minutes: int = 15, limit: int = 100
         select(SecurityEvent).where(SecurityEvent.timestamp >= now - timedelta(minutes=lookback_minutes))
         .order_by(SecurityEvent.timestamp.asc(), SecurityEvent.id.asc()).limit(limit)
     ).all())
-    rules = list(db.scalars(select(SigmaRule).where(SigmaRule.enabled.is_(True))).all())
+    rules = list(db.scalars(select(SigmaRule).where(SigmaRule.enabled.is_(True)).order_by(SigmaRule.rule_id.asc()).limit(100)).all())
     created = updated = matches = 0
     for rule in rules:
         for event in events:
