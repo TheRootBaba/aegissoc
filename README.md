@@ -134,6 +134,44 @@ $wazuhAlert = @{
 Invoke-RestMethod -Method Post -Uri http://localhost:8000/api/v1/events/ingest/wazuh -ContentType "application/json" -Body $wazuhAlert
 ```
 
+### Bulk source ingestion
+
+High-volume producers can submit a bounded batch to `POST /api/v1/events/ingest/{source}/bulk`. The request body is `{"events": [...]}` and accepts 1–500 source records. The same source-specific normalization rules used by the single-event endpoint apply to every record, including native Wazuh normalization when `{source}` is `wazuh`.
+
+The endpoint returns a per-index outcome for each submitted record:
+- `accepted`: a new canonical event was inserted and its event ID is returned.
+- `duplicate`: the `(source, external_id)` already exists; the original event ID is returned and the original record is not overwritten.
+- `rejected`: the record failed normalization or canonical validation; the error is returned for that index.
+
+Valid records are committed together even when sibling records are rejected. The response includes received, accepted, duplicate, and rejected counts. Empty batches and batches over 500 records are rejected with HTTP 422. The PostgreSQL and SQLite insert paths use database-level `ON CONFLICT DO NOTHING` against the source/external-ID unique key, making concurrent producer retries safe rather than relying only on a pre-insert lookup.
+
+Example PowerShell request:
+
+```powershell
+$batch = @{
+  events = @(
+    @{
+      id = "lab-event-001"
+      "@timestamp" = (Get-Date).ToUniversalTime().ToString("o")
+      event = @{ action = "authentication.failure"; severity = "warning" }
+      host = @{ name = "ubuntu-lab" }
+      src_ip = "192.0.2.25"
+      user = @{ name = "analyst" }
+      message = "Synthetic failed SSH login"
+    },
+    @{
+      id = "lab-event-002"
+      "@timestamp" = (Get-Date).ToUniversalTime().ToString("o")
+      event = @{ action = "process.started"; severity = "info" }
+      host = @{ name = "ubuntu-lab" }
+      message = "Synthetic process start"
+    }
+  )
+} | ConvertTo-Json -Depth 8
+
+Invoke-RestMethod -Method Post -Uri http://localhost:8000/api/v1/events/ingest/lab-sensor/bulk -ContentType "application/json" -Body $batch
+```
+
 ### Run detections and inspect alerts
 
 The first detection pack contains two deterministic rules. AUTH-SSH-001 detects repeated SSH authentication failures from one source IP against one target host (five failures by default) and maps to MITRE ATT&CK T1110 (Brute Force). AUTH-SSH-002 detects password spraying when the same source/target pair attempts five or more distinct usernames in the window and maps to T1110.003 (Password Spraying). Both map to the Credential Access tactic. Both require a source IP and an SSH indicator in the event type or message. The detector is intentionally run on demand in this phase; scheduled detection is a later work package.
