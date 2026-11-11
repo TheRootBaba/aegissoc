@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 Severity = Literal["low", "medium", "high", "critical", "info"]
@@ -86,6 +86,16 @@ class EventQueryFilter(BaseModel):
             if not 1 <= len(value) <= 50 or any(not isinstance(item, str) or len(item) > 255 for item in value):
                 raise ValueError("in filters require 1–50 strings of at most 255 characters")
         return value
+
+    @model_validator(mode="after")
+    def validate_operator_value(self):
+        if self.operator == "exists" and self.value not in (None, True, False):
+            raise ValueError("exists filters accept only a boolean or null value")
+        if self.operator == "in" and not isinstance(self.value, list):
+            raise ValueError("in filters require a list of values")
+        if self.operator not in {"exists", "in"} and not isinstance(self.value, str):
+            raise ValueError("this filter operator requires a string value")
+        return self
 
 
 class InvestigationQuery(BaseModel):
