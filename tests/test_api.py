@@ -140,3 +140,25 @@ def test_event_search_rejects_naive_or_reversed_time_range(client):
     )
     assert naive.status_code == 422
     assert reversed_range.status_code == 422
+
+
+def test_normalized_ingest_endpoint_maps_source_payload(client):
+    response = client.post(
+        "/api/v1/events/ingest/syslog-lab",
+        json={
+            "@timestamp": "2026-11-11T12:00:00Z",
+            "event": {"action": "authentication.failure", "severity": "warning"},
+            "host": {"name": "linux-lab-01"},
+            "src_ip": "192.0.2.44",
+            "user": {"name": "analyst"},
+            "message": "SSH login rejected",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["source"] == "syslog-lab"
+    assert response.json()["event_type"] == "authentication.failure"
+    assert response.json()["severity"] == "medium"
+    assert response.json()["hostname"] == "linux-lab-01"
+    assert response.json()["source_ip"] == "192.0.2.44"
+    assert response.json()["raw"]["event"]["action"] == "authentication.failure"
