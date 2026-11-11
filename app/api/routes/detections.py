@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -21,6 +21,23 @@ def run_detections(
         window_minutes=request.window_minutes,
         threshold=request.threshold,
     )
+
+
+@router.get("/api/v1/alerts/stats")
+def alert_stats(db: Session = Depends(get_db)):
+    """Return queue totals by workflow state and severity."""
+    total = db.scalar(select(func.count()).select_from(DetectionAlert)) or 0
+    status_rows = db.execute(
+        select(DetectionAlert.status, func.count()).group_by(DetectionAlert.status)
+    ).all()
+    severity_rows = db.execute(
+        select(DetectionAlert.severity, func.count()).group_by(DetectionAlert.severity)
+    ).all()
+    return {
+        "total_alerts": total,
+        "by_status": {status: count for status, count in status_rows},
+        "by_severity": {severity: count for severity, count in severity_rows},
+    }
 
 
 @router.get("/api/v1/alerts", response_model=list[AlertRead])
