@@ -46,7 +46,7 @@ def test_dashboard_styles_include_responsive_and_reduced_motion_support():
     assert ".source-state.failing" in styles
 
 
-def test_dashboard_uses_a_premium_midnight_cyan_visual_system():
+def test_dashboard_uses_a_premium_matte_graphite_visual_system():
     html = (WEB / "index.html").read_text(encoding="utf-8")
     styles = (WEB / "styles.css").read_text(encoding="utf-8")
     assert "Geist" in html
