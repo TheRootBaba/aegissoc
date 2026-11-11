@@ -43,13 +43,14 @@ findings, not silently created.
 
 A response receiver must explicitly configure:
 - `capabilities.compensation: true`
-- `compensation_endpoint` on an allowlisted HTTPS host
+- `compensation_endpoint` and `compensation_status_endpoint` on allowlisted HTTPS hosts
 - a receiver-issued `X-Aegis-Action-Reference` on successful original delivery
 
 An administrator can then request compensation. A deterministic idempotency key derived
 from the original action key is sent with the original reference and action details.
 A receiver response must echo `original_idempotency_key` and report `compensated`,
-`pending`, or `rejected`. Compensation is never inferred from an action type, and
+`pending`, or `rejected`. Pending outcomes can be polled through the status endpoint without
+resubmitting the original compensation request. Compensation is never inferred from an action type, and
 a request without a receiver reference is rejected.
 
 The existing action worker also reconciles ambiguous deliveries through the configured
