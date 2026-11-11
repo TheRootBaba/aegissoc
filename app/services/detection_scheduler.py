@@ -66,7 +66,7 @@ def run_due_schedules_once(
         try:
             result = run_ssh_brute_force_detection(
                 db, window_minutes=schedule.window_minutes,
-                threshold=schedule.threshold, now=run_at,
+                threshold=schedule.threshold, now=run_at, commit=False,
             )
             completed_at = datetime.now(timezone.utc)
             schedule = db.get(DetectionSchedule, schedule_id)
