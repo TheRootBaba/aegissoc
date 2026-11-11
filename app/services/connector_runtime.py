@@ -34,9 +34,9 @@ def _credential(connector: ConnectorConfig) -> str | None:
         raise ValueError("Referenced credential is not available in the worker environment")
     return value
 
-def _read_response(url: str, headers: dict) -> dict | list:
+def _read_response(url: str, headers: dict, *, method: str = 'GET', json_body: dict | None = None) -> dict | list:
     with httpx.Client(timeout=httpx.Timeout(15.0, connect=5.0), follow_redirects=False, verify=True) as client:
-        with client.stream("GET", url, headers=headers) as response:
+        with client.stream(method, url, headers=headers, json=json_body) as response:
             response.raise_for_status()
             if response.headers.get("content-length") and int(response.headers["content-length"]) > MAX_RESPONSE_BYTES:
                 raise ValueError("Connector response exceeds the 5 MiB limit")
