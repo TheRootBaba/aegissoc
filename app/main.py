@@ -62,7 +62,9 @@ app.include_router(events.router)
 app.include_router(detections.router)
 app.include_router(detection_schedules.router)
 app.include_router(alert_workflow.router)
-app.include_router(audit.router)\napp.include_router(operations.router)\napp.include_router(connectors.router)
+app.include_router(audit.router)
+app.include_router(operations.router)
+app.include_router(connectors.router)
 app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 
 
