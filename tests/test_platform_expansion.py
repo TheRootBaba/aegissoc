@@ -561,3 +561,48 @@ def test_wazuh_indexer_connector_uses_basic_auth_search_and_native_alert_normali
     assert calls[0][1]["Authorization"].startswith("Basic ")
     assert calls[0][2]["method"] == "POST"
     assert calls[0][2]["json_body"]["size"] == 100
+
+
+
+def test_wazuh_manager_adapter_exchanges_credentials_for_api_token(isolated_db, monkeypatch):
+    from app.services import connector_runtime
+
+    monkeypatch.setenv("WAZUH_MANAGER_FIXTURE", "api-user:api-password")
+    connector = ConnectorConfig(
+        connector_key="wazuh-manager-prod",
+        connector_type="wazuh_manager",
+        display_name="Wazuh Manager production",
+        config={
+            "endpoint": "https://manager.example.internal:55000/security/events",
+            "allowed_hosts": ["manager.example.internal"],
+            "interval_seconds": 60,
+        },
+        credential_ref="env://WAZUH_MANAGER_FIXTURE",
+        enabled=True,
+        health_status="unverified",
+    )
+    isolated_db.add(connector)
+    isolated_db.commit()
+    calls = []
+
+    def fake_read(url, headers, **kwargs):
+        calls.append((url, headers, kwargs))
+        if "authenticate" in url:
+            return {"data": {"token": "fixture-access-token"}}
+        return {"data": {"affected_items": [{
+            "id": "wazuh-manager-alert-001",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "rule": {"level": 8, "description": "sshd failed password", "groups": ["sshd"]},
+            "agent": {"name": "linux-manager-01"},
+            "data": {"srcip": "192.0.2.44"},
+            "full_log": "sshd: Failed password",
+        }]}}
+    monkeypatch.setattr(connector_runtime, "_read_response", fake_read)
+
+    assert connector_runtime.run_due_connectors_once(isolated_db, batch_size=1) == 1
+    event = isolated_db.query(SecurityEvent).filter_by(external_id="wazuh-manager-alert-001").one()
+    assert event.source == "wazuh-manager-prod"
+    assert event.hostname == "linux-manager-01"
+    assert calls[0][0] == "https://manager.example.internal:55000/security/user/authenticate"
+    assert calls[0][1]["Authorization"].startswith("Basic ")
+    assert calls[1][1]["Authorization"] == "Bearer fixture-access-token"
