@@ -78,6 +78,15 @@ def _persist_event(db: Session, payload: SecurityEventCreate) -> tuple[str, uuid
     return "duplicate", existing_id
 
 
+def _validation_summary(exc: ValidationError) -> str:
+    """Describe invalid fields without echoing attacker-controlled input values."""
+    details = exc.errors(include_input=False, include_url=False)
+    return "; ".join(
+        f"{'.'.join(str(part) for part in item['loc'])}: {item['msg']}"
+        for item in details
+    )
+
+
 def _require_aware(value: datetime | None, parameter: str) -> datetime | None:
     if value is not None and (value.tzinfo is None or value.utcoffset() is None):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"{parameter} must include a timezone offset")
@@ -146,7 +155,8 @@ def ingest_event_batch(
                 duplicates += 1
         except (ValidationError, ValueError, TypeError) as exc:
             rejected += 1
-            results.append({"index": index, "status": "rejected", "error": str(exc)})
+            error = _validation_summary(exc) if isinstance(exc, ValidationError) else str(exc)
+            results.append({"index": index, "status": "rejected", "error": error})
 
     db.commit()
     return {
