@@ -1,80 +1,71 @@
-# AegisSOC integration framework
+# Integration adapters
 
-The integration registry binds a stable producer key to a validated adapter contract. Registered producers use the same authenticated event-ingestion APIs and canonical event model as existing sources.
+This page distinguishes inbound event contracts from outbound polling adapters. A connector record describes a configured source; it does not imply that AegisSOC is listening on every transport or can speak every vendor API.
 
-## Supported adapter contracts
+## Adapter inventory
 
-| Adapter | Required configuration | Normalization |
-|---|---|---|
-| `wazuh` | `manager_url` (HTTP(S), no embedded credentials) and an external `credential_ref` | Existing native Wazuh alert normalizer |
-| `syslog` | `host`, optional `port` (default 514), optional `transport` (`udp`, `tcp`, or `tls`) | Canonical event normalizer |
-| `http_event` | Optional application-relative `ingest_path` | Canonical event normalizer |
-| `generic` | No required fields | Canonical event normalizer |
+| Connector type | Direction | What the application does | Important limit |
+|---|---|---|---|
+| `wazuh` | Inbound | Accepts native Wazuh alert JSON and normalizes it into canonical events | The producer sends alerts to the AegisSOC ingestion API |
+| `http_event` | Inbound | Accepts source-specific JSON through the authenticated ingestion API | Does not run an HTTP listener on a separate port |
+| `generic` | Inbound | Accepts canonical or normalizable JSON events | Source must submit to the API |
+| `syslog` | Forwarded | Stores validated host, port and transport metadata | A separate syslog collector must forward events; this service is not a syslog daemon |
+| `http_poll` | Outbound | Polls an allowlisted JSON endpoint and normalizes event records | Generic JSON contract; provider pagination is not inferred |
+| `threat_feed` | Outbound | Polls a JSON feed and reconciles IP, domain and hash indicators | Feed records must follow the documented normalized contract |
+| `wazuh_manager` | Outbound | Authenticates to Wazuh Manager and polls alert records | Requires a compatible Manager API and scoped credentials |
+| `wazuh_indexer` | Outbound | Searches Wazuh Indexer alerts with bounded pagination and persisted cursor | Requires Indexer access and a compatible search response |
+| `misp` | Outbound | Polls MISP attributes and maps supported attribute types to indicators | Not every MISP object or attribute type is normalized |
+| `opencti` | Outbound | Queries OpenCTI GraphQL indicators and maps supported STIX patterns | Only supported indicator patterns are converted |
+| `response_webhook` | Outbound | Delivers approved response requests to an allowlisted receiver | Receiver must authenticate and enforce idempotency |
 
-These are adapter contracts, not claims that AegisSOC runs a UDP/TCP syslog listener or polls remote vendor APIs. Syslog collectors and other producers must forward events to the authenticated ingestion API. Native transport listeners and vendor-specific credential resolvers remain separate integration work.
+Nessus, Tenable and Qualys integrations in this release are scanner-export normalizers that feed the scanner import API. They do not claim to run authenticated scans or poll every scanner's export API.
 
-## Register a connector
+## Data flow
 
-Administrator-only example:
-
-```http
-POST /api/v1/connectors
-Authorization: Bearer <admin-token>
-Content-Type: application/json
+```mermaid
+flowchart LR
+    subgraph sources["Event sources"]
+      wazuhPush["Wazuh alert producer"]
+      otherPush["HTTP / generic producer"]
+      syslog["Syslog collector"]
+    end
+    subgraph pollers["Integration worker"]
+      manager["Wazuh Manager adapter"]
+      indexer["Wazuh Indexer adapter"]
+      misp["MISP adapter"]
+      opencti["OpenCTI adapter"]
+      json["Generic JSON poller"]
+    end
+    subgraph api["AegisSOC API"]
+      ingest["Authenticated event ingestion"]
+      normalize["Canonical event normalizer"]
+      ioc["Threat indicator reconciliation"]
+      scanner["Scanner export import"]
+    end
+    wazuhPush --> ingest
+    otherPush --> ingest
+    syslog --> ingest
+    manager --> normalize
+    indexer --> normalize
+    json --> normalize
+    misp --> ioc
+    opencti --> ioc
+    normalize --> ingest
+    scanner --> assets[("Workspace asset findings")]
+    ingest --> events[("Workspace events")]
+    ioc --> indicators[("Workspace indicators")]
 ```
 
-```json
-{
-  "connector_key": "syslog-prod",
-  "connector_type": "syslog",
-  "display_name": "Production Syslog",
-  "config": {
-    "host": "syslog-collector.internal",
-    "port": 6514,
-    "transport": "tls"
-  },
-  "credential_ref": "vault://security/syslog-prod",
-  "enabled": true
-}
-```
+## Credentials and network controls
 
-Use `GET /api/v1/connectors` to inventory connectors. `PATCH /api/v1/connectors/{id}` updates display name, adapter config, external credential reference, or enabled state. `DELETE` removes only the connector configuration; it does not remove ingested events.
+Connector configuration is metadata. Put a secret reference in `credential_ref`, not the secret itself. The integration worker resolves supported references from its environment or mounted secret files. Do not put credentials in `config`, connector names, screenshots or logs.
 
-## Ingest through an adapter
+Outbound requests use explicit hostname allowlists, bounded timeouts and response sizes, TLS verification, and disabled redirects. Wazuh Manager, Wazuh Indexer, MISP and OpenCTI adapters require HTTPS. Credentials should be scoped to read-only access where the provider supports it. Apply network egress restrictions outside the application as an additional control.
 
-Use the connector key as the source path. The API validates the registered adapter, normalizes the payload, persists the event idempotently, and updates the connector's last-observed timestamp.
+## Provider setup and validation
 
-```http
-POST /api/v1/events/ingest/syslog-prod
-Authorization: Bearer <analyst-token>
-Content-Type: application/json
-```
+Provider-specific configuration is validated by the adapter before polling. A successful local configuration check is not proof that the remote endpoint is reachable or that the credential has sufficient permissions. Confirm connectivity and permissions in a controlled test workspace, then inspect execution history and last-success timestamps after enabling the connector.
 
-```json
-{
-  "@timestamp": "2026-11-11T12:00:00Z",
-  "event": {
-    "action": "process.started",
-    "severity": "info"
-  },
-  "host": {
-    "name": "linux-edge-01"
-  },
-  "message": "sshd process started"
-}
-```
+Provider APIs evolve. Validate endpoint paths, auth behavior, pagination, cursor semantics, rate limits and response schemas against the version deployed by the operator. Add a fixture and regression test when a new response variant is accepted. Do not broaden parsing by silently guessing field names.
 
-The existing bulk endpoint can be used for bounded batch ingestion at `POST /api/v1/events/ingest/{connector_key}/bulk`.
-
-## Credential boundary
-
-Connector configuration is metadata, not a secret store. Secret-like fields are rejected recursively in the `config` object. Store only a reference such as `vault://...` in `credential_ref`; the application does not resolve that reference in this phase and never accepts a raw token/password as a substitute.
-
-## Health semantics
-
-- `unverified`: configuration exists but no successful event has been observed.
-- `observed`: at least one accepted or duplicate ingestion has been processed for this connector key.
-- `misconfigured`: adapter configuration validation failed.
-- `disabled`: connector ingestion is administratively disabled.
-
-The administrator `POST /api/v1/connectors/{id}/check` action validates local configuration only. It does not open a network connection, test remote credentials, or assert that a vendor service is online.
+For polling limits, leases, retries and operational health, see [Integration runtime](INTEGRATION_RUNTIME.md) and [Worker execution and scaling](SCALING_AND_WORKERS.md).

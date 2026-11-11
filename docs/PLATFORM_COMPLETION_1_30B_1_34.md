@@ -1,6 +1,56 @@
 # Platform completion: phases 1.30b–1.34
 
-This document records the scope delivered by the platform-completion branch and distinguishes implemented controls from work that still requires provider certification or production deployment evidence.
+This release closes the first multi-workspace, provider-integration and response-reliability milestones. The diagram below shows how those parts fit together; the sections that follow record the implemented controls and the boundaries that still need deployment evidence.
+
+```mermaid
+flowchart LR
+    subgraph identity["1.30b · Workspace boundary"]
+      membership["User + membership"]
+      context["Transaction workspace context"]
+      rls["PostgreSQL RLS"]
+      membership --> context --> rls
+    end
+    subgraph ingestion["1.31 · Provider adapters"]
+      wazuh["Wazuh Manager / Indexer"]
+      misp["MISP"]
+      opencti["OpenCTI"]
+      scanners["Nessus / Tenable / Qualys exports"]
+    end
+    subgraph detection["1.32 · Detection"]
+      normalize["Canonical events"]
+      ioc["Threat indicator registry"]
+      sigma["Validated Sigma subset"]
+      correlation["Bounded event-count correlation"]
+      alerts["Evidence-linked alerts"]
+      normalize --> sigma --> correlation --> alerts
+    end
+    subgraph response["1.33 · Response"]
+      approval["Separate approval"]
+      lease["Leased response worker"]
+      receiver["Idempotent receiver"]
+      approval --> lease --> receiver
+    end
+    subgraph operations["1.34 · Runtime controls"]
+      oidc["Pre-provisioned OIDC"]
+      secrets["Environment / file secrets"]
+      runtime["Non-owner runtime DB role"]
+    end
+    wazuh --> normalize
+    misp --> ioc
+    opencti --> ioc
+    scanners --> assets["Workspace asset findings"]
+    rls --> normalize
+    rls --> alerts
+    rls --> ioc
+    rls --> assets
+    rls --> lease
+    oidc --> membership
+    secrets --> wazuh
+    secrets --> lease
+    runtime --> rls
+```
+
+**Implementation boundary:** this is a controlled platform release, not a production certification. The scanner path normalizes exports rather than polling every scanner deployment; Sigma support is intentionally bounded; response delivery depends on receiver-side idempotency; and SSO is optional and pre-provisioned.
 
 ## 1.30b — Workspace and tenant isolation
 

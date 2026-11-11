@@ -16,6 +16,43 @@ docker compose ps
 
 Wait for the API health check to pass before running the backup profile. The retention worker waits for the migrated schema as a startup safety net. Confirm the Alembic revision before starting worker processes.
 
+## PostgreSQL credential mismatch
+
+A healthy PostgreSQL container does not prove that the API can authenticate. If the API log reports `password authentication failed` for `aegis` or `aegis_runtime`, check the local Compose environment without printing the secret:
+
+```powershell
+docker compose config --services
+docker compose ps
+docker compose logs --tail 100 api
+```
+
+For an existing named database volume, `POSTGRES_PASSWORD` is an initialization value; changing it in `.env` does not change the password already stored for the PostgreSQL role. Do not delete the volume to fix an authentication error.
+
+If the owner role password must be synchronized, open a local psql session inside the database container and change it interactively to match the value configured in the untracked `.env` file:
+
+```powershell
+docker compose exec db psql -U aegis -d aegissoc
+```
+
+At the `psql` prompt:
+
+```sql
+\password aegis
+\q
+```
+
+Enter the intended password at the hidden prompts; do not put it in a shell command or paste it into a support conversation. Recreate the API container and check its health:
+
+```powershell
+docker compose up -d --force-recreate api
+docker compose ps
+docker compose logs --tail 80 api
+docker compose exec api alembic current
+docker compose exec api alembic heads
+```
+
+Only after the API is healthy should the dependent workers be started. If authentication still fails for `aegis_runtime`, verify that `RUNTIME_DB_PASSWORD` is consistent across the API and worker services and inspect the API startup logs for runtime-role provisioning errors. Preserve the database volume and take a backup before any manual database repair.
+
 ## Health and incident triage
 
 1. Check API liveness and database readiness:

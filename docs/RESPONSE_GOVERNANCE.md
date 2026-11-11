@@ -1,25 +1,73 @@
-# Response action governance
+# Response action governance and execution
 
-Phase 1.28 introduces a request, approval and execution workflow for external response systems. AegisSOC does not run shell commands, terminate processes, isolate hosts or disable accounts directly.
+AegisSOC separates an analyst's request, an administrator's decision and the external delivery attempt. The application does not run shell commands or directly isolate endpoints. It sends a bounded request to an administrator-configured receiver.
 
-## Execution model
+## Request and approval path
 
-An administrator registers a `response_webhook` connector with an HTTPS endpoint and an exact `allowed_hosts` entry. HTTP is disabled unless the administrator explicitly opts in for a controlled lab. An optional `credential_ref` uses `env://VARIABLE_NAME`; the secret is loaded by the API process only when the approved action is executed and is used to create an HMAC-SHA256 signature in `X-Aegis-Signature`.
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Analyst
+    actor Admin as Approving administrator
+    participant API
+    participant DB as PostgreSQL
+    participant Worker as Response worker
+    participant Receiver
 
-Analysts can create a pending request with an action type (`notify`, `block_ip`, `disable_user`, or `isolate_host`), target, optional case and bounded scalar parameters. A `block_ip` target is validated as an IP address. Action parameters cannot contain nested objects or secret-like keys.
+    Analyst->>API: Create action request
+    API->>DB: Store pending request and audit entry
+    Admin->>API: Approve or reject with decision note
+    API->>DB: Store decision and audit entry
+    Admin->>API: Explicitly queue approved request
+    API->>DB: Set queued state and due time
+    Worker->>DB: Claim lease
+    Worker->>Receiver: Reconcile existing idempotency key (when configured)
+    alt Already completed
+      Receiver-->>Worker: succeeded / completed
+      Worker->>DB: Record reconciled success
+    else Not found
+      Receiver-->>Worker: not_found / 404
+      Worker->>Receiver: Signed POST with same idempotency key
+      Receiver-->>Worker: HTTP status and bounded response
+      Worker->>DB: Persist outcome, retry or terminal state
+    end
+```
 
-An administrator other than the requester must approve or reject the request with a decision note. Approval does not execute the action. A separate administrator-only execute call sends one signed JSON request to the allowlisted receiver. The payload includes a stable idempotency key; the receiver must enforce it to protect against duplicate downstream processing.
+The requester cannot approve their own action. Approval does not queue execution; an administrator must make a separate execute request. Supported action labels are `notify`, `block_ip`, `disable_user` and `isolate_host`. They are payload types for the configured receiver, not built-in endpoint-control functions. The `block_ip` target is validated as an IP address. Parameters are flat scalar values and secret-like keys are rejected.
 
-The result records delivery status and HTTP status code, not the receiver's response body. Redirects are disabled and TLS verification remains enabled. The action request and decision/execution transitions are appended to the audit chain.
+## Receiver configuration
 
-## Operational safeguards
+Register an enabled `response_webhook` connector with:
 
-- No self-approval.
-- No execution from a pending or rejected request.
-- No implicit execution after approval.
-- No arbitrary URL supplied by the analyst.
-- No arbitrary shell or SQL action language.
-- No secrets in request parameters.
-- A failed or interrupted delivery must be reconciled with the receiver using the idempotency key before any manual retry. An action in `executing` state is not automatically replayed.
+- An HTTPS endpoint (HTTP is only permitted when explicitly enabled for a controlled lab).
+- An exact `allowed_hosts` list.
+- An optional `credential_ref` using a supported secret reference.
+- An optional `reconciliation_endpoint` on the same allowlisted host.
 
-The receiver is part of the security boundary. It must authenticate the signature, enforce the idempotency key, authorize the action type and target, and maintain its own execution audit.
+The request is signed with HMAC-SHA256 when a credential is configured. The signature is sent in `X-Aegis-Signature`; the stable idempotency key is sent in `Idempotency-Key` and the JSON body. Redirects are disabled and TLS verification remains enabled.
+
+The receiver must verify the signature, validate the action and target against its own policy, enforce idempotency before performing side effects, and keep its own execution audit. Never connect a portfolio demo to a real production response system.
+
+## Delivery, leases and retry
+
+The dedicated `response-worker` claims due work with a 120-second lease. PostgreSQL uses `FOR UPDATE SKIP LOCKED` to coordinate concurrent workers. Delivery attempts are bounded to five; retry delay grows exponentially from 30 seconds and is capped at 30 minutes. Receiver response bodies are not retained as unbounded text; the worker records status metadata and sanitized error classes.
+
+An expired in-flight lease is not proof that the receiver did nothing. When a reconciliation endpoint is configured, the worker checks the same idempotency key before another delivery. The endpoint must return a matching key and a supported status. A confirmed success is recorded without resending; pending work is deferred; a not-found result permits a retry with the original idempotency key. Reconciliation responses are limited to 64 KiB.
+
+Without a receiver reconciliation endpoint, operators must resolve uncertain delivery with the receiver before manually retrying. Do not assume that a timeout means the action failed.
+
+## API lifecycle
+
+| Operation | Endpoint | Permission |
+|---|---|---|
+| List action requests | `GET /api/v1/response-actions` | Authenticated |
+| Create a request | `POST /api/v1/response-actions` | Analyst or administrator |
+| Approve a request | `POST /api/v1/response-actions/{id}/approve` | Administrator other than requester |
+| Reject a request | `POST /api/v1/response-actions/{id}/reject` | Administrator |
+| Queue an approved request | `POST /api/v1/response-actions/{id}/execute` | Administrator |
+
+All state changes are audit logged. The response record includes request/decision identity, execution state, attempt count, response code, result summary, external reference and idempotency key. Secret material and arbitrary receiver response bodies are not copied into audit details.
+
+## Safe test procedure
+
+Use a local mock receiver that records the request, validates the HMAC and stores idempotency keys. Test duplicate delivery, a receiver timeout after accepting the action, a reconciliation success, a pending receiver state and a not-found retry. Verify that one idempotency key never causes the mock receiver to apply the same side effect twice. Only then consider connecting an approved non-production receiver.
