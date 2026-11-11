@@ -430,3 +430,26 @@ The scheduled/manual detection runner now evaluates five deterministic rules ove
 | PROC-SUSP-001 | Suspicious process execution patterns, including encoded PowerShell, certutil, bitsadmin, mshta, rundll32, regsvr32, and script-host launchers | T1059 — Command and Scripting Interpreter |
 
 Every alert stores event IDs as evidence, includes ATT&CK mapping, and is deduplicated by a stable rule/asset/account fingerprint. The authentication-chain rule explicitly requires the successful login to occur after the thresholded failures; a success that predates the failures does not qualify. These are deterministic starter rules, not a replacement for vendor-specific endpoint telemetry or behavioral baselining.
+
+
+## Scheduled detection execution
+
+Recurring detection runs are stored in PostgreSQL and executed by a separate Compose worker:
+
+- `GET /api/v1/detection-schedules` — list schedules and next/last run state.
+- `POST /api/v1/detection-schedules` — administrator-only schedule creation. Intervals are bounded from 60 seconds to 7 days; detection windows and thresholds use the same validation as manual runs.
+- `PATCH /api/v1/detection-schedules/{schedule_id}` — administrator-only enable/disable and configuration updates.
+- `DELETE /api/v1/detection-schedules/{schedule_id}` — administrator-only deletion, including its execution history.
+- `GET /api/v1/detection-schedules/{schedule_id}/executions` — latest 1–200 execution records.
+
+Migration `0008_detection_schedules` creates the schedule and execution-history tables. The `scheduler` Compose service polls every five seconds. PostgreSQL row-level `FOR UPDATE SKIP LOCKED` plus a persisted 15-minute lease prevents multiple worker replicas from claiming the same due schedule; expired leases can be recovered after a worker crash. Failed runs are recorded without exposing raw exception text and are retried with bounded exponential backoff.
+
+Start or update the full stack:
+
+```powershell
+docker compose up --build -d
+docker compose ps
+docker compose logs -f scheduler
+```
+
+Schedules are disabled or enabled through the API; a newly created enabled schedule first runs after its configured interval. Manual detection runs remain available independently of the scheduler.
