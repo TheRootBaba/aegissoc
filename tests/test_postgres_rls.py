@@ -111,6 +111,25 @@ def test_runtime_role_cannot_read_or_mutate_another_workspace():
                             CAST(:raw AS json), :created_at)
                 """), {"id": uuid4(), "workspace_id": workspace_two, **event_values})
             nested.rollback()
+
+            # Workspace creation uses a dedicated RLS management context,
+            # then binds the new workspace before inserting its first member.
+            new_workspace = uuid4()
+            connection.execute(text("SELECT set_config('aegis.manage_workspaces', 'on', true)"))
+            connection.execute(text("""
+                INSERT INTO workspaces (id, slug, name, is_active, created_at)
+                VALUES (:id, 'rls-created-workspace', 'RLS Created Workspace', true, :created_at)
+            """), {"id": new_workspace, "created_at": now})
+            connection.execute(text("SELECT set_config('aegis.workspace_id', :value, true)"),
+                               {"value": str(new_workspace)})
+            connection.execute(text("SELECT set_config('aegis.manage_memberships', 'on', true)"))
+            connection.execute(text("""
+                INSERT INTO workspace_memberships
+                (id, workspace_id, user_id, role, is_active, created_at)
+                VALUES (:id, :workspace_id, :user_id, 'admin', true, :created_at)
+            """), {"id": uuid4(), "workspace_id": new_workspace, "user_id": user_one, "created_at": now})
+            assert connection.execute(text("SELECT count(*) FROM workspaces WHERE id = :id"),
+                                      {"id": new_workspace}).scalar_one() == 1
         finally:
             transaction.rollback()
     engine.dispose()
