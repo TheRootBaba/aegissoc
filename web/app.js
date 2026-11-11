@@ -5,7 +5,7 @@ const state = {
   alerts: [], events: [], sources: [], schedules: [], eventStats: {}, alertStats: {}, users: [],
   savedQueries: [], queryFields: [], queryResult: null, pendingSavedQuery: null,
   auditEntries: [], auditVerification: null, cases: [], detectionRules: [], selectedCaseId: null,
-  operationsHealth: {}, operationsMetrics: {}, retentionPolicies: [], operationJobs: [], connectors: [],
+  operationsHealth: {}, operationsMetrics: {}, retentionPolicies: [], operationJobs: [], connectors: [],\n  indicators: [], indicatorMatches: [], entities: [],
   selectedId: null, token: null, user: null, toastTimer: null,
 };
 const esc = (value) => String(value ?? "—").replace(/[&<>"']/g, (char) => ({
@@ -535,7 +535,7 @@ async function loadInvestigation(id) {
 }
 async function refreshDashboard() {
   try {
-    const [alerts, events, eventStats, alertStats, sources, savedQueries, queryFields, schedules, auditEntries, operationsHealth, operationsMetrics, retentionPolicies, operationJobs, connectors, cases, detectionRules] = await Promise.all([
+    const [alerts, events, eventStats, alertStats, sources, savedQueries, queryFields, schedules, auditEntries, operationsHealth, operationsMetrics, retentionPolicies, operationJobs, connectors, cases, detectionRules, indicators, indicatorMatches, entities] = await Promise.all([
       api("/api/v1/alerts?limit=200"),
       api("/api/v1/events?limit=25"),
       api("/api/v1/events/stats"),
@@ -566,7 +566,7 @@ async function refreshDashboard() {
     state.operationJobs = operationJobs;
     state.connectors = connectors;
     state.cases = cases;
-    state.detectionRules = detectionRules;
+    state.detectionRules = detectionRules;\n    state.indicators = indicators;\n    state.indicatorMatches = indicatorMatches;\n    state.entities = entities;
     state.savedQueries = savedQueries;
     state.queryFields = queryFields.fields || [];
     setHealth(true, "API operational");
@@ -580,7 +580,7 @@ async function refreshDashboard() {
     renderOperations();
     renderConnectors();
     renderCases();
-    renderDetectionRules();
+    renderDetectionRules();\n    renderThreatIntel();\n    renderEntities();
     renderSavedQueries();
     if (state.selectedId && state.alerts.some((alert) => alert.id === state.selectedId)) {
       await loadInvestigation(state.selectedId);
@@ -1021,7 +1021,86 @@ async function saveDetectionRule(ruleId) {
   }
 }
 
-function setActiveNav() {
+function renderThreatIntel() {
+  $("indicator-count").textContent = count(state.indicators.length) + " indicators";
+  $("indicator-match-count").textContent = count(state.indicatorMatches.length) + " matches";
+  $("indicator-list").innerHTML = state.indicators.length ? state.indicators.map((item) =>
+    '<article class="indicator-row"><div><div class="indicator-value">' + esc(item.value) + '</div>' +
+    '<div class="indicator-meta">' + esc(item.indicator_type.toUpperCase()) + ' · ' + esc(item.source) +
+    ' · Confidence ' + count(item.confidence) + '% · ' + esc(item.severity) + ' · ' + esc(item.status) +
+    (item.expires_at ? ' · Expires ' + esc(date(item.expires_at)) : '') + '</div></div>' +
+    '<div class="indicator-actions">' + pill(item.status, item.status === "active" ? "status-resolved" : "status-open") +
+    (item.status === "active" && state.user?.role !== "read_only" ? '<button class="button button-quiet" type="button" data-indicator-revoke="' + esc(item.id) + '">Revoke</button>' : '') +
+    '</div></article>'
+  ).join("") : '<div class="source-empty">No indicators registered. Add an IP, domain or file hash to begin building a local intelligence set.</div>';
+  $("indicator-matches").innerHTML = state.indicatorMatches.length ? state.indicatorMatches.slice(0, 20).map((match) =>
+    '<div class="match-row"><strong class="indicator-value">' + esc(match.indicator.value) + '</strong> · ' +
+    esc(match.indicator.severity) + ' · ' + esc(match.event_source) + ' / ' + esc(match.event_type) +
+    '<div class="indicator-meta">Evidence event ' + esc(match.event_id) + ' · ' + esc(date(match.event_timestamp)) + '</div></div>'
+  ).join("") : '<div class="source-empty">No active indicators matched the latest 5,000 events.</div>';
+}
+function renderEntities() {
+  const kind = $("entity-type").value;
+  const query = $("entity-search").value.trim().toLowerCase();
+  const rows = state.entities.filter((item) => (!kind || item.entity_type === kind) && (!query || item.value.toLowerCase().includes(query)));
+  $("entity-count").textContent = count(rows.length) + " entities";
+  $("entities-body").innerHTML = rows.length ? rows.map((item) =>
+    '<tr><td><span class="entity-type">' + esc(item.entity_type) + '</span></td><td><strong class="indicator-value">' + esc(item.value) + '</strong></td>' +
+    '<td>' + count(item.event_count) + '</td><td>' + count(item.alert_count) + '</td><td>' + count(item.source_count) +
+    '<div class="sub-cell">' + esc(item.sources.join(", ")) + '</div></td><td>' + esc(date(item.last_seen)) + '</td></tr>'
+  ).join("") : '<tr><td colspan="6" class="table-empty">No correlated entities match these filters. The correlation view considers the latest 30 days of normalized telemetry.</td></tr>';
+}
+async function createIndicator(event) {
+  event.preventDefault();
+  const button = $("indicator-submit");
+  const feedback = $("indicator-feedback");
+  button.disabled = true;
+  feedback.textContent = "Validating indicator…";
+  try {
+    await api("/api/v1/threat-intel/indicators", { method: "POST", body: JSON.stringify({
+      indicator_type: $("indicator-type").value,
+      value: $("indicator-value").value.trim(),
+      confidence: Number($("indicator-confidence").value),
+      severity: $("indicator-severity").value,
+      source: $("indicator-source").value.trim(),
+      description: $("indicator-description").value.trim(),
+    }) });
+    $("indicator-form").reset();
+    $("indicator-confidence").value = "70";
+    feedback.textContent = "Indicator stored and audit logged.";
+    showToast("Threat indicator added.");
+    await refreshDashboard();
+  } catch (error) {
+    feedback.textContent = error.message;
+    showToast(error.message, "error");
+  } finally { button.disabled = false; }
+}
+async function handleIndicatorAction(event) {
+  const button = event.target.closest("[data-indicator-revoke]");
+  if (!button) return;
+  button.disabled = true;
+  try {
+    await api("/api/v1/threat-intel/indicators/" + encodeURIComponent(button.dataset.indicatorRevoke), {
+      method: "PATCH", body: JSON.stringify({ status: "revoked" }),
+    });
+    showToast("Indicator revoked. Historical record retained.");
+    await refreshDashboard();
+  } catch (error) { showToast(error.message, "error"); }
+}
+async function refreshEntities() {
+  const button = $("refresh-entities");
+  button.disabled = true;
+  try {
+    const type = $("entity-type").value;
+    const query = new URLSearchParams({ min_events: "1", limit: "200" });
+    if (type) query.set("type", type);
+    state.entities = await api("/api/v1/threat-intel/entities?" + query.toString());
+    renderEntities();
+    showToast("Cross-source entity pivots refreshed.");
+  } catch (error) { showToast(error.message, "error"); }
+  finally { button.disabled = false; }
+}
+\nfunction setActiveNav() {
   const current = location.hash.replace("#", "") || "overview";
   document.querySelectorAll("[data-nav]").forEach((link) => {
     link.classList.toggle("active", link.dataset.nav === current);
@@ -1031,7 +1110,7 @@ function setActiveNav() {
     current === "sources" ? "Data source health" : current === "operations" ? "Operational health" :
     current === "connectors" ? "Integration registry" : current === "schedules" ? "Detection schedules" :
     current === "cases" ? "Incident cases" : current === "detection-rules" ? "Detection rule library" :
-    current === "audit" ? "Security audit trail" : "Overview";
+    current === "audit" ? "Security audit trail" : current === "threat-intel" ? "Threat intelligence" : current === "entity-correlation" ? "Entity correlation" : "Overview";
 }
 
 $("login-form").addEventListener("submit", signIn);
@@ -1091,7 +1170,7 @@ $("case-list").addEventListener("click", (event) => {
 });
 $("case-detail").addEventListener("click", handleCaseDetailClick);
 $("case-detail").addEventListener("submit", addCaseNote);
-$("detection-rule-list").addEventListener("click", (event) => {
+$("indicator-form").addEventListener("submit", createIndicator);\n$("indicator-list").addEventListener("click", handleIndicatorAction);\n$("refresh-intel").addEventListener("click", refreshDashboard);\n$("refresh-entities").addEventListener("click", refreshEntities);\n$("entity-type").addEventListener("change", refreshEntities);\n$("entity-search").addEventListener("input", renderEntities);\n$("detection-rule-list").addEventListener("click", (event) => {
   const button = event.target.closest("[data-rule-save]");
   if (button) saveDetectionRule(button.dataset.ruleSave);
 });
