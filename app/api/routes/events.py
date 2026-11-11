@@ -1,13 +1,15 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models import SecurityEvent
 from app.schemas.events import SecurityEventCreate, SecurityEventRead
+from app.services.event_normalizer import normalize_event
 
 router = APIRouter(prefix="/api/v1/events", tags=["events"])
 
@@ -26,6 +28,21 @@ def _require_aware(value: datetime | None, parameter: str) -> datetime | None:
 def ingest_event(payload: SecurityEventCreate, db: Session = Depends(get_db)):
     """Persist one validated security event."""
     event = SecurityEvent(**payload.model_dump())
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+@router.post("/ingest/{source}", response_model=SecurityEventRead, status_code=status.HTTP_201_CREATED)
+def ingest_normalized_event(
+    payload: dict[str, Any],
+    source: str = Path(min_length=1, max_length=80),
+    db: Session = Depends(get_db),
+):
+    """Normalize a source-specific JSON event, then persist the canonical event."""
+    normalized = normalize_event(payload, source=source)
+    event = SecurityEvent(**normalized.model_dump())
     db.add(event)
     db.commit()
     db.refresh(event)
