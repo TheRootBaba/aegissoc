@@ -53,7 +53,8 @@ def create_request(payload: ResponseActionCreate, db: Session = Depends(get_db),
             ipaddress.ip_address(payload.target)
         except ValueError as exc:
             raise HTTPException(422, "block_ip target must be a valid IP address") from exc
-    if len(payload.parameters) > 20 or any(
+    if len(payload.parameters) > 20 or len(json.dumps(payload.parameters)) > 4096 or any(
+        len(key) > 80 or (isinstance(value, str) and len(value) > 500) or
         any(marker in key.lower() for marker in ("password", "token", "secret", "api_key", "authorization"))
         or not isinstance(value, (str, int, float, bool, type(None)))
         for key, value in payload.parameters.items()
@@ -86,6 +87,7 @@ def approve(request_id: UUID, payload: ResponseActionDecision, db: Session = Dep
         raise HTTPException(403, "The requester cannot approve their own response action")
     request.status = "approved"
     request.approved_by = user.username
+    request.decided_by = user.username
     request.decision_note = payload.note.strip()
     request.decided_at = datetime.now(timezone.utc)
     _audit(db, user, "response_action.approved", request, {"action_type": request.action_type})
@@ -103,7 +105,7 @@ def reject(request_id: UUID, payload: ResponseActionDecision, db: Session = Depe
     if request.status != "pending":
         raise HTTPException(409, "Only pending requests can be rejected")
     request.status = "rejected"
-    request.approved_by = user.username
+    request.decided_by = user.username
     request.decision_note = payload.note.strip()
     request.decided_at = datetime.now(timezone.utc)
     _audit(db, user, "response_action.rejected", request, {"action_type": request.action_type})
@@ -151,7 +153,6 @@ def execute(request_id: UUID, db: Session = Depends(get_db), user: User = Depend
         headers["X-Aegis-Signature"] = "sha256=" + hmac.new(secret.encode(), encoded, hashlib.sha256).hexdigest()
     request.status = "executing"
     request.execution_status = "submitted"
-    request.executed_at = datetime.now(timezone.utc)
     _audit(db, user, "response_action.execution_started", request, {"connector_key": connector.connector_key})
     db.commit()
     try:
@@ -165,6 +166,7 @@ def execute(request_id: UUID, db: Session = Depends(get_db), user: User = Depend
         request.execution_status = "transport_error"
         request.status = "failed"
         request.result_summary = "Webhook delivery failed (" + type(exc).__name__ + ")."
+    request.executed_at = datetime.now(timezone.utc)
     _audit(db, user, "response_action.execution_finished", request,
            {"status": request.status, "execution_status": request.execution_status, "response_code": request.response_code})
     db.commit()
