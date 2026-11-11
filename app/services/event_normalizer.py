@@ -65,6 +65,7 @@ def normalize_event(
         "hostname": _first(payload, "hostname", "host.name", "agent.name"),
         "source_ip": _first(payload, "source_ip", "src_ip", "source.ip", "client.ip"),
         "username": _first(payload, "username", "user.name", "user"),
+        "external_id": _first(payload, "external_id", "event.id", "id"),
         "message": _first(payload, "message", "full_log", "event.original"),
         "raw": raw,
     }
