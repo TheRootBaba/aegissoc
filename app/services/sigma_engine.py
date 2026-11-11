@@ -108,11 +108,8 @@ def selector_matches(event, selector: dict) -> bool:
 
 def rule_matches(event, rule: SigmaRule) -> bool:
     results = {name: selector_matches(event, selector) for name, selector in rule.detection.items()}
-    clauses = re.split(r"\s+(and|or)\s+", rule.condition, flags=re.I)
-    result = results[clauses[0]]
-    for index in range(1, len(clauses), 2):
-        result = (result and results[clauses[index + 1]]) if clauses[index].lower() == "and" else (result or results[clauses[index + 1]])
-    return result
+    alternatives = re.split(r"\s+or\s+", rule.condition, flags=re.I)
+    return any(all(results[name] for name in re.split(r"\s+and\s+", alternative, flags=re.I)) for alternative in alternatives)
 
 def run_sigma_rules(db: Session, *, lookback_minutes: int = 15, limit: int = 1000) -> dict:
     now = datetime.now(timezone.utc)
