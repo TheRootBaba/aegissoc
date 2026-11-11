@@ -2,6 +2,18 @@
 
 This runbook is for the local Docker Compose deployment. Adapt credentials, storage, RPO, and RTO before production use.
 
+## First deployment of the retention and backup workers
+
+The API container does not automatically run Alembic migrations. Apply the schema before starting the retention worker or invoking the backup profile:
+
+```powershell
+docker compose up --build -d db api
+docker compose exec api alembic upgrade head
+docker compose up -d scheduler retention-worker
+```
+
+Wait for the API health check to pass before running the backup profile. The retention worker also waits for the `retention_policies` table, but that guard is a startup safety net—not a replacement for explicitly applying migrations.
+
 ## Health and incident triage
 
 1. Check API liveness and database readiness:
