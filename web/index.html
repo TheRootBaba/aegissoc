@@ -8,9 +8,9 @@
   <title>AegisSOC — Security Operations</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650;700;750&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css">
-  <script src="/static/app.js" defer></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css?v=3.1">
+  <script src="/static/app.js?v=3.1" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -241,7 +241,7 @@
               <p id="asset-feedback" class="query-feedback" aria-live="polite"></p>
             </form>
           </div>
-          <div class="surface-card asset-inventory">
+          <div class="surface-card asset-inventory" id="asset-inventory">
             <div class="card-toolbar"><div class="toolbar-title"><strong>Managed assets</strong><small>Inventory and vulnerability exposure</small></div><button class="button button-secondary" id="refresh-assets" type="button">Refresh</button></div>
             <div class="table-wrap"><table class="data-table"><thead><tr><th>ASSET</th><th>ENVIRONMENT</th><th>CRITICALITY</th><th>OWNER</th><th>STATUS</th></tr></thead><tbody id="assets-body"><tr><td colspan="5" class="table-empty">Sign in to load asset inventory.</td></tr></tbody></table></div>
           </div>
