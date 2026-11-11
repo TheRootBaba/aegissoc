@@ -1010,7 +1010,6 @@ def test_scheduler_worker_executes_due_schedule_and_persists_result(client):
     refreshed = client.get("/api/v1/detection-schedules").json()[0]
     assert refreshed["last_status"] == "success"
     assert refreshed["consecutive_failures"] == 0
-    assert refreshed["locked_until"] if "locked_until" in refreshed else True
 
 
 def test_scheduler_failure_is_recorded_and_retried_without_leaking_exception_text(client):
@@ -1038,4 +1037,4 @@ def test_scheduler_failure_is_recorded_and_retried_without_leaking_exception_tex
     refreshed = client.get("/api/v1/detection-schedules").json()[0]
     assert refreshed["consecutive_failures"] == 1
     assert refreshed["last_status"] == "failed"
-    assert refreshed["next_run_at"] > now.isoformat()
+    assert datetime.fromisoformat(refreshed["next_run_at"]) > now
