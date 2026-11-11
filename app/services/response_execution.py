@@ -118,7 +118,7 @@ def run_due_response_actions_once(db: Session, *, now: datetime | None = None, b
                     with client.stream("POST", endpoint, content=encoded, headers=headers) as response:
                         response_code = response.status_code
                         external_reference = response.headers.get("X-Aegis-Action-Reference")
-                error_type = None
+                error_type = None if 200 <= response_code < 300 else "HTTPStatusError"
                 retryable = response_code in {408, 425, 429} or response_code >= 500
             except (ValueError, OSError) as exc:
                 response_code = None
