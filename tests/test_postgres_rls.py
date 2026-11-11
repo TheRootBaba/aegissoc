@@ -61,6 +61,7 @@ def test_runtime_role_cannot_read_or_mutate_another_workspace():
                 VALUES (:id, :workspace_id, :source, :event_type, :severity, :timestamp, :message,
                         CAST(:raw AS json), :created_at)
             """), {"id": event_one, "workspace_id": workspace_one, **event_values})
+            connection.execute(text("SELECT set_config('aegis.user_id', :value, true)"), {"value": str(user_two)})
             connection.execute(text("SELECT set_config('aegis.workspace_id', :value, true)"), {"value": str(workspace_two)})
             connection.execute(text("""
                 INSERT INTO security_events
@@ -78,6 +79,24 @@ def test_runtime_role_cannot_read_or_mutate_another_workspace():
                 "UPDATE security_events SET message = 'cross-tenant mutation' WHERE id = :id"
             ), {"id": event_two})
             assert changed.rowcount == 0
+
+            alert_two = uuid4()
+            connection.execute(text("""
+                INSERT INTO detection_alerts
+                (id, workspace_id, rule_id, fingerprint, title, description, severity, status,
+                 event_count, first_seen, last_seen, evidence_event_ids, updated_at, created_at)
+                VALUES (:id, :workspace_id, 'rls-trigger-test', :fingerprint, 'fixture', 'fixture',
+                        'low', 'open', 1, :now, :now, '[]'::json, :now, :now)
+            """), {"id": alert_two, "workspace_id": workspace_two, "fingerprint": str(uuid4()), "now": now})
+            connection.execute(text("SELECT set_config('aegis.user_id', :value, true)"), {"value": str(user_one)})
+            connection.execute(text("SELECT set_config('aegis.workspace_id', :value, true)"), {"value": str(workspace_one)})
+            nested = connection.begin_nested()
+            with pytest.raises(DBAPIError):
+                connection.execute(text("""
+                    INSERT INTO alert_notes (id, workspace_id, alert_id, author, body, created_at)
+                    VALUES (:id, :workspace_id, :alert_id, 'rls-test', 'cross-tenant reference', :created_at)
+                """), {"id": uuid4(), "workspace_id": workspace_one, "alert_id": alert_two, "created_at": now})
+            nested.rollback()
 
             nested = connection.begin_nested()
             with pytest.raises(DBAPIError):
