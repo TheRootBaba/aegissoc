@@ -25,9 +25,8 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("source_name", name="uq_source_registry_source_name"),
     )
-    op.create_index("ix_source_registry_source_name", "source_registry", ["source_name"])
+    op.create_index("ix_source_registry_source_name", "source_registry", ["source_name"], unique=True)
     op.create_index("ix_source_registry_health_status", "source_registry", ["health_status"])
     op.create_index("ix_source_registry_last_attempt_at", "source_registry", ["last_attempt_at"])
     op.create_index("ix_source_registry_last_successful_event_at", "source_registry", ["last_successful_event_at"])
