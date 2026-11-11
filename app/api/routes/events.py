@@ -5,7 +5,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -82,6 +82,7 @@ def list_events(
     event_type: str | None = Query(default=None, min_length=1, max_length=120),
     hostname: str | None = Query(default=None, min_length=1, max_length=255),
     source_ip: str | None = Query(default=None, min_length=1, max_length=45),
+    external_id: str | None = Query(default=None, min_length=1, max_length=128),
     start_time: datetime | None = Query(default=None, description="Inclusive event-time lower bound; must include a timezone"),
     end_time: datetime | None = Query(default=None, description="Inclusive event-time upper bound; must include a timezone"),
     limit: int = Query(default=50, ge=1, le=200),
@@ -104,6 +105,7 @@ def list_events(
         (SecurityEvent.event_type, event_type),
         (SecurityEvent.hostname, hostname),
         (SecurityEvent.source_ip, source_ip),
+        (SecurityEvent.external_id, external_id),
     )
     for column, value in filters:
         if value is not None:
@@ -119,6 +121,23 @@ def list_events(
         SecurityEvent.id.desc(),
     ).offset(offset).limit(limit)
     return list(db.scalars(statement).all())
+
+
+@router.get("/stats")
+def event_stats(db: Session = Depends(get_db)):
+    """Return aggregate event counts without loading event payloads."""
+    total = db.scalar(select(func.count()).select_from(SecurityEvent)) or 0
+    severity_rows = db.execute(
+        select(SecurityEvent.severity, func.count()).group_by(SecurityEvent.severity)
+    ).all()
+    source_rows = db.execute(
+        select(SecurityEvent.source, func.count()).group_by(SecurityEvent.source)
+    ).all()
+    return {
+        "total_events": total,
+        "by_severity": {severity: count for severity, count in severity_rows},
+        "by_source": {source: count for source, count in source_rows},
+    }
 
 
 @router.get("/{event_id}", response_model=SecurityEventRead)
