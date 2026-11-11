@@ -62,8 +62,9 @@ def _path_value(document, path: str):
         value = value.get(part)
     return value
 
-def _records(document, config: dict) -> list:
-    value = _path_value(document, config.get("records_path", "items"))
+def _records(document, config: dict, connector_type: str = "http_poll") -> list:
+    default_path = {"misp": "response.Attribute", "opencti": "data.indicators.edges"}.get(connector_type, "items")
+    value = _path_value(document, config.get("records_path", default_path))
     if value is None and isinstance(document, list):
         value = document
     if value is None and isinstance(document, dict) and "value" in document:
@@ -90,7 +91,7 @@ def _poll_url(connector: ConnectorConfig) -> str:
     secret = _credential(connector)
     if secret:
         header = config.get("auth_header", "Authorization")
-        if header.lower() not in {"authorization", "x-api-key"}:
+        if header.lower() not in {"authorization", "x-api-key", "x-misp-auth", "x-apikeys"}:
             raise ValueError("auth_header must be Authorization or X-API-Key")
         headers[header] = ("Bearer " + secret) if header.lower() == "authorization" else secret
     return url, headers
@@ -113,6 +114,7 @@ def _ingest_indicators(db: Session, connector: ConnectorConfig, records: list) -
     accepted = duplicates = rejected = 0
     for item in records:
         try:
+            item = get_adapter(connector.connector_type).normalize_indicator(item)
             kind = str(item.get("type", item.get("indicator_type", ""))).lower()
             value = _normalize(kind, str(item.get("value", "")))
             existing = db.scalar(select(ThreatIndicator).where(
@@ -148,7 +150,7 @@ def _ingest_indicators(db: Session, connector: ConnectorConfig, records: list) -
 def ensure_connector_states(db: Session, now: datetime | None = None) -> int:
     run_at = now or datetime.now(timezone.utc)
     connectors = db.scalars(select(ConnectorConfig).where(
-        ConnectorConfig.enabled.is_(True), ConnectorConfig.connector_type.in_(("http_poll", "threat_feed"))
+        ConnectorConfig.enabled.is_(True), ConnectorConfig.connector_type.in_(("http_poll", "threat_feed", "wazuh_manager", "misp", "opencti"))
     )).all()
     created = 0
     for connector in connectors:
