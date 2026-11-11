@@ -1,0 +1,18 @@
+title: Linux Cron Persistence Modification
+id: AEGIS-LNX-CRON-001
+status: stable
+description: Detects commands writing to system cron locations.
+logsource:
+  product: linux
+  category: process_creation
+detection:
+  selection:
+    event_type: process.started
+    CommandLine|contains:
+      - /etc/cron
+      - crontab
+  condition: selection
+level: medium
+tags:
+  - attack.persistence
+  - attack.t1053.003

@@ -131,7 +131,7 @@ def _scope_orm_statements(execute_state):
                 statement = statement.options(
                     with_loader_criteria(
                         model,
-                        lambda entity, selected=workspace_id: entity.workspace_id == selected,
+                        lambda entity: entity.workspace_id == workspace_id,
                         include_aliases=True,
                     )
                 )

@@ -1,0 +1,19 @@
+title: Windows Remote Service Creation
+id: AEGIS-WIN-SVCREM-001
+status: experimental
+description: Detects remote service creation using the Windows service control utility.
+logsource:
+  product: windows
+  category: process_creation
+detection:
+  selection:
+    event_type: process.started
+    Image|endswith: sc.exe
+    CommandLine|contains:
+      - \\ create
+      - \\ \\ create
+  condition: selection
+level: high
+tags:
+  - attack.lateral_movement
+  - attack.t1569.002
