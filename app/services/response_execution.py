@@ -136,11 +136,14 @@ def _retry_delay(attempt: int) -> int:
 
 def run_due_response_actions_once(db: Session, *, now: datetime | None = None, batch_size: int = 10) -> int:
     run_at = now or datetime.now(timezone.utc)
-    expired = list(db.scalars(select(ResponseActionRequest).where(
+    expired_query = select(ResponseActionRequest).where(
         ResponseActionRequest.status.in_(("pending", "approved")),
         ResponseActionRequest.expires_at.is_not(None),
         ResponseActionRequest.expires_at <= run_at,
-    ).limit(batch_size)).all())
+    ).limit(batch_size)
+    if db.get_bind().dialect.name == "postgresql":
+        expired_query = expired_query.with_for_update(skip_locked=True)
+    expired = list(db.scalars(expired_query).all())
     for item in expired:
         item.status = "expired"
         item.execution_status = "expired"
