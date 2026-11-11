@@ -175,3 +175,76 @@ def test_normalized_ingest_rejects_invalid_source_payload_with_422(client):
     )
 
     assert response.status_code == 422
+
+
+from datetime import datetime, timedelta, timezone
+
+
+def test_detection_run_endpoint_creates_alert_and_alert_api_returns_evidence(client):
+    now = datetime.now(timezone.utc)
+    for attempt in range(5):
+        response = client.post(
+            "/api/v1/events",
+            json=sample_event(
+                timestamp=(now - timedelta(seconds=attempt)).isoformat(),
+                message=f"Synthetic SSH login rejected, attempt {attempt + 1}",
+            ),
+        )
+        assert response.status_code == 201
+
+    detected = client.post(
+        "/api/v1/detections/run",
+        json={"window_minutes": 10, "threshold": 5},
+    )
+
+    assert detected.status_code == 200
+    body = detected.json()
+    assert body["rule_id"] == "AUTH-SSH-001"
+    assert body["events_evaluated"] == 5
+    assert body["alerts_created"] == 1
+    assert len(body["alerts"][0]["evidence_event_ids"]) == 5
+
+    listed = client.get("/api/v1/alerts?severity=medium")
+    assert listed.status_code == 200
+    assert len(listed.json()) == 1
+    assert listed.json()[0]["source_ip"] == "192.0.2.10"
+
+
+def test_detection_run_validates_threshold_and_window(client):
+    invalid_threshold = client.post(
+        "/api/v1/detections/run",
+        json={"window_minutes": 10, "threshold": 1},
+    )
+    invalid_window = client.post(
+        "/api/v1/detections/run",
+        json={"window_minutes": 2000, "threshold": 5},
+    )
+
+    assert invalid_threshold.status_code == 422
+    assert invalid_window.status_code == 422
+
+
+def test_detection_engine_reports_both_ssh_rules_for_password_spray(client):
+    now = datetime.now(timezone.utc)
+    for attempt in range(5):
+        client.post(
+            "/api/v1/events",
+            json=sample_event(
+                timestamp=(now - timedelta(seconds=attempt)).isoformat(),
+                username=f"account-{attempt}",
+                message="SSH authentication failure",
+            ),
+        )
+
+    response = client.post(
+        "/api/v1/detections/run",
+        json={"window_minutes": 10, "threshold": 5},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["rules_evaluated"] == ["AUTH-SSH-001", "AUTH-SSH-002"]
+    assert {alert["rule_id"] for alert in body["alerts"]} == {
+        "AUTH-SSH-001",
+        "AUTH-SSH-002",
+    }
