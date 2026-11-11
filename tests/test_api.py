@@ -1038,3 +1038,28 @@ def test_scheduler_failure_is_recorded_and_retried_without_leaking_exception_tex
     assert refreshed["consecutive_failures"] == 1
     assert refreshed["last_status"] == "failed"
     assert datetime.fromisoformat(refreshed["next_run_at"]) > now
+
+
+def test_detection_schedule_is_admin_only_and_validates_interval(client):
+    from types import SimpleNamespace
+    from app.core.security import get_current_user
+
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
+        id=UUID("00000000-0000-0000-0000-000000000077"),
+        username="viewer",
+        role="read_only",
+        is_active=True,
+    )
+    denied = client.post("/api/v1/detection-schedules", json={"name": "Viewer schedule"})
+    assert denied.status_code == 403
+
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
+        id=UUID("00000000-0000-0000-0000-000000000078"),
+        username="admin",
+        role="admin",
+        is_active=True,
+    )
+    invalid = client.post("/api/v1/detection-schedules", json={
+        "name": "Too frequent", "interval_seconds": 30,
+    })
+    assert invalid.status_code == 422
