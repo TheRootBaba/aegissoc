@@ -1540,3 +1540,8 @@ def test_asset_risk_read_endpoints_are_bounded_and_validate_filters(client):
     assert client.get("/api/v1/asset-risk/assets?limit=201").status_code == 422
     assert client.get("/api/v1/asset-risk/assets?status=unknown").status_code == 422
     assert client.get("/api/v1/asset-risk/playbooks?limit=0").status_code == 422
+
+
+def test_oidc_routes_are_not_exposed_when_sso_is_disabled(client):
+    assert client.get('/api/v1/auth/oidc/login').status_code == 404
+    assert client.get('/api/v1/auth/oidc/callback').status_code == 404
