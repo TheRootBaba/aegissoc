@@ -544,6 +544,8 @@ def test_admin_can_create_user_and_user_can_login(client):
     })
     assert login.status_code == 200
     token = login.json()["access_token"]
+    from app.core.security import get_current_user
+    app.dependency_overrides.pop(get_current_user, None)
     identity = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert identity.status_code == 200
     assert identity.json()["username"] == "new-analyst"
