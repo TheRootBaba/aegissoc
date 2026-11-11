@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -25,7 +25,7 @@ def client():
     # Mirror the defaults inserted by Alembic revision 0010 in the isolated test DB.
     from app.models import DetectionRuleConfig, RetentionPolicy, Workspace
     seed_session = TestingSessionLocal()
-    default_workspace = Workspace(slug='default', name='Default Workspace', is_active=True)
+    default_workspace = Workspace(id=uuid4(), slug='default', name='Default Workspace', is_active=True)
     seed_session.info['workspace_id'] = str(default_workspace.id)
     seed_session.add_all([
         default_workspace,
