@@ -757,7 +757,9 @@ async function saveRetentionPolicy(kind) {
     const payload = {
       retention_days: Number($("retention-days-" + kind).value),
       enabled: $("retention-enabled-" + kind).checked,
-      preserve_active_evidence: kind === "events" ? $("retention-preserve-" + kind).checked : true,
+      preserve_active_evidence: kind === "events"
+        ? $("retention-preserve-" + kind).checked
+        : (state.retentionPolicies.find((policy) => policy.data_kind === kind)?.preserve_active_evidence ?? false),
     };
     await api("/api/v1/operations/retention/" + encodeURIComponent(kind), {
       method: "PUT", body: JSON.stringify(payload),
