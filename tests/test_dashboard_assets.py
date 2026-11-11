@@ -23,8 +23,13 @@ def test_dashboard_has_role_aware_team_and_source_management():
     assert 'id="users-list"' in html
     assert 'data-nav="sources"' in html
     assert 'id="source-register-panel"' in html
-    assert 'state.user?.role !== "admin"' in script
-    assert 'state.user.role === "read_only"' in script
+    # Role checks are centralized through currentRole()/applyCurrentUser so
+    # workspace membership roles and the signed-in user stay in sync.
+    assert "function applyCurrentUser()" in script
+    assert "const role = currentRole();" in script
+    assert '$("team-nav").hidden = role !== "admin";' in script
+    assert '$("source-register-panel").hidden = role !== "admin";' in script
+    assert '$("run-detections").hidden = role === "read_only";' in script
     assert 'api("/api/v1/sources")' in script
     assert 'function renderSources()' in script
 

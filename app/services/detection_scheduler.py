@@ -70,7 +70,9 @@ def run_due_schedules_once(
                 threshold=schedule.threshold, now=run_at, commit=False,
             )
             sigma_result = run_sigma_rules(db, lookback_minutes=schedule.window_minutes)
-            result["events_evaluated"] += sigma_result["events_evaluated"]
+            # The legacy detector and Sigma inspect the same event window; report
+            # the unique window size instead of double-counting the same events.
+            result["events_evaluated"] = max(result["events_evaluated"], sigma_result["events_evaluated"])
             result["alerts_created"] += sigma_result["alerts_created"]
             result["alerts_updated"] += sigma_result["alerts_updated"]
             result["rules_evaluated"] += ["SIGMA:" + rule_id for rule_id in sigma_result["rule_ids_evaluated"]]

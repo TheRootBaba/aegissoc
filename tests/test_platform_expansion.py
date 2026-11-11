@@ -506,11 +506,15 @@ def test_response_worker_retries_transient_receiver_failure_with_stable_idempote
     assert request.execution_status == "retry_scheduled"
     assert request.execution_attempts == 1
     retry_at = request.next_attempt_at
-    assert retry_at is not None and retry_at > now
+    assert retry_at is not None
+    # SQLite drops timezone metadata on round-trip; normalize it before comparing
+    # with the UTC-aware clock and before passing it back to the worker.
+    retry_at_utc = retry_at.replace(tzinfo=timezone.utc) if retry_at.tzinfo is None else retry_at
+    assert retry_at_utc > now
     original_key = request.idempotency_key
 
     assert response_execution.run_due_response_actions_once(
-        isolated_db, now=retry_at + timedelta(seconds=1)
+        isolated_db, now=retry_at_utc + timedelta(seconds=1)
     ) == 1
     isolated_db.refresh(request)
     assert request.status == "succeeded"
