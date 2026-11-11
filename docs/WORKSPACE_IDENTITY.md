@@ -69,10 +69,11 @@ For a local verification run:
 docker compose up --build -d db api
 docker compose exec api alembic current
 docker compose exec api alembic heads
-docker compose exec api pytest -q tests/test_postgres_rls.py
+docker compose exec api alembic current
+docker compose exec db psql -U aegis -d aegissoc -c "SELECT rolname, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = 'aegis_runtime';"
 ```
 
-The current migration head is `0019_sigma_correlation`. The PostgreSQL RLS test requires the repository's configured test database environment; if the test reports that its PostgreSQL URL is absent, configure the dedicated CI/test database rather than pointing the test at a production database.
+The current migration head is `0019_sigma_correlation`. The PostgreSQL RLS integration test runs in the repository's CI job against its dedicated test database. The API image does not include the test suite; do not try to run pytest inside the production API container.
 
 ## Operational constraints
 
