@@ -164,7 +164,6 @@ def run_due_response_actions_once(db: Session, *, now: datetime | None = None, b
     for item in claimed:
         item.status = "executing"
         item.execution_status = "submitting"
-        item.execution_attempts += 1
         item.locked_until = run_at + timedelta(seconds=LEASE_SECONDS)
     if claimed:
         db.commit()
@@ -225,7 +224,7 @@ def run_due_response_actions_once(db: Session, *, now: datetime | None = None, b
                 _apply_reconciliation(db, request, reconciliation, datetime.now(timezone.utc))
                 completed += 1
                 continue
-            if request.execution_attempts > MAX_ATTEMPTS:
+            if request.execution_attempts >= MAX_ATTEMPTS:
                 request.status = "failed"
                 request.execution_status = "attempt_limit_exceeded"
                 request.last_error_type = "MaxAttemptsExceeded"
@@ -241,6 +240,8 @@ def run_due_response_actions_once(db: Session, *, now: datetime | None = None, b
                 db.commit()
                 completed += 1
                 continue
+            request.execution_attempts += 1
+            db.commit()
             try:
                 endpoint, headers, encoded = _delivery(request, connector)
                 with httpx.Client(
