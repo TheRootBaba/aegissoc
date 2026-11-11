@@ -756,7 +756,11 @@ def test_builtin_sigma_pack_rules_parse_and_unsupported_syntax_is_rejected():
     assert len(rule_files) >= 3
     parsed = [parse_sigma_document(path.read_text(encoding="utf-8")) for path in rule_files]
     assert {rule["rule_id"] for rule in parsed} == {
-        "AEGIS-WIN-PS-001", "AEGIS-LNX-SSH-001", "AEGIS-WIN-SVC-001"
+        "AEGIS-WIN-PS-001", "AEGIS-LNX-SSH-001", "AEGIS-WIN-SVC-001",
+        "AEGIS-WIN-TASK-001", "AEGIS-WIN-LOG-001", "AEGIS-LNX-SUDO-001",
+        "AEGIS-LNX-SSHKEY-001", "AEGIS-WIN-PSDL-001", "AEGIS-WIN-RUNDLL-001",
+        "AEGIS-LNX-CRON-001", "AEGIS-LNX-USER-001", "AEGIS-WIN-SVCREM-001",
+        "AEGIS-LNX-CHMOD-001",
     }
     unsupported = """title: Unsupported pipeline
 id: unsupported-pipeline-001
