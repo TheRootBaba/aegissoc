@@ -74,6 +74,26 @@ class AlertAuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
+class SourceRegistry(Base):
+    """Persistent inventory and ingestion-health counters for an event producer."""
+
+    __tablename__ = "source_registry"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_name: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
+    source_type: Mapped[str] = mapped_column(String(32), nullable=False, default="generic")
+    display_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    health_status: Mapped[str] = mapped_column(String(16), nullable=False, default="inactive", index=True)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    last_successful_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    accepted_events: Mapped[int] = mapped_column(nullable=False, default=0)
+    duplicate_events: Mapped[int] = mapped_column(nullable=False, default=0)
+    rejected_events: Mapped[int] = mapped_column(nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (UniqueConstraint("username", name="uq_users_username"),)
