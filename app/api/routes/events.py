@@ -99,7 +99,6 @@ def _require_aware(value: datetime | None, parameter: str) -> datetime | None:
 def ingest_event(payload: SecurityEventCreate, response: Response, db: Session = Depends(get_db)):
     outcome, event_id = _persist_event(db, payload)
     record_ingestion(db, payload.source, accepted=int(outcome == "accepted"), duplicates=int(outcome == "duplicate"), rejected=0, event_timestamp=payload.timestamp)
-    record_ingestion(db, source, accepted=int(outcome == "accepted"), duplicates=int(outcome == "duplicate"), rejected=0, event_timestamp=normalized.timestamp)
     db.commit()
     if outcome == "duplicate":
         response.status_code = status.HTTP_200_OK
@@ -117,6 +116,7 @@ def ingest_normalized_event(payload: dict[str, Any], response: Response,
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     outcome, event_id = _persist_event(db, normalized)
+    record_ingestion(db, source, accepted=int(outcome == "accepted"), duplicates=int(outcome == "duplicate"), rejected=0, event_timestamp=normalized.timestamp)
     db.commit()
     if outcome == "duplicate":
         response.status_code = status.HTTP_200_OK
