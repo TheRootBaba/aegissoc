@@ -78,6 +78,7 @@ def test_bulk_ingest_reports_partial_success_and_deduplicates_replays(bulk_clien
         f"/api/v1/events/{body['results'][0]['event_id']}"
     ).json()
     assert original["message"] == "Synthetic SSH authentication failure"
+    assert original["external_id"] == "sensor-001"
 
 
 def test_single_event_ingestion_uses_the_same_race_safe_idempotency_contract(bulk_client):
