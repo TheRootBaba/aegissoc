@@ -8,7 +8,7 @@ import httpx
 from sqlalchemy import select, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from app.models import ConnectorConfig, ConnectorRuntimeState, ConnectorExecution, ThreatIndicator
+from app.models import (ConnectorConfig, ConnectorRuntimeState, ConnectorExecution, ThreatIndicator, ManagedAsset, VulnerabilityFinding, ScannerImportRun)
 from app.services.integrations import get_adapter
 from app.services.source_inventory import record_ingestion
 from app.services.audit_chain import append_audit_entry
@@ -19,6 +19,7 @@ logger = logging.getLogger("aegissoc.connector_runtime")
 LEASE_SECONDS = 180
 MAX_RESPONSE_BYTES = 5 * 1024 * 1024
 MAX_BATCH_RECORDS = 1000
+SCANNER_TYPES = ("nessus", "tenable", "qualys")
 
 def _credential(connector: ConnectorConfig) -> str | None:
     from app.services.secrets import resolve_secret_reference
@@ -167,10 +168,129 @@ def _ingest_indicators(db: Session, connector: ConnectorConfig, records: list) -
         details={"accepted": accepted, "updated": duplicates, "rejected": rejected})
     return accepted, duplicates, rejected
 
+
+def _scanner_export_step(db: Session, connector: ConnectorConfig, state: ConnectorRuntimeState) -> tuple[int, int, int, bool]:
+    """Advance one authenticated vendor export job; cursor changes commit with each state transition."""
+    from app.services.scanner_export_jobs import scanner_headers, validate_provider_url, request_export_json, retry_after_seconds, parse_job_state
+    from app.services.scanner_adapters import normalize_scanner_export
+    from app.schemas.runtime import ScannerImportRequest
+
+    provider = connector.connector_type
+    config = dict(connector.config or {})
+    allowed = config.get("allowed_hosts", [])
+    base = str(config.get("endpoint", "")).rstrip("/")
+    validate_provider_url(base, allowed)
+    headers = scanner_headers(provider, connector.credential_ref)
+    cursor = dict(state.cursor or {})
+    scan_id = str(config.get("scan_id", "")).strip()
+    if not scan_id:
+        raise ValueError("Scanner connector config requires scan_id")
+    interval = int(config.get("interval_seconds", 300))
+    if not 60 <= interval <= 86400:
+        raise ValueError("Scanner interval_seconds must be between 60 and 86400")
+
+    def api_path(key: str, default: str = "") -> str:
+        path = str(config.get(key, default)).format(scan_id=scan_id, job_id=cursor.get("job_id", ""), file_id=cursor.get("job_id", ""))
+        if not path.startswith("/") or path.startswith("//") or "://" in path:
+            raise ValueError(key + " must be a relative absolute-path API route")
+        return base + path
+
+    if not cursor.get("job_id"):
+        start_path = api_path("start_path")
+        payload = dict(config.get("start_payload") or {})
+        document = request_export_json(start_path, headers, method=str(config.get("start_method", "POST")).upper(), payload=payload)
+        status, job_id = parse_job_state(provider, document)
+        if not job_id:
+            job_id = document.get("file_id") or document.get("id")
+        if not job_id:
+            raise ValueError("Scanner export start response did not include a job identifier")
+        state.cursor = {"job_id": str(job_id), "scan_id": scan_id, "stage": "polling"}
+        state.next_run_at = datetime.now(timezone.utc) + timedelta(seconds=max(interval, retry_after_seconds({})))
+        db.commit()
+        return 0, 0, 0, False
+
+    if cursor.get("stage") != "download":
+        status_path = api_path("status_path")
+        status_doc = request_export_json(status_path, headers)
+        job_status, returned_id = parse_job_state(provider, status_doc)
+        if returned_id and str(returned_id) != str(cursor["job_id"]):
+            raise ValueError("Scanner status response refers to a different export job")
+        if job_status == "pending":
+            state.next_run_at = datetime.now(timezone.utc) + timedelta(seconds=interval)
+            db.commit()
+            return 0, 0, 0, False
+        state.cursor = {**cursor, "stage": "download"}
+        db.commit()
+        cursor = dict(state.cursor)
+
+    export_path = api_path("download_path")
+    export_doc = request_export_json(export_path, headers)
+    normalized = ScannerImportRequest.model_validate(normalize_scanner_export(provider, export_doc))
+    total = sum(len(asset.findings) for asset in normalized.assets)
+    if total > 5000:
+        raise ValueError("A scanner import is limited to 5,000 findings")
+    previous = db.scalar(select(ScannerImportRun).where(
+        ScannerImportRun.workspace_id == connector.workspace_id,
+        ScannerImportRun.scanner_name == normalized.scanner_name,
+        ScannerImportRun.scan_id == normalized.scan_id,
+    ))
+    if previous is not None:
+        state.cursor = {}
+        return 0, 0, total, True
+    assets_matched = created = updated = rejected = 0
+    for scanned in normalized.assets:
+        asset = db.scalar(select(ManagedAsset).where(
+            ManagedAsset.workspace_id == connector.workspace_id,
+            ManagedAsset.asset_key == scanned.asset_key.strip().lower(),
+        ))
+        if asset is None:
+            rejected += len(scanned.findings)
+            continue
+        assets_matched += 1
+        for item in scanned.findings:
+            finding = db.scalar(select(VulnerabilityFinding).where(
+                VulnerabilityFinding.workspace_id == connector.workspace_id,
+                VulnerabilityFinding.asset_id == asset.id,
+                VulnerabilityFinding.vulnerability_id == item.vulnerability_id,
+            ))
+            if finding is None:
+                db.add(VulnerabilityFinding(
+                    workspace_id=connector.workspace_id, asset_id=asset.id,
+                    vulnerability_id=item.vulnerability_id, title=item.title,
+                    severity=item.severity, source=provider,
+                    description=item.description, due_at=item.due_at,
+                ))
+                created += 1
+            else:
+                finding.title = item.title
+                finding.severity = item.severity
+                finding.source = provider
+                finding.description = item.description
+                finding.due_at = item.due_at
+                if finding.status in {"remediated", "false_positive"}:
+                    finding.status = "open"
+                finding.updated_at = datetime.now(timezone.utc)
+                updated += 1
+    result = {
+        "scan_id": normalized.scan_id, "assets_seen": len(normalized.assets),
+        "assets_matched": assets_matched, "findings_seen": total,
+        "findings_created": created, "findings_updated": updated,
+        "findings_rejected": rejected,
+    }
+    db.add(ScannerImportRun(
+        workspace_id=connector.workspace_id, scanner_name=provider,
+        scan_id=normalized.scan_id, result=result, created_by="connector-runtime",
+    ))
+    state.cursor = {}
+    append_audit_entry(db, actor="connector-runtime", action="vulnerability.scan_imported",
+        resource_type="scanner_import", resource_id=provider + ":" + normalized.scan_id,
+        details={key: value for key, value in result.items() if key != "scan_id"})
+    return created, updated, rejected, True
+
 def ensure_connector_states(db: Session, now: datetime | None = None) -> int:
     run_at = now or datetime.now(timezone.utc)
     connectors = db.scalars(select(ConnectorConfig).where(
-        ConnectorConfig.enabled.is_(True), ConnectorConfig.connector_type.in_(("http_poll", "threat_feed", "wazuh_manager", "wazuh_indexer", "misp", "opencti"))
+        ConnectorConfig.enabled.is_(True), ConnectorConfig.connector_type.in_(("http_poll", "threat_feed", "wazuh_manager", "wazuh_indexer", "misp", "opencti", *SCANNER_TYPES))
     )).all()
     created = 0
     for connector in connectors:
@@ -230,6 +350,33 @@ def run_due_connectors_once(db: Session, *, now: datetime | None = None, batch_s
         db.add(execution)
         db.commit()
         try:
+            if connector.connector_type in SCANNER_TYPES:
+                accepted, duplicates, rejected, finished_job = _scanner_export_step(db, connector, state)
+                finished = datetime.now(timezone.utc)
+                if finished_job:
+                    state.last_run_at = finished
+                    state.next_run_at = finished + timedelta(seconds=int((connector.config or {}).get("interval_seconds", 300)))
+                    state.consecutive_failures = 0
+                    state.locked_until = None
+                    connector.health_status = "observed"
+                    connector.last_checked_at = finished
+                    connector.last_success_at = finished
+                    connector.last_error_type = None
+                    execution.status = "success" if rejected == 0 else "partial"
+                    execution.completed_at = finished
+                    execution.duration_ms = int((perf_counter() - timer) * 1000)
+                    execution.records_seen = accepted + duplicates + rejected
+                    execution.accepted, execution.duplicates, execution.rejected = accepted, duplicates, rejected
+                    db.commit()
+                    completed += 1
+                else:
+                    state.last_run_at = finished
+                    state.locked_until = None
+                    execution.status = "running"
+                    execution.completed_at = finished
+                    execution.duration_ms = int((perf_counter() - timer) * 1000)
+                    db.commit()
+                continue
             url, headers = _poll_url(connector)
             config = dict(connector.config or {})
             if connector.connector_type == "opencti":
