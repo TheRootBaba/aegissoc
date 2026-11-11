@@ -18,6 +18,7 @@ class SigmaRuleRead(BaseModel):
     condition: str
     logsource: dict
     tags: list
+    correlation: dict | None
     created_by: str
     created_at: datetime
     updated_at: datetime
