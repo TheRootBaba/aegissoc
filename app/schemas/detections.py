@@ -32,6 +32,7 @@ class AlertRead(BaseModel):
 
 class DetectionRunResponse(BaseModel):
     rule_id: str
+    rules_evaluated: list[str]
     window_minutes: int
     threshold: int
     events_evaluated: int
