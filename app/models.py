@@ -372,6 +372,7 @@ class SigmaRule(Base):
     logsource: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     tags: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     sigma_yaml: Mapped[str] = mapped_column(Text, nullable=False)
+    correlation: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_by: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
