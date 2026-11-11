@@ -7,6 +7,8 @@ A local-first Security Operations Center platform for collecting, normalizing, a
 - FastAPI event ingestion and retrieval API backed by PostgreSQL.
 - Canonical event normalization endpoint for common nested source fields and severity aliases; original source payloads are retained in `raw`.
 - Deterministic SSH brute-force detection with persistent, deduplicated alerts and event-level evidence references.
+- A browser-based analyst dashboard for alert triage, event review, and investigation workflow.
+- Alert lifecycle transitions, analyst assignment, investigation notes, and append-only audit history.
 - Validated event payloads with timezone-aware timestamps.
 - Event search by severity, source, event type, hostname, source IP, and inclusive time range.
 - Bounded offset pagination (limit 1–200) with deterministic timestamp/UUID ordering.
@@ -30,6 +32,9 @@ Event producers (manual lab input today; Wazuh adapter planned)
                          |
              query API / detection engine
              evidence-backed alert store
+                         ^
+                         |
+              analyst dashboard UI
 ```
 
 ## Requirements
@@ -56,7 +61,7 @@ Event producers (manual lab input today; Wazuh adapter planned)
 
    The API container applies pending Alembic migrations before starting Uvicorn.
 
-3. Open the API documentation at http://localhost:8000/docs. Liveness and readiness are available at /health/live and /health/ready.
+3. Open the analyst dashboard at http://localhost:8000/dashboard. API documentation is at http://localhost:8000/docs. Liveness and readiness are available at /health/live and /health/ready.
 
 4. Stop the stack with docker compose down. To delete the database volume as well (destructive), use docker compose down -v.
 
@@ -111,7 +116,7 @@ Source adapters can submit source-specific JSON to `POST /api/v1/events/ingest/{
 
 ### Run detections and inspect alerts
 
-The first detection pack contains two deterministic rules. AUTH-SSH-001 detects repeated SSH authentication failures from one source IP against one target host (five failures by default). AUTH-SSH-002 detects password spraying when the same source/target pair attempts five or more distinct usernames in the window. Both require a source IP and an SSH indicator in the event type or message. The detector is intentionally run on demand in this phase; scheduling and analyst workflow are later work.
+The first detection pack contains two deterministic rules. AUTH-SSH-001 detects repeated SSH authentication failures from one source IP against one target host (five failures by default). AUTH-SSH-002 detects password spraying when the same source/target pair attempts five or more distinct usernames in the window. Both require a source IP and an SSH indicator in the event type or message. The detector is intentionally run on demand in this phase; scheduled detection is a later work package.
 
 ```powershell
 # Evaluate recent events using the default five-failure / ten-minute threshold
@@ -123,6 +128,32 @@ $run.alerts | Format-List
 ```
 
 Repeated detector runs update the matching alert instead of creating duplicates. Alerts retain the IDs of the source events that triggered the rule.
+
+### Investigate and manage alerts
+
+Phase 1.5 adds alert detail, lifecycle transitions, assignment, analyst notes, and an append-only audit history. Supported statuses are `open`, `acknowledged`, `in_progress`, `resolved`, and `false_positive`. Reopen a resolved or false-positive alert by moving it back to `open`; invalid transitions return HTTP 409. The `actor`/`author` values are analyst-supplied labels for the lab workflow, not authenticated identities. Authentication and trusted identity binding are reserved for Phase 1.7.
+
+```powershell
+# Inspect one alert
+$alertId = "<alert-id>"
+Invoke-RestMethod "http://localhost:8000/api/v1/alerts/$alertId"
+
+# Assign and acknowledge it
+$update = @{ actor = "analyst-01"; assigned_to = "analyst-01"; status = "acknowledged" } | ConvertTo-Json
+Invoke-RestMethod -Method Patch -Uri "http://localhost:8000/api/v1/alerts/$alertId" -ContentType "application/json" -Body $update
+
+# Add an investigation note
+$note = @{ author = "analyst-01"; body = "Validated source IP against the synthetic lab timeline." } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri "http://localhost:8000/api/v1/alerts/$alertId/notes" -ContentType "application/json" -Body $note
+
+# Review notes and the audit trail
+Invoke-RestMethod "http://localhost:8000/api/v1/alerts/$alertId/notes"
+Invoke-RestMethod "http://localhost:8000/api/v1/alerts/$alertId/history"
+
+# Resolve after investigation
+$resolve = @{ actor = "analyst-01"; status = "resolved" } | ConvertTo-Json
+Invoke-RestMethod -Method Patch -Uri "http://localhost:8000/api/v1/alerts/$alertId" -ContentType "application/json" -Body $resolve
+```
 
 ### Search events
 
@@ -189,6 +220,6 @@ Only ingest events from systems you own or are explicitly authorized to monitor.
 2. Phase 1.2: event search filters, stable pagination, and automated test execution.
 3. Phase 1.3: normalized event contract and ingestion validation.
 4. Phase 1.4: deterministic SSH brute-force detection and evidence-backed alerts.
-5. Phase 1.5: alert lifecycle and analyst workflow.
+5. Phase 1.5: alert lifecycle, analyst workflow, and local analyst dashboard.
 6. Phase 1.6: MITRE ATT&CK references and Wazuh integration.
 7. Phase 1.7: operational security controls and deployment readiness.

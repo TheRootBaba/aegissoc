@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1220">
+  <title>AegisSOC | Security Operations</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="/dashboard"><span class="brand-mark">A</span><span>AEGIS<span class="brand-light">SOC</span><small>SECURITY OPERATIONS</small></span></a>
+      <div class="side-label">WORKSPACE</div>
+      <a class="nav-item active" href="#overview"><span>◫</span> Overview</a>
+      <a class="nav-item" href="#alerts"><span>◎</span> Alert queue <b id="nav-alert-count">0</b></a>
+      <a class="nav-item" href="#events"><span>⌁</span> Event stream</a>
+      <div class="sidebar-bottom"><span class="live-dot"></span><span>LOCAL LAB</span><small>API · PostgreSQL</small></div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div><div class="eyebrow">SECURITY OPERATIONS CENTER / LAB</div><h1>Overview</h1></div>
+        <div class="top-actions">
+          <span class="health-pill" id="health-pill"><i></i> Checking API</span>
+          <button class="button secondary" id="refresh-button">↻ Refresh</button>
+          <button class="button primary" id="run-detections">▶ Run detections</button>
+        </div>
+      </header>
+
+      <section class="metrics" id="overview">
+        <article class="metric"><div class="metric-label">OPEN ALERTS <span>↗</span></div><div class="metric-value" id="metric-open">—</div><div class="metric-foot">Require analyst attention</div></article>
+        <article class="metric"><div class="metric-label">HIGH / CRITICAL <span class="accent-red">●</span></div><div class="metric-value" id="metric-high">—</div><div class="metric-foot">Elevated severity alerts</div></article>
+        <article class="metric"><div class="metric-label">EVENTS INGESTED <span>⌁</span></div><div class="metric-value" id="metric-events">—</div><div class="metric-foot">Latest 200 records</div></article>
+        <article class="metric"><div class="metric-label">IN INVESTIGATION <span>◷</span></div><div class="metric-value" id="metric-progress">—</div><div class="metric-foot">Assigned / actively reviewed</div></article>
+      </section>
+
+      <section class="section" id="alerts">
+        <div class="section-heading"><div><div class="eyebrow">DETECTION OUTPUT</div><h2>Alert queue</h2></div><div class="section-tools"><select id="severity-filter" aria-label="Filter alerts by severity"><option value="">All severities</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="info">Info</option></select><span class="count" id="alert-count">0 alerts</span></div></div>
+        <div class="workspace-grid">
+          <div class="panel table-panel">
+            <div class="panel-top"><span>DETECTED ACTIVITY</span><span class="muted">Newest first</span></div>
+            <div class="table-scroll"><table><thead><tr><th>DETECTION</th><th>SEVERITY</th><th>STATUS</th><th>SOURCE IP</th><th>LAST SEEN</th></tr></thead><tbody id="alerts-body"><tr><td colspan="5" class="empty">Loading alert queue…</td></tr></tbody></table></div>
+          </div>
+          <aside class="panel detail-panel" id="detail-panel">
+            <div class="detail-empty"><div class="empty-icon">◎</div><h3>Select an alert</h3><p>Choose an alert to inspect evidence, assign ownership, add investigation notes, and review its audit history.</p></div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="section" id="events">
+        <div class="section-heading"><div><div class="eyebrow">TELEMETRY</div><h2>Recent events</h2></div><span class="count" id="event-count">0 events</span></div>
+        <div class="panel table-panel">
+          <div class="panel-top"><span>CANONICAL EVENT STREAM</span><span class="muted">Latest 25 records</span></div>
+          <div class="table-scroll"><table><thead><tr><th>EVENT</th><th>SEVERITY</th><th>HOST</th><th>SOURCE IP</th><th>TIMESTAMP</th></tr></thead><tbody id="events-body"><tr><td colspan="5" class="empty">Loading event stream…</td></tr></tbody></table></div>
+        </div>
+      </section>
+      <footer>AEGISSOC <span>·</span> LOCAL-FIRST SECURITY OPERATIONS <span class="footer-right">CONTROLLED LAB BUILD</span></footer>
+    </main>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

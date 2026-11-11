@@ -177,9 +177,6 @@ def test_normalized_ingest_rejects_invalid_source_payload_with_422(client):
     assert response.status_code == 422
 
 
-from datetime import datetime, timedelta, timezone
-
-
 def test_detection_run_endpoint_creates_alert_and_alert_api_returns_evidence(client):
     now = datetime.now(timezone.utc)
     for attempt in range(5):
@@ -248,3 +245,96 @@ def test_detection_engine_reports_both_ssh_rules_for_password_spray(client):
         "AUTH-SSH-001",
         "AUTH-SSH-002",
     }
+
+
+
+def test_alert_lifecycle_assignment_notes_and_audit_history(client):
+    now = datetime.now(timezone.utc)
+    for attempt in range(5):
+        client.post(
+            "/api/v1/events",
+            json=sample_event(
+                timestamp=(now - timedelta(seconds=attempt)).isoformat(),
+                message=f"SSH authentication failure attempt {attempt + 1}",
+            ),
+        )
+    detected = client.post("/api/v1/detections/run", json={"window_minutes": 10, "threshold": 5})
+    alert_id = detected.json()["alerts"][0]["id"]
+
+    assigned = client.patch(
+        f"/api/v1/alerts/{alert_id}",
+        json={"actor": "analyst-01", "assigned_to": "analyst-01", "status": "acknowledged"},
+    )
+    assert assigned.status_code == 200
+    assert assigned.json()["status"] == "acknowledged"
+    assert assigned.json()["assigned_to"] == "analyst-01"
+    assert assigned.json()["acknowledged_at"] is not None
+
+    note = client.post(
+        f"/api/v1/alerts/{alert_id}/notes",
+        json={"author": "analyst-01", "body": "Confirmed this is a synthetic SSH test."},
+    )
+    assert note.status_code == 201
+    assert note.json()["body"] == "Confirmed this is a synthetic SSH test."
+    assert note.json()["id"] != ""
+
+    notes = client.get(f"/api/v1/alerts/{alert_id}/notes")
+    history = client.get(f"/api/v1/alerts/{alert_id}/history")
+    assert len(notes.json()) == 1
+    assert [entry["action"] for entry in history.json()] == ["alert.updated", "note.added"]
+    assert history.json()[0]["details"]["status"]["to"] == "acknowledged"
+
+    resolved = client.patch(
+        f"/api/v1/alerts/{alert_id}",
+        json={"actor": "analyst-01", "status": "resolved"},
+    )
+    assert resolved.status_code == 200
+    assert resolved.json()["status"] == "resolved"
+    assert resolved.json()["resolved_at"] is not None
+
+
+def test_alert_lifecycle_rejects_invalid_transition_and_empty_update(client):
+    now = datetime.now(timezone.utc)
+    for attempt in range(5):
+        client.post(
+            "/api/v1/events",
+            json=sample_event(
+                timestamp=(now - timedelta(seconds=attempt)).isoformat(),
+                message=f"SSH authentication failure attempt {attempt + 1}",
+            ),
+        )
+    alert_id = client.post(
+        "/api/v1/detections/run",
+        json={"window_minutes": 10, "threshold": 5},
+    ).json()["alerts"][0]["id"]
+
+    invalid = client.patch(
+        f"/api/v1/alerts/{alert_id}",
+        json={"actor": "analyst-01", "status": "resolved"},
+    )
+    empty = client.patch(f"/api/v1/alerts/{alert_id}", json={"actor": "analyst-01"})
+    assert invalid.status_code == 409
+    assert empty.status_code == 422
+    assert client.get(f"/api/v1/alerts/{alert_id}").json()["status"] == "open"
+
+
+def test_alert_notes_validate_content_and_alert_existence(client):
+    missing = client.post(
+        "/api/v1/alerts/00000000-0000-0000-0000-000000000000/notes",
+        json={"author": "analyst-01", "body": "This alert does not exist."},
+    )
+    assert missing.status_code == 404
+
+
+
+def test_analyst_dashboard_and_static_assets_are_served(client):
+    dashboard = client.get("/dashboard")
+    script = client.get("/static/app.js")
+    stylesheet = client.get("/static/styles.css")
+
+    assert dashboard.status_code == 200
+    assert "AegisSOC" in dashboard.text
+    assert "/static/app.js" in dashboard.text
+    assert script.status_code == 200
+    assert "/api/v1/detections/run" in script.text
+    assert stylesheet.status_code == 200
