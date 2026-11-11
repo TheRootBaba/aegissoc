@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.core.security import require_roles
 from app.db.session import get_db
 from app.models import SecurityEvent
+from app.services.source_inventory import record_ingestion
 from app.schemas.events import (
     BulkEventIngest,
     BulkEventIngestResponse,
@@ -97,6 +98,8 @@ def _require_aware(value: datetime | None, parameter: str) -> datetime | None:
              dependencies=[Depends(require_roles("admin", "analyst"))])
 def ingest_event(payload: SecurityEventCreate, response: Response, db: Session = Depends(get_db)):
     outcome, event_id = _persist_event(db, payload)
+    record_ingestion(db, payload.source, accepted=int(outcome == "accepted"), duplicates=int(outcome == "duplicate"), rejected=0, event_timestamp=payload.timestamp)
+    record_ingestion(db, source, accepted=int(outcome == "accepted"), duplicates=int(outcome == "duplicate"), rejected=0, event_timestamp=normalized.timestamp)
     db.commit()
     if outcome == "duplicate":
         response.status_code = status.HTTP_200_OK
@@ -138,6 +141,7 @@ def ingest_event_batch(
     the original event ID and do not create extra rows.
     """
     results = []
+    accepted_timestamps = []
     accepted = duplicates = rejected = 0
 
     for index, raw_event in enumerate(batch.events):
@@ -150,6 +154,7 @@ def ingest_event_batch(
             outcome, event_id = _persist_event(db, normalized)
             results.append({"index": index, "status": outcome, "event_id": event_id})
             if outcome == "accepted":
+                accepted_timestamps.append(normalized.timestamp)
                 accepted += 1
             else:
                 duplicates += 1
@@ -158,6 +163,7 @@ def ingest_event_batch(
             error = _validation_summary(exc) if isinstance(exc, ValidationError) else str(exc)
             results.append({"index": index, "status": "rejected", "error": error})
 
+    record_ingestion(db, source, accepted=accepted, duplicates=duplicates, rejected=rejected, event_timestamp=max(accepted_timestamps, default=None))
     db.commit()
     return {
         "received": len(batch.events),
