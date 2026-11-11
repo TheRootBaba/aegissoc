@@ -438,3 +438,37 @@ def test_detection_alerts_include_mitre_attack_mapping(client):
     assert mappings["AUTH-SSH-002"]["attack_technique_id"] == "T1110.003"
     detail = client.get(f"/api/v1/alerts/{mappings['AUTH-SSH-002']['id']}")
     assert detail.json()["attack_technique_id"] == "T1110.003"
+
+
+def test_wazuh_alerts_flow_through_detection_engine_with_attack_mapping(client):
+    now = datetime.now(timezone.utc)
+    for attempt in range(5):
+        payload = wazuh_alert(id=f"wazuh-ssh-{attempt}")
+        payload["timestamp"] = (now - timedelta(seconds=attempt)).isoformat()
+        payload["data"]["dstuser"] = f"wazuh-user-{attempt}"
+        response = client.post("/api/v1/events/ingest/wazuh", json=payload)
+        assert response.status_code == 201
+
+    run = client.post("/api/v1/detections/run", json={"window_minutes": 10, "threshold": 5})
+    assert run.status_code == 200
+    brute_force = next(a for a in run.json()["alerts"] if a["rule_id"] == "AUTH-SSH-001")
+    assert brute_force["attack_technique_id"] == "T1110"
+    assert brute_force["event_count"] == 5
+
+
+def test_source_event_id_is_scoped_to_source_name(client):
+    first = client.post("/api/v1/events", json=sample_event(source="wazuh-a", external_id="same-id"))
+    duplicate = client.post("/api/v1/events", json=sample_event(source="wazuh-a", external_id="same-id"))
+    other_source = client.post("/api/v1/events", json=sample_event(source="wazuh-b", external_id="same-id"))
+    assert first.status_code == 201
+    assert duplicate.status_code == 200
+    assert duplicate.json()["id"] == first.json()["id"]
+    assert other_source.status_code == 201
+    assert other_source.json()["id"] != first.json()["id"]
+
+
+def test_wazuh_missing_rule_level_is_rejected(client):
+    payload = wazuh_alert(id="missing-level")
+    payload["rule"].pop("level")
+    response = client.post("/api/v1/events/ingest/wazuh", json=payload)
+    assert response.status_code == 422
