@@ -98,6 +98,38 @@ def _reconcile(request: ResponseActionRequest, connector: ConnectorConfig) -> di
     }
 
 
+def _apply_reconciliation(db: Session, request: ResponseActionRequest, outcome: dict, now: datetime) -> None:
+    status = outcome["status"]
+    request.response_code = outcome["response_code"]
+    request.external_reference = outcome["reference"]
+    request.locked_until = None
+    request.last_error_type = None
+    if status in {"succeeded", "delivered", "completed"}:
+        request.status = "succeeded"
+        request.execution_status = "reconciled"
+        request.result_summary = "Receiver status confirms this action was completed."
+        request.executed_at = now
+        request.next_attempt_at = None
+    elif status in {"pending", "in_progress"}:
+        request.status = "approved"
+        request.execution_status = "retry_scheduled"
+        request.result_summary = "Receiver reports this action is still in progress; delivery is paused pending another reconciliation check."
+        request.executed_at = None
+        request.next_attempt_at = now + timedelta(seconds=30)
+    else:
+        request.status = "failed"
+        request.execution_status = "reconciled_failed"
+        request.result_summary = "Receiver status confirms this action failed."
+        request.executed_at = now
+        request.next_attempt_at = None
+    append_audit_entry(
+        db, actor="response-worker", action="response_action.reconciled",
+        resource_type="response_action", resource_id=str(request.id),
+        details={"status": request.status, "receiver_status": status, "response_code": request.response_code},
+    )
+    db.commit()
+
+
 def _retry_delay(attempt: int) -> int:
     return min(30 * (2 ** max(0, attempt - 1)), MAX_RETRY_SECONDS)
 
@@ -170,6 +202,45 @@ def run_due_response_actions_once(db: Session, *, now: datetime | None = None, b
             external_reference = None
             retryable = False
         else:
+            try:
+                reconciliation = _reconcile(request, connector)
+            except httpx.HTTPError as exc:
+                finished = datetime.now(timezone.utc)
+                request.status = "approved"
+                request.execution_status = "retry_scheduled"
+                request.last_error_type = type(exc).__name__
+                request.result_summary = "Receiver reconciliation was unavailable; delivery was paused to avoid an unsafe duplicate action."
+                request.locked_until = None
+                request.next_attempt_at = finished + timedelta(seconds=_retry_delay(request.execution_attempts))
+                append_audit_entry(
+                    db, actor="response-worker", action="response_action.reconciliation_deferred",
+                    resource_type="response_action", resource_id=str(request.id),
+                    details={"error_type": type(exc).__name__, "attempt": request.execution_attempts},
+                )
+                db.commit()
+                completed += 1
+                continue
+            except (ValueError, OSError) as exc:
+                finished = datetime.now(timezone.utc)
+                request.status = "failed"
+                request.execution_status = "reconciliation_failed"
+                request.last_error_type = type(exc).__name__
+                request.result_summary = "Receiver reconciliation returned an invalid response; action delivery was stopped."
+                request.locked_until = None
+                request.next_attempt_at = None
+                request.executed_at = finished
+                append_audit_entry(
+                    db, actor="response-worker", action="response_action.reconciliation_failed",
+                    resource_type="response_action", resource_id=str(request.id),
+                    details={"error_type": type(exc).__name__, "attempt": request.execution_attempts},
+                )
+                db.commit()
+                completed += 1
+                continue
+            if reconciliation is not None:
+                _apply_reconciliation(db, request, reconciliation, datetime.now(timezone.utc))
+                completed += 1
+                continue
             try:
                 endpoint, headers, encoded = _delivery(request, connector)
                 with httpx.Client(
