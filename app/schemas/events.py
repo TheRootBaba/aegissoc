@@ -16,6 +16,7 @@ class SecurityEventCreate(BaseModel):
     hostname: str | None = Field(default=None, max_length=255)
     source_ip: str | None = Field(default=None, max_length=45)
     username: str | None = Field(default=None, max_length=255)
+    external_id: str | None = Field(default=None, min_length=1, max_length=128)
     message: str = Field(min_length=1, max_length=10000)
     raw: dict[str, Any] = Field(default_factory=dict)
 
@@ -38,6 +39,7 @@ class SecurityEventRead(BaseModel):
     hostname: str | None
     source_ip: str | None
     username: str | None
+    external_id: str | None
     message: str
     raw: dict[str, Any]
     created_at: datetime
