@@ -21,18 +21,8 @@ MAX_RESPONSE_BYTES = 5 * 1024 * 1024
 MAX_BATCH_RECORDS = 1000
 
 def _credential(connector: ConnectorConfig) -> str | None:
-    reference = connector.credential_ref
-    if not reference:
-        return None
-    if not reference.startswith("env://"):
-        raise ValueError("Credential reference must use env://NAME")
-    name = reference[6:]
-    if not name or not name.replace("_", "").isalnum():
-        raise ValueError("Credential environment variable reference is invalid")
-    value = os.getenv(name)
-    if not value:
-        raise ValueError("Referenced credential is not available in the worker environment")
-    return value
+    from app.services.secrets import resolve_secret_reference
+    return resolve_secret_reference(connector.credential_ref)
 
 def _read_response(url: str, headers: dict, *, method: str = 'GET', json_body: dict | None = None) -> dict | list:
     with httpx.Client(timeout=httpx.Timeout(15.0, connect=5.0), follow_redirects=False, verify=True) as client:
