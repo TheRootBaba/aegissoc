@@ -13,6 +13,7 @@ from app.db.session import get_db
 from app.models import User, WorkspaceMembership, ExternalIdentity
 from app.schemas.auth import CurrentUserRead, LoginRequest, TokenResponse, UserCreate, UserRead, OIDCIdentityCreate
 from app.services.audit_chain import append_audit_entry
+from app.services.secrets import resolve_secret_reference
 
 router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
 
@@ -30,10 +31,13 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
 
 oauth = OAuth()
 if settings.oidc_enabled:
+    oidc_client_secret = settings.oidc_client_secret
+    if oidc_client_secret and oidc_client_secret.startswith(("env://", "file://")):
+        oidc_client_secret = resolve_secret_reference(oidc_client_secret)
     oauth.register(
         name="aegis_oidc",
         client_id=settings.oidc_client_id,
-        client_secret=settings.oidc_client_secret,
+        client_secret=oidc_client_secret,
         server_metadata_url=settings.oidc_issuer_url.rstrip("/") + "/.well-known/openid-configuration",
         client_kwargs={"scope": settings.oidc_scopes},
     )
