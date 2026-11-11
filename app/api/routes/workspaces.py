@@ -115,7 +115,7 @@ def add_workspace_member(
 ) -> dict:
     if db.info.get("workspace_id") != workspace_id:
         raise HTTPException(status_code=404, detail="Workspace not found")
-    user = db.scalar(select(User).where(User.username == payload.username))
+    user = db.scalar(select(User).where(User.username == payload.username, User.is_active.is_(True)))
     if user is None:
         raise HTTPException(status_code=404, detail="User account not found")
     membership = db.scalar(select(WorkspaceMembership).where(
