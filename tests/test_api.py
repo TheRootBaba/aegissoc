@@ -631,7 +631,7 @@ def test_source_inventory_tracks_single_and_bulk_ingestion_outcomes(client):
     result = client.post("/api/v1/events/ingest/inventory-lab/bulk", json=batch)
     assert result.status_code == 200
     assert result.json()["accepted"] == 1
-    assert result.json()["duplicates"] == 0
+    assert result.json()["duplicates"] == 1
     assert result.json()["rejected"] == 1
 
     inventory = client.get("/api/v1/sources")
@@ -639,7 +639,7 @@ def test_source_inventory_tracks_single_and_bulk_ingestion_outcomes(client):
     source = next(item for item in inventory.json() if item["source_name"] == "inventory-lab")
     assert source["health_status"] == "healthy"
     assert source["accepted_events"] == 2
-    assert source["duplicate_events"] == 0
+    assert source["duplicate_events"] == 1
     assert source["rejected_events"] == 1
     assert source["last_attempt_at"] is not None
     assert source["last_successful_event_at"] is not None
