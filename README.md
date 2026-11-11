@@ -151,7 +151,7 @@ Repeated detector runs update the matching alert instead of creating duplicates.
 
 ### Investigate and manage alerts
 
-Phase 1.5 adds alert detail, lifecycle transitions, assignment, analyst notes, and an append-only audit history. Supported statuses are `open`, `acknowledged`, `in_progress`, `resolved`, and `false_positive`. Reopen a resolved or false-positive alert by moving it back to `open`; invalid transitions return HTTP 409. The `actor`/`author` values are analyst-supplied labels for the lab workflow, not authenticated identities. Authentication and trusted identity binding are reserved for Phase 1.7.
+Phase 1.5 adds alert detail, lifecycle transitions, assignment, analyst notes, and an append-only audit history. Supported statuses are `open`, `acknowledged`, `in_progress`, `resolved`, and `false_positive`. Reopen a resolved or false-positive alert by moving it back to `open`; invalid transitions return HTTP 409. The API derives actor and author identities from the verified bearer token; caller-supplied identity labels are ignored.
 
 ```powershell
 # Inspect one alert
@@ -245,7 +245,7 @@ Only ingest events from systems you own or are explicitly authorized to monitor.
 4. Phase 1.4: deterministic SSH brute-force detection and evidence-backed alerts.
 5. Phase 1.5: alert lifecycle, analyst workflow, and local analyst dashboard.
 6. Phase 1.6: native Wazuh ingestion, replay-safe source event IDs, MITRE ATT&CK technique mapping, and aggregate dashboard metrics.
-7. Phase 1.7: operational security controls and deployment readiness.
+7. Phase 1.7: authentication, role-based access control, trusted analyst identities, login throttling, and production secret guardrails.
 
 
 ## Phase 1.7 — authentication and access control
