@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api.routes import alert_workflow, auth, detections, detection_schedules, events, health, sources
+from app.api.routes import alert_workflow, audit, auth, detections, detection_schedules, events, health, sources
 from app.core.config import settings
 from app.core.logging_config import configure_logging, request_id_var
 
@@ -62,6 +62,7 @@ app.include_router(events.router)
 app.include_router(detections.router)
 app.include_router(detection_schedules.router)
 app.include_router(alert_workflow.router)
+app.include_router(audit.router)
 app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 
 

@@ -26,6 +26,7 @@
         <a class="nav-link" href="#sources" data-nav="sources"><span class="nav-icon">⌘</span>Data sources<span class="nav-count" id="nav-source-count">0</span></a>
         <a class="nav-link" href="#schedules" data-nav="schedules"><span class="nav-icon">◷</span>Detection schedules</a>
         <a class="nav-link" href="#alerts" data-nav="alerts"><span class="nav-icon">◎</span>Alert queue<span class="nav-count" id="nav-alert-count">0</span></a>
+        <a class="nav-link" href="#audit" data-nav="audit"><span class="nav-icon">⌑</span>Audit trail</a>
         <a class="nav-link" href="#events" data-nav="events"><span class="nav-icon">⌁</span>Event telemetry</a>
         <a class="nav-link admin-nav" href="#team" data-nav="team" id="team-nav"><span class="nav-icon">♙</span>Team & access</a>
       </nav>
@@ -104,6 +105,14 @@
             <div class="table-footer"><span id="alert-footer">Showing latest alerts</span><span>AEGIS DETECTION ENGINE</span></div>
           </div>
           <aside class="surface-card investigation-card" id="detail-panel"><div class="investigation-empty"><span class="empty-radar">◎</span><span class="section-kicker">INVESTIGATION WORKSPACE</span><h3>Nothing selected</h3><p>Select an alert from the queue to review evidence, update its status, assign an analyst, and document findings.</p><div class="empty-hint">SELECT AN ALERT TO BEGIN <span>→</span></div></div></aside>
+        </div>
+      </section>
+
+      <section class="section-block" id="audit">
+        <div class="section-heading"><div><div class="section-kicker">04 / GOVERNANCE & INTEGRITY</div><h2>Security audit trail</h2><p>Operator actions linked by a tamper-evident cryptographic hash chain.</p></div><div class="section-heading-side"><span class="data-chip" id="audit-status">Not verified</span><button class="button button-secondary" id="verify-audit" type="button" hidden>Verify chain</button></div></div>
+        <div class="surface-card audit-card">
+          <div class="card-toolbar"><div class="toolbar-title"><span class="toolbar-mark">⌑</span><span><strong>Recent operator activity</strong><small>Server-derived identities · ordered hash-linked records</small></span></div><span class="data-chip" id="audit-count">0 records</span></div>
+          <div id="audit-list" class="audit-list"><div class="source-empty">Sign in to inspect the security audit trail.</div></div>
         </div>
       </section>
 

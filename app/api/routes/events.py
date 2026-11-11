@@ -14,6 +14,7 @@ from app.core.security import get_current_user, require_roles
 from app.db.session import get_db
 from app.models import SavedEventQuery, SecurityEvent
 from app.services.source_inventory import record_ingestion
+from app.services.audit_chain import append_audit_entry
 from app.schemas.events import (
     BulkEventIngest,
     BulkEventIngestResponse,
@@ -351,6 +352,8 @@ def create_saved_query(payload: SavedEventQueryCreate, db: Session = Depends(get
         raise HTTPException(status_code=422, detail="Saved query name cannot be blank")
     db.add(item)
     try:
+        db.flush()
+        append_audit_entry(db, actor=current_user.username, action="investigation.saved", resource_type="saved_query", resource_id=str(item.id), details={"name": item.name, "is_shared": item.is_shared})
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -371,6 +374,7 @@ def delete_saved_query(query_id: uuid.UUID, db: Session = Depends(get_db),
         raise HTTPException(status_code=404, detail="Saved query not found")
     if item.created_by != current_user.username and current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Only the owner or an administrator can delete this query")
+    append_audit_entry(db, actor=current_user.username, action="investigation.deleted", resource_type="saved_query", resource_id=str(item.id), details={"name": item.name})
     db.delete(item)
     db.commit()
     return Response(status_code=204)

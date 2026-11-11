@@ -63,3 +63,19 @@
 .run-duration{margin-left:auto;color:var(--dim);font:9px var(--mono);white-space:nowrap}
 @media(max-width:1100px){.schedule-create-form{grid-template-columns:repeat(2,minmax(0,1fr))}.schedule-create-form button{width:100%}}
 @media(max-width:680px){.schedule-create-form,.schedules-grid{grid-template-columns:1fr}.schedule-create-panel{padding:14px}.schedules-grid{padding:12px}.schedule-card-head{align-items:flex-start}.schedule-timing{grid-template-columns:1fr 1fr auto}}
+
+/* Tamper-evident audit workspace */
+.audit-card{overflow:hidden}
+.audit-list{display:grid}
+.audit-entry{display:grid;grid-template-columns:72px minmax(0,1fr) auto 100px;align-items:center;gap:14px;padding:13px 18px;border-bottom:1px solid var(--line2)}
+.audit-entry:last-child{border-bottom:0}
+.audit-sequence{color:var(--cyan);font:10px var(--mono)}
+.audit-entry-main{display:flex;flex-direction:column;gap:4px;min-width:0}
+.audit-entry-main strong{font-size:11px}.audit-entry-main small{color:var(--muted);font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.audit-entry time{color:var(--muted);font-size:9px;white-space:nowrap}
+.audit-hash{color:var(--dim);font:9px var(--mono);text-align:right;white-space:nowrap}
+#verify-audit{height:32px}
+#verify-audit:disabled{opacity:.6;cursor:wait}
+#audit-status.audit-valid{color:var(--green);border-color:#285d4a}
+#audit-status.audit-invalid{color:var(--red);border-color:#6b3541}
+@media(max-width:680px){.audit-entry{grid-template-columns:54px minmax(0,1fr);gap:7px;padding:11px}.audit-entry time{grid-column:2}.audit-hash{grid-column:2;text-align:left}}

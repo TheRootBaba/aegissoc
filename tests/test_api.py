@@ -1063,3 +1063,73 @@ def test_detection_schedule_is_admin_only_and_validates_interval(client):
         "name": "Too frequent", "interval_seconds": 30,
     })
     assert invalid.status_code == 422
+
+
+def test_global_audit_chain_records_operator_actions_and_verifies(client):
+    created_user = client.post("/api/v1/auth/users", json={
+        "username": "audited-analyst",
+        "password": "strong-audit-password-2026",
+        "role": "analyst",
+    })
+    assert created_user.status_code == 201
+    created_source = client.post("/api/v1/sources", json={
+        "source_name": "audited-edr",
+        "display_name": "Audited Endpoint",
+        "source_type": "endpoint",
+    })
+    assert created_source.status_code == 201
+
+    entries = client.get("/api/v1/audit", params={"actor": "test-admin"})
+    assert entries.status_code == 200
+    assert [item["sequence"] for item in entries.json()] == [2, 1]
+    assert {item["action"] for item in entries.json()} == {"user.created", "source.registered"}
+    assert entries.json()[0]["previous_hash"] == entries.json()[1]["entry_hash"]
+
+    verification = client.get("/api/v1/audit/verify")
+    assert verification.status_code == 200
+    assert verification.json()["valid"] is True
+    assert verification.json()["checked_entries"] == 2
+    assert verification.json()["head_sequence"] == 2
+
+
+def test_audit_verification_detects_record_tampering(client):
+    from app.models import SecurityAuditEntry
+
+    created = client.post("/api/v1/auth/users", json={
+        "username": "tamper-test-user",
+        "password": "strong-audit-password-2026",
+        "role": "analyst",
+    })
+    assert created.status_code == 201
+    before = client.get("/api/v1/audit/verify")
+    assert before.json()["valid"] is True
+
+    with app.state.testing_session_factory() as db:
+        entry = db.query(SecurityAuditEntry).filter_by(sequence=1).one()
+        entry.details = {"role": "administrator", "tampered": True}
+        db.commit()
+
+    after = client.get("/api/v1/audit/verify")
+    assert after.status_code == 200
+    assert after.json()["valid"] is False
+    assert after.json()["first_invalid_sequence"] == 1
+
+
+def test_empty_audit_chain_verifies_and_read_only_cannot_verify(client):
+    empty = client.get("/api/v1/audit/verify")
+    assert empty.status_code == 200
+    assert empty.json()["valid"] is True
+    assert empty.json()["checked_entries"] == 0
+
+    from types import SimpleNamespace
+    from app.core.security import get_current_user
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
+        id=UUID("00000000-0000-0000-0000-000000000066"),
+        username="viewer",
+        role="read_only",
+        is_active=True,
+    )
+    listed = client.get("/api/v1/audit")
+    verified = client.get("/api/v1/audit/verify")
+    assert listed.status_code == 200
+    assert verified.status_code == 403

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.security import get_current_user, require_roles
 from app.db.session import get_db
 from app.models import DetectionExecution, DetectionSchedule, User
+from app.services.audit_chain import append_audit_entry
 from app.schemas.detection_schedules import (
     DetectionExecutionRead, DetectionScheduleCreate, DetectionScheduleRead,
     DetectionScheduleUpdate,
@@ -52,6 +53,12 @@ def create_schedule(payload: DetectionScheduleCreate, db: Session = Depends(get_
     )
     db.add(schedule)
     try:
+        db.flush()
+        append_audit_entry(db, actor=current_user.username, action="detection.schedule_created", resource_type="detection_schedule", resource_id=str(schedule.id), details={
+            "name": schedule.name, "interval_seconds": schedule.interval_seconds,
+            "window_minutes": schedule.window_minutes, "threshold": schedule.threshold,
+            "enabled": schedule.enabled,
+        })
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -63,7 +70,7 @@ def create_schedule(payload: DetectionScheduleCreate, db: Session = Depends(get_
 @router.patch("/{schedule_id}", response_model=DetectionScheduleRead,
               dependencies=[Depends(require_roles("admin"))])
 def update_schedule(schedule_id: UUID, payload: DetectionScheduleUpdate,
-                    db: Session = Depends(get_db)):
+                    db: Session = Depends(get_db), current_user: User = Depends(require_roles("admin"))):
     schedule = _get_schedule(db, schedule_id)
     changes = payload.model_dump(exclude_unset=True)
     if "name" in changes:
@@ -76,6 +83,7 @@ def update_schedule(schedule_id: UUID, payload: DetectionScheduleUpdate,
         schedule.next_run_at = datetime.now(timezone.utc) + timedelta(seconds=schedule.interval_seconds)
     if changes.get("enabled") is False:
         schedule.locked_until = None
+    append_audit_entry(db, actor=current_user.username, action="detection.schedule_updated", resource_type="detection_schedule", resource_id=str(schedule.id), details=changes)
     try:
         db.commit()
     except IntegrityError as exc:
@@ -87,8 +95,9 @@ def update_schedule(schedule_id: UUID, payload: DetectionScheduleUpdate,
 
 @router.delete("/{schedule_id}", status_code=status.HTTP_204_NO_CONTENT,
                dependencies=[Depends(require_roles("admin"))])
-def delete_schedule(schedule_id: UUID, db: Session = Depends(get_db)):
+def delete_schedule(schedule_id: UUID, db: Session = Depends(get_db), current_user: User = Depends(require_roles("admin"))):
     schedule = _get_schedule(db, schedule_id)
+    append_audit_entry(db, actor=current_user.username, action="detection.schedule_deleted", resource_type="detection_schedule", resource_id=str(schedule.id), details={"name": schedule.name})
     db.delete(schedule)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

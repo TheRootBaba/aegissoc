@@ -2,11 +2,13 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.security import require_roles
+from app.services.audit_chain import append_audit_entry
 from app.db.session import get_db
-from app.models import SourceRegistry
+from app.models import SourceRegistry, User
 from app.schemas.sources import SourceCreate, SourceRead
 
 router = APIRouter(
@@ -58,7 +60,7 @@ def list_sources(db: Session = Depends(get_db)):
 
 @router.post("", response_model=SourceRead, status_code=status.HTTP_201_CREATED,
              dependencies=[Depends(require_roles("admin"))])
-def register_source(payload: SourceCreate, db: Session = Depends(get_db)):
+def register_source(payload: SourceCreate, db: Session = Depends(get_db), current_user: User = Depends(require_roles("admin"))):
     if db.scalar(select(SourceRegistry.id).where(SourceRegistry.source_name == payload.source_name)):
         raise HTTPException(status_code=409, detail="Source is already registered")
     source = SourceRegistry(
@@ -69,7 +71,12 @@ def register_source(payload: SourceCreate, db: Session = Depends(get_db)):
         health_status="inactive",
     )
     db.add(source)
-    db.commit()
+    try:
+        append_audit_entry(db, actor=current_user.username, action="source.registered", resource_type="source", resource_id=source.source_name, details={"source_type": source.source_type})
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Source is already registered") from exc
     db.refresh(source)
     return _serialize(source)
 

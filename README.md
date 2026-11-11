@@ -453,3 +453,17 @@ docker compose logs -f scheduler
 ```
 
 Schedules are disabled or enabled through the API; a newly created enabled schedule first runs after its configured interval. Manual detection runs remain available independently of the scheduler.
+
+
+## Tamper-evident security audit history
+
+AegisSOC records security-relevant operator actions in a global SHA-256 hash chain:
+
+- `GET /api/v1/audit` — authenticated, bounded audit history with actor/action/resource filters.
+- `GET /api/v1/audit/verify` — administrator-only full-chain integrity verification.
+
+Migration `0009_audit_chain` creates a singleton chain-head row and immutable audit entries. Each entry contains a monotonically increasing sequence, UTC timestamp, server-derived actor, action, resource type/identifier, structured details, previous hash, and current hash. The canonical payload is JSON-serialized with sorted keys and compact separators before hashing. A row-level lock on the chain-head serializes concurrent PostgreSQL writers. Audit entries are written in the same transaction as supported operator actions: user provisioning, source registration, alert workflow changes/notes, saved-investigation changes, manual detection runs, schedule management, and scheduled execution outcomes.
+
+Verification recomputes every entry, checks sequence continuity and previous-hash linkage, and compares the computed head with the persisted chain state. Tampering with an entry or removing/reordering records is detected.
+
+**Security boundary:** a hash chain is tamper-evident, not an external immutable archive. A database administrator able to rewrite both every audit row and the chain-head could reconstruct the chain. For stronger production assurance, periodically export/anchor the current head hash to an independently controlled WORM or external audit destination. Audit history should also be included in backup and recovery tests.

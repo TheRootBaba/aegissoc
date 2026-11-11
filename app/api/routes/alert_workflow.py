@@ -9,6 +9,7 @@ from app.core.security import get_current_user, require_roles
 from app.db.session import get_db
 from app.models import AlertAuditLog, AlertNote, DetectionAlert, User
 from app.schemas.alert_workflow import AlertAuditRead, AlertDetail, AlertNoteCreate, AlertNoteRead, AlertUpdate
+from app.services.audit_chain import append_audit_entry
 
 router = APIRouter(prefix="/api/v1/alerts", tags=["alerts"],
                    dependencies=[Depends(require_roles("admin", "analyst", "read_only"))])
@@ -60,6 +61,7 @@ def update_alert(alert_id: UUID, payload: AlertUpdate, db: Session = Depends(get
     if changes:
         alert.updated_at = datetime.now(timezone.utc)
         _audit(db, alert.id, current_user.username, "alert.updated", changes)
+        append_audit_entry(db, actor=current_user.username, action="alert.updated", resource_type="alert", resource_id=str(alert.id), details=changes)
         db.commit()
         db.refresh(alert)
     return alert
@@ -74,6 +76,7 @@ def add_alert_note(alert_id: UUID, payload: AlertNoteCreate, db: Session = Depen
         raise HTTPException(status_code=422, detail="Note body must not be blank")
     db.add(note)
     _audit(db, alert.id, current_user.username, "note.added", {"note_id": str(note.id)})
+    append_audit_entry(db, actor=current_user.username, action="alert.note_added", resource_type="alert", resource_id=str(alert.id), details={"note_id": str(note.id)})
     alert.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(note)
