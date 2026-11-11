@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class DetectionScheduleCreate(BaseModel):
@@ -37,6 +37,15 @@ class DetectionScheduleRead(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    @field_validator("next_run_at", "last_run_at", "created_at", "updated_at", mode="before")
+    @classmethod
+    def normalize_utc(cls, value):
+        if value is None:
+            return value
+        if value.tzinfo is None or value.utcoffset() is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
 
 class DetectionExecutionRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -52,3 +61,10 @@ class DetectionExecutionRead(BaseModel):
     alerts_updated: int
     rules_evaluated: list[str]
     error: str | None
+
+    @field_validator("started_at", "completed_at", mode="before")
+    @classmethod
+    def normalize_utc(cls, value):
+        if value.tzinfo is None or value.utcoffset() is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
