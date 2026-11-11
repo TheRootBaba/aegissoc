@@ -236,6 +236,13 @@ function renderSources() {
     ? (counts.healthy || 0) + " healthy · " + (counts.stale || 0) + " stale · " +
       (counts.failing || 0) + " failing · " + (counts.inactive || 0) + " inactive"
     : "No sources observed";
+  const sourceSelect = $("event-query-source");
+  const selectedSource = sourceSelect.value;
+  sourceSelect.innerHTML = '<option value="">All sources</option>' + sources.map((source) =>
+    '<option value="' + esc(source.source_name) + '">' + esc(source.display_name) + '</option>'
+  ).join("");
+  if (sources.some((source) => source.source_name === selectedSource)) sourceSelect.value = selectedSource;
+
   $("source-grid").innerHTML = sources.length ? sources.map((source) => {
     const status = source.health_status || "inactive";
     const symbol = source.source_type === "wazuh" ? "◈" :
@@ -372,18 +379,23 @@ async function refreshDashboard() {
       api("/api/v1/events/stats"),
       api("/api/v1/alerts/stats"),
       api("/api/v1/sources"),
+      api("/api/v1/events/saved-queries"),
+      api("/api/v1/events/fields"),
     ]);
     state.alerts = alerts;
     state.events = events;
     state.eventStats = eventStats;
     state.alertStats = alertStats;
     state.sources = sources;
+    state.savedQueries = savedQueries;
+    state.queryFields = queryFields.fields || [];
     setHealth(true, "API operational");
     $("last-updated").textContent = "Last synced " + new Date().toLocaleTimeString();
     renderMetrics();
     renderAlerts();
     renderEvents();
     renderSources();
+    renderSavedQueries();
     if (state.selectedId && state.alerts.some((alert) => alert.id === state.selectedId)) {
       await loadInvestigation(state.selectedId);
     }
