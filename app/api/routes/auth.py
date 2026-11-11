@@ -1,7 +1,9 @@
 from uuid import UUID
 import secrets
+import json
 from authlib.integrations.starlette_client import OAuth
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -47,7 +49,7 @@ async def oidc_login(request: Request):
     return await client.authorize_redirect(request, settings.oidc_redirect_url, nonce=nonce)
 
 
-@router.get("/oidc/callback", response_model=TokenResponse)
+@router.get("/oidc/callback", response_class=HTMLResponse)
 async def oidc_callback(request: Request, db: Session = Depends(get_db)):
     if not settings.oidc_enabled:
         raise HTTPException(status_code=404, detail="OpenID Connect is not enabled")
@@ -76,10 +78,20 @@ async def oidc_callback(request: Request, db: Session = Depends(get_db)):
     user = db.get(User, identity.user_id)
     if user is None or not user.is_active:
         raise HTTPException(status_code=403, detail="The mapped AegisSOC account is inactive")
-    return TokenResponse(
-        access_token=create_access_token(user),
-        expires_in=settings.access_token_minutes * 60,
+    token_value = create_access_token(user)
+    safe_token = json.dumps(token_value)
+    return HTMLResponse(
+        "<!doctype html><html><head><meta charset='utf-8'></head><body>"
+        "<p>Authentication complete. Redirecting to AegisSOC…</p>"
+        "<script>sessionStorage.setItem('aegis_token'," + safe_token + ");"
+        "window.location.replace('/dashboard');</script></body></html>",
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
     )
+
+
+@router.get("/methods")
+def authentication_methods():
+    return {"local_password": True, "oidc_enabled": settings.oidc_enabled}
 
 
 @router.post("/oidc/identities", status_code=status.HTTP_201_CREATED)
