@@ -16,7 +16,7 @@ function renderMetrics() {
   const progress=(state.alertStats.by_status?.acknowledged||0)+(state.alertStats.by_status?.in_progress||0);
   $("metric-open").textContent=open; $("metric-high").textContent=high;
   $("metric-events").textContent=state.eventStats.total_events??state.events.length; $("metric-progress").textContent=progress;
-  $("nav-alert-count").textContent=open; $("alert-count").textContent=state.alerts.length+" alerts";
+  $("nav-alert-count").textContent=open; $("alert-count").textContent=(state.alertStats.total_alerts??state.alerts.length)+" alerts";
   $("event-count").textContent=state.events.length+" events";
 }
 function renderAlerts() {
