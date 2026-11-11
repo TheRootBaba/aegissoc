@@ -24,6 +24,7 @@ class ResponseActionRead(BaseModel):
     status: str
     requested_by: str
     approved_by: str | None
+    decided_by: str | None
     decision_note: str | None
     execution_status: str | None
     response_code: int | None
