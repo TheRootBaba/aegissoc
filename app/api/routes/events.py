@@ -351,9 +351,9 @@ def create_saved_query(payload: SavedEventQueryCreate, db: Session = Depends(get
     if not item.name:
         raise HTTPException(status_code=422, detail="Saved query name cannot be blank")
     db.add(item)
-    db.flush()
-    append_audit_entry(db, actor=current_user.username, action="investigation.saved", resource_type="saved_query", resource_id=str(item.id), details={"name": item.name, "is_shared": item.is_shared})
     try:
+        db.flush()
+        append_audit_entry(db, actor=current_user.username, action="investigation.saved", resource_type="saved_query", resource_id=str(item.id), details={"name": item.name, "is_shared": item.is_shared})
         db.commit()
     except IntegrityError as exc:
         db.rollback()
