@@ -199,9 +199,9 @@ def _scanner_export_step(db: Session, connector: ConnectorConfig, state: Connect
         start_path = api_path("start_path")
         payload = dict(config.get("start_payload") or {})
         document = request_export_json(start_path, headers, method=str(config.get("start_method", "POST")).upper(), payload=payload)
-        status, job_id = parse_job_state(provider, document)
+        job_id = document.get("file") or document.get("file_id") or document.get("job_id") or document.get("id")
         if not job_id:
-            job_id = document.get("file_id") or document.get("id")
+            _, job_id = parse_job_state(provider, document)
         if not job_id:
             raise ValueError("Scanner export start response did not include a job identifier")
         state.cursor = {"job_id": str(job_id), "scan_id": scan_id, "stage": "polling"}
