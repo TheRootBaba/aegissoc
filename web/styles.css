@@ -620,7 +620,7 @@ input:focus, select:focus, textarea:focus { border-color: #7899A4; box-shadow: 0
    60% warm mineral canvas, 30% deep blue-green structure, 10% focused teal.
    Severity hues remain semantic and are never used as decorative accents. */
 html, body { background: var(--bg); color: var(--text); color-scheme: light; }
-body { font-family: var(--sans); font-size: 14px; line-height: 1.65; letter-spacing: -.012em; }
+body { font-family: var(--sans); font-size: 15px; line-height: 1.7; letter-spacing: -.012em; }
 .sidebar { background: var(--navy); border-right: 1px solid #2A5260; color: #F1F6F4; }
 .brand { border-bottom-color: rgb(255 255 255 / 13%); }
 .brand-symbol, .nav-link.active .nav-icon { color: #8BD2C8; }
@@ -649,7 +649,7 @@ body { font-family: var(--sans); font-size: 14px; line-height: 1.65; letter-spac
 .eyebrow, .section-kicker { color: #54736F; letter-spacing: .13em; font-family: var(--mono); font-size: 10px; line-height: 1.5; }
 .section-block { margin-top: 34px; scroll-margin-top: 86px; }
 .section-heading { margin-bottom: 19px; align-items: flex-end; gap: 24px; }
-.section-heading h2 { color: var(--text); font-size: 25px; line-height: 1.28; letter-spacing: -.04em; font-weight: 650; margin: 5px 0 6px; }
+.section-heading h2 { color: var(--text); font-size: clamp(24px, 2vw, 27px); line-height: 1.32; letter-spacing: -.035em; font-weight: 650; margin: 5px 0 6px; }
 .section-heading p { margin: 0; font-size: 13px; line-height: 1.7; }
 .surface-card, .metric-card, .source-card, .detection-rule-card, .case-row, .team-list-card {
   background: var(--surface); border: 1px solid var(--line); border-radius: 9px;
@@ -741,3 +741,34 @@ label { color: #40575E; font-size: 12px; line-height: 1.55; font-weight: 600; }
 .row-link:hover, .page-intro h1 span { color: var(--teal); }
 .button-primary { background: var(--teal); border-color: var(--teal); color: #FFFFFF; }
 .button-primary:hover { background: #08766F; border-color: #08766F; }
+
+
+/* Asset risk and playbook workspaces — matching the v3 reading rhythm. */
+.asset-risk-layout { display: grid; grid-template-columns: minmax(260px,.72fr) minmax(0,1.5fr); gap: 18px; align-items: start; }
+.asset-form, .finding-form, .playbook-form { display: grid; gap: 13px; padding: 18px 20px 20px; }
+.asset-form label, .finding-form label, .playbook-form label { display: grid; gap: 6px; }
+.asset-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.finding-workspace, .playbook-workspace { margin-top: 16px; }
+.finding-form { grid-template-columns: repeat(3,minmax(0,1fr)); align-items: end; }
+.finding-list, .playbook-list { padding: 0 20px 18px; }
+.finding-row, .playbook-run { padding: 14px 0; border-top: 1px solid var(--line); }
+.finding-row, .finding-actions, .playbook-run-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.finding-row strong, .finding-row small, .playbook-run-head strong, .playbook-run-head small { display: block; }
+.finding-row strong, .playbook-run-head strong { color: var(--text); font-size: 13px; font-weight: 650; }
+.finding-row small, .playbook-run-head small { margin-top: 4px; color: var(--muted); font-size: 11px; }
+.finding-actions { flex-wrap: wrap; justify-content: flex-end; }
+.playbook-run ol { display: grid; gap: 8px; margin: 14px 0 0; padding-left: 22px; }
+.playbook-run li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; color: var(--text); font-size: 12px; }
+.playbook-run li.step-complete > span { color: var(--muted); text-decoration: line-through; }
+.playbook-run em { margin-left: 5px; color: var(--dim); font-size: 10px; font-style: normal; }
+.text-link { padding: 0; border: 0; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+.text-link:hover { color: var(--teal); }
+@media(max-width:980px) {
+  .asset-risk-layout { grid-template-columns: 1fr; }
+  .finding-form { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media(max-width:680px) {
+  .finding-form, .asset-form-row { grid-template-columns: 1fr; }
+  .finding-row, .playbook-run li { align-items: flex-start; flex-direction: column; }
+  .finding-actions { justify-content: flex-start; }
+}
