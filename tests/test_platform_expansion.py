@@ -306,3 +306,84 @@ def test_scanner_export_normalizers_map_vendor_findings_to_managed_asset_contrac
     })
     assert qualys["assets"][0]["findings"][0]["vulnerability_id"] == "QID-9876"
     assert qualys["assets"][0]["findings"][0]["severity"] == "high"
+
+def test_sigma_advanced_conditions_and_modifiers():
+    source = """title: Encoded PowerShell
+id: sigma-advanced-001
+logsource:
+  product: windows
+detection:
+  selection_a:
+    CommandLine|contains|all:
+      - powershell
+      - -encodedcommand
+  selection_b:
+    event_type: process.started
+  filter:
+    severity: critical
+  condition: 1 of selection_* and not filter
+level: high
+"""
+    parsed = parse_sigma_document(source)
+    rule = SimpleNamespace(**parsed, enabled=True)
+    event = SimpleNamespace(
+        source="edr", event_type="process.started", severity="high",
+        hostname="win01", source_ip=None, username="analyst",
+        message="encoded powershell", raw={"CommandLine": "powershell.exe -EncodedCommand abc"},
+    )
+    assert rule_matches(event, rule)
+    event.severity = "critical"
+    assert not rule_matches(event, rule)
+
+
+def test_sigma_event_count_correlation_creates_grouped_evidence_alert(isolated_db):
+    from datetime import datetime, timezone
+    from app.models import SigmaRule
+    from app.services.sigma_engine import run_sigma_rules
+
+    base = parse_sigma_document("""title: Failed authentication
+id: base-auth-failure
+logsource:
+  service: auth
+detection:
+  selection:
+    event_type: authentication.failure
+  condition: selection
+level: medium
+""")
+    correlation = parse_sigma_document("""title: Repeated authentication failures
+id: corr-auth-failure
+logsource:
+  service: auth
+correlation:
+  type: event_count
+  rules:
+    - base-auth-failure
+  group-by:
+    - source_ip
+  timespan: 5m
+  condition:
+    gte: 3
+level: high
+""")
+    isolated_db.add_all([
+        SigmaRule(**base, enabled=True, created_by="analyst"),
+        SigmaRule(**correlation, enabled=True, created_by="analyst"),
+    ])
+    now = datetime.now(timezone.utc)
+    for index in range(3):
+        isolated_db.add(SecurityEvent(
+            source="auth-sensor", event_type="authentication.failure", severity="medium",
+            timestamp=now, source_ip="192.0.2.99", message=f"failed login {index}", raw={},
+        ))
+    isolated_db.commit()
+
+    result = run_sigma_rules(isolated_db, lookback_minutes=15)
+    assert result["rules_evaluated"] == 2
+    assert result["matches"] == 4
+    alerts = isolated_db.query(models.DetectionAlert).filter(
+        models.DetectionAlert.rule_id == "SIGMA-C:corr-auth-failure"
+    ).all()
+    assert len(alerts) == 1
+    assert alerts[0].event_count == 3
+    assert len(alerts[0].evidence_event_ids) == 3
