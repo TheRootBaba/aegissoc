@@ -2,11 +2,12 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.security import require_roles
+from app.core.security import get_current_user, require_roles
 from app.db.session import get_db
-from app.models import DetectionAlert
+from app.models import DetectionAlert, User
 from app.schemas.detections import AlertRead, DetectionRunRequest, DetectionRunResponse
 from app.services.detection_engine import run_ssh_brute_force_detection
+from app.services.audit_chain import append_audit_entry
 
 router = APIRouter(tags=["detections", "alerts"],
                    dependencies=[Depends(require_roles("admin", "analyst", "read_only"))])
@@ -14,8 +15,16 @@ router = APIRouter(tags=["detections", "alerts"],
 
 @router.post("/api/v1/detections/run", response_model=DetectionRunResponse,
              dependencies=[Depends(require_roles("admin", "analyst"))])
-def run_detections(request: DetectionRunRequest, db: Session = Depends(get_db)):
-    return run_ssh_brute_force_detection(db, window_minutes=request.window_minutes, threshold=request.threshold)
+def run_detections(request: DetectionRunRequest, db: Session = Depends(get_db),
+                   current_user: User = Depends(require_roles("admin", "analyst"))):
+    result = run_ssh_brute_force_detection(db, window_minutes=request.window_minutes, threshold=request.threshold)
+    append_audit_entry(db, actor=current_user.username, action="detection.manual_run", resource_type="detection", details={
+        "window_minutes": request.window_minutes, "threshold": request.threshold,
+        "events_evaluated": result["events_evaluated"], "alerts_created": result["alerts_created"],
+        "alerts_updated": result["alerts_updated"], "rules_evaluated": result["rules_evaluated"],
+    })
+    db.commit()
+    return result
 
 
 @router.get("/api/v1/alerts/stats")
