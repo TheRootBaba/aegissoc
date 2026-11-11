@@ -22,6 +22,15 @@ def client():
     )
     TestingSessionLocal = sessionmaker(bind=test_engine, autoflush=False, autocommit=False)
     Base.metadata.create_all(bind=test_engine)
+    # Mirror the defaults inserted by Alembic revision 0010 in the isolated test DB.
+    from app.models import RetentionPolicy
+    seed_session = TestingSessionLocal()
+    seed_session.add_all([
+        RetentionPolicy(data_kind="events", retention_days=90, enabled=True, preserve_active_evidence=True, updated_by="system"),
+        RetentionPolicy(data_kind="executions", retention_days=180, enabled=True, preserve_active_evidence=True, updated_by="system"),
+    ])
+    seed_session.commit()
+    seed_session.close()
     app.state.testing_session_factory = TestingSessionLocal
 
     def override_get_db():
