@@ -123,8 +123,8 @@ def _ingest_indicators(db: Session, connector: ConnectorConfig, records: list) -
                 expiry = datetime.fromisoformat(expiry.replace("Z", "+00:00"))
             if existing:
                 existing.confidence = max(existing.confidence, min(100, max(0, int(item.get("confidence", 50)))))
-                existing.status = "active"
                 existing.expires_at = expiry
+                existing.tags = list(dict.fromkeys((existing.tags or []) + ["feed:" + connector.connector_key]))
                 existing.updated_at = datetime.now(timezone.utc)
                 duplicates += 1
             else:
