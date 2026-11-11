@@ -5,7 +5,8 @@ const state = {
   alerts: [], events: [], sources: [], schedules: [], eventStats: {}, alertStats: {}, users: [],
   savedQueries: [], queryFields: [], queryResult: null, pendingSavedQuery: null,
   auditEntries: [], auditVerification: null, cases: [], detectionRules: [], selectedCaseId: null,
-  operationsHealth: {}, operationsMetrics: {}, retentionPolicies: [], operationJobs: [], connectors: [],\n  indicators: [], indicatorMatches: [], entities: [],
+  operationsHealth: {}, operationsMetrics: {}, retentionPolicies: [], operationJobs: [], connectors: [],
+  indicators: [], indicatorMatches: [], entities: [],
   selectedId: null, token: null, user: null, toastTimer: null,
 };
 const esc = (value) => String(value ?? "—").replace(/[&<>"']/g, (char) => ({
@@ -552,6 +553,9 @@ async function refreshDashboard() {
       api("/api/v1/connectors"),
       api("/api/v1/cases"),
       api("/api/v1/detection-rules"),
+      api("/api/v1/threat-intel/indicators?limit=200"),
+      api("/api/v1/threat-intel/matches?limit=100"),
+      api("/api/v1/threat-intel/entities?min_events=1&limit=200"),
     ]);
     state.alerts = alerts;
     state.events = events;
@@ -566,7 +570,10 @@ async function refreshDashboard() {
     state.operationJobs = operationJobs;
     state.connectors = connectors;
     state.cases = cases;
-    state.detectionRules = detectionRules;\n    state.indicators = indicators;\n    state.indicatorMatches = indicatorMatches;\n    state.entities = entities;
+    state.detectionRules = detectionRules;
+    state.indicators = indicators;
+    state.indicatorMatches = indicatorMatches;
+    state.entities = entities;
     state.savedQueries = savedQueries;
     state.queryFields = queryFields.fields || [];
     setHealth(true, "API operational");
@@ -580,7 +587,9 @@ async function refreshDashboard() {
     renderOperations();
     renderConnectors();
     renderCases();
-    renderDetectionRules();\n    renderThreatIntel();\n    renderEntities();
+    renderDetectionRules();
+    renderThreatIntel();
+    renderEntities();
     renderSavedQueries();
     if (state.selectedId && state.alerts.some((alert) => alert.id === state.selectedId)) {
       await loadInvestigation(state.selectedId);
@@ -1022,6 +1031,7 @@ async function saveDetectionRule(ruleId) {
 }
 
 function renderThreatIntel() {
+  $("indicator-form").hidden = state.user?.role === "read_only";
   $("indicator-count").textContent = count(state.indicators.length) + " indicators";
   $("indicator-match-count").textContent = count(state.indicatorMatches.length) + " matches";
   $("indicator-list").innerHTML = state.indicators.length ? state.indicators.map((item) =>
@@ -1100,7 +1110,8 @@ async function refreshEntities() {
   } catch (error) { showToast(error.message, "error"); }
   finally { button.disabled = false; }
 }
-\nfunction setActiveNav() {
+
+function setActiveNav() {
   const current = location.hash.replace("#", "") || "overview";
   document.querySelectorAll("[data-nav]").forEach((link) => {
     link.classList.toggle("active", link.dataset.nav === current);
@@ -1170,7 +1181,13 @@ $("case-list").addEventListener("click", (event) => {
 });
 $("case-detail").addEventListener("click", handleCaseDetailClick);
 $("case-detail").addEventListener("submit", addCaseNote);
-$("indicator-form").addEventListener("submit", createIndicator);\n$("indicator-list").addEventListener("click", handleIndicatorAction);\n$("refresh-intel").addEventListener("click", refreshDashboard);\n$("refresh-entities").addEventListener("click", refreshEntities);\n$("entity-type").addEventListener("change", refreshEntities);\n$("entity-search").addEventListener("input", renderEntities);\n$("detection-rule-list").addEventListener("click", (event) => {
+$("indicator-form").addEventListener("submit", createIndicator);
+$("indicator-list").addEventListener("click", handleIndicatorAction);
+$("refresh-intel").addEventListener("click", refreshDashboard);
+$("refresh-entities").addEventListener("click", refreshEntities);
+$("entity-type").addEventListener("change", refreshEntities);
+$("entity-search").addEventListener("input", renderEntities);
+$("detection-rule-list").addEventListener("click", (event) => {
   const button = event.target.closest("[data-rule-save]");
   if (button) saveDetectionRule(button.dataset.ruleSave);
 });
