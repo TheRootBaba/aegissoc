@@ -42,5 +42,11 @@ jobs:
         run: alembic upgrade head
       - name: Verify PostgreSQL migration revision
         run: alembic current
+      - name: Set up Node.js for dashboard validation
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check dashboard JavaScript syntax
+        run: node --check web/app.js
       - name: Run API tests
         run: python -m pytest -q
