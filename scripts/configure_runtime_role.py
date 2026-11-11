@@ -2,6 +2,8 @@
 
 import os
 
+from app.core.config import settings
+
 import psycopg
 from psycopg import sql
 from sqlalchemy.engine import make_url
@@ -11,11 +13,16 @@ def main() -> None:
     migration_url = os.environ.get("MIGRATION_DATABASE_URL")
     runtime_password = os.environ.get("RUNTIME_DB_PASSWORD")
     runtime_user = os.environ.get("RUNTIME_DB_USER", "aegis_runtime")
-    if not migration_url or not runtime_password or len(runtime_password) < 16:
-        raise RuntimeError("MIGRATION_DATABASE_URL and a RUNTIME_DB_PASSWORD of at least 16 characters are required")
+    minimum_password_length = 32 if settings.app_env == "production" else 16
+    if not migration_url or not runtime_password or len(runtime_password) < minimum_password_length:
+        raise RuntimeError(
+            f"MIGRATION_DATABASE_URL and a RUNTIME_DB_PASSWORD of at least {minimum_password_length} characters are required"
+        )
     parsed = make_url(migration_url)
     if parsed.get_backend_name() != "postgresql" or not parsed.database:
         raise RuntimeError("Runtime role provisioning requires a PostgreSQL migration URL")
+    if runtime_user == parsed.username:
+        raise RuntimeError("The application runtime role must differ from the migration database owner")
     connection_url = parsed.set(drivername="postgresql").render_as_string(hide_password=False)
 
     with psycopg.connect(connection_url, autocommit=True) as connection:
@@ -31,7 +38,7 @@ def main() -> None:
             password=sql.Literal(runtime_password),
         ))
         connection.execute(sql.SQL(
-            "ALTER ROLE {} WITH LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION"
+            "ALTER ROLE {} WITH LOGIN NOSUPERUSER NOBYPASSRLS NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION"
         ).format(sql.Identifier(runtime_user)))
         connection.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(
             sql.Identifier(parsed.database), sql.Identifier(runtime_user)
