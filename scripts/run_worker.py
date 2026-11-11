@@ -4,7 +4,6 @@ import signal
 import time
 from app.db.session import SessionLocal
 from app.services.connector_runtime import run_due_connectors_once
-from app.services.detection_scheduler import run_due_schedules_once
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -25,10 +24,9 @@ def main():
     while running:
         db = SessionLocal()
         try:
-            detections = run_due_schedules_once(db, batch_size=10)
             connectors = run_due_connectors_once(db, batch_size=5)
-            if detections or connectors:
-                logger.info("worker_cycle_completed detections=%s connectors=%s", detections, connectors)
+            if connectors:
+                logger.info("connector_worker_cycle_completed connectors=%s", connectors)
         except Exception as exc:
             db.rollback()
             logger.error("worker_cycle_failed error_type=%s", type(exc).__name__)
