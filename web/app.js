@@ -96,7 +96,7 @@ function renderMetrics() {
   $("nav-alert-count").textContent = count(open);
   $("alert-count").textContent = count(state.alertStats.total_alerts ?? state.alerts.length) + " alerts";
   $("event-count").textContent = count(state.events.length) + " recent events";
-  $("event-total-footer").textContent = count(state.eventStats.total_events ?? state.events.length);
+  $("event-total-footer").textContent = count(state.queryResult?.total ?? state.eventStats.total_events ?? state.events.length);
 }
 function renderAlerts() {
   const severity = $("severity-filter").value;
@@ -130,7 +130,7 @@ function renderEvents() {
   $("event-count").textContent = state.queryResult
     ? count(state.queryResult.total) + " matches" : count(state.events.length) + " recent events";
   $("event-query-footer").innerHTML = state.queryResult
-    ? "Showing <strong>" + count(rows.length) + "</strong> of <strong>" + count(state.queryResult.total) + "</strong> matching events"
+    ? "Showing <strong>" + count(rows.length) + "</strong> of <strong id=\"event-total-footer\">" + count(state.queryResult.total) + "</strong> matching events"
     : "All-time volume: <strong id=\"event-total-footer\">" + count(state.eventStats.total_events ?? state.events.length) + "</strong>";
   renderQueryAggregations();
 }
