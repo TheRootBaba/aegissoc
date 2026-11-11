@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 from time import perf_counter
+from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -60,23 +61,23 @@ def run_retention_cleanup(
             protected_uuid_ids = set()
             for value in protected_ids:
                 try:
-                    from uuid import UUID
                     protected_uuid_ids.add(UUID(value))
                 except (ValueError, TypeError):
                     continue
-            deletable = [item for item in expired_ids if item not in protected_uuid_ids]
-            if deletable:
+            event_statement = select(SecurityEvent.id).where(SecurityEvent.timestamp < cutoff)
+            if protected_uuid_ids:
+                event_statement = event_statement.where(SecurityEvent.id.not_in(protected_uuid_ids))
+            expired_ids = list(db.scalars(
+                event_statement.order_by(SecurityEvent.timestamp.asc(), SecurityEvent.id.asc()).limit(batch_size)
+            ).all())
+            if expired_ids:
                 affected["events"] = db.query(SecurityEvent).filter(
-                    SecurityEvent.id.in_(deletable)
+                    SecurityEvent.id.in_(expired_ids)
                 ).delete(synchronize_session=False)
 
         execution_policy = policies.get("executions")
         if execution_policy and execution_policy.enabled:
             cutoff = started - timedelta(days=execution_policy.retention_days)
-            latest_per_schedule = (
-                select(func.max(DetectionExecution.id))
-                .group_by(DetectionExecution.schedule_id)
-            )
             # Preserve the most recent run by timestamp, not by UUID ordering.
             latest_rows = db.execute(
                 select(DetectionExecution.schedule_id, func.max(DetectionExecution.completed_at))
@@ -101,9 +102,16 @@ def run_retention_cleanup(
         jobs_policy = policies.get("jobs")
         if jobs_policy and jobs_policy.enabled:
             cutoff = started - timedelta(days=jobs_policy.retention_days)
-            affected["jobs"] = db.query(OperationalJobRun).filter(
-                OperationalJobRun.completed_at < cutoff
-            ).limit(batch_size).delete(synchronize_session=False)
+            expired_job_ids = list(db.scalars(
+                select(OperationalJobRun.id)
+                .where(OperationalJobRun.completed_at < cutoff)
+                .order_by(OperationalJobRun.completed_at.asc())
+                .limit(batch_size)
+            ).all())
+            if expired_job_ids:
+                affected["jobs"] = db.query(OperationalJobRun).filter(
+                    OperationalJobRun.id.in_(expired_job_ids)
+                ).delete(synchronize_session=False)
 
         completed = datetime.now(timezone.utc)
         total = sum(affected.values())
