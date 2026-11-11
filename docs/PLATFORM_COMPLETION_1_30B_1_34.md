@@ -18,6 +18,7 @@ flowchart LR
     end
     subgraph detection["1.32 · Detection"]
       normalize["Canonical events"]
+      ioc["Threat indicator registry"]
       sigma["Validated Sigma subset"]
       correlation["Bounded event-count correlation"]
       alerts["Evidence-linked alerts"]
@@ -35,11 +36,12 @@ flowchart LR
       runtime["Non-owner runtime DB role"]
     end
     wazuh --> normalize
-    misp --> normalize
-    opencti --> normalize
+    misp --> ioc
+    opencti --> ioc
     scanners --> assets["Workspace asset findings"]
     rls --> normalize
     rls --> alerts
+    rls --> ioc
     rls --> assets
     rls --> lease
     oidc --> membership
