@@ -6,7 +6,7 @@ from uuid import uuid4
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from app.api.routes import alert_workflow, audit, auth, cases, connectors, detections, detection_schedules, events, health, operations, sources, detection_rules, threat_intel, asset_risk, sigma, response_actions
+from app.api.routes import workspaces, alert_workflow, audit, auth, cases, connectors, detections, detection_schedules, events, health, operations, sources, detection_rules, threat_intel, asset_risk, sigma, response_actions
 from app.core.config import settings
 from app.core.logging_config import configure_logging, request_id_var
 configure_logging(settings.log_level)
@@ -31,6 +31,7 @@ async def attach_request_id(request: Request, call_next):
     finally:
         request_id_var.reset(token)
 app.include_router(health.router)
+app.include_router(workspaces.router)
 app.include_router(sources.router)
 app.include_router(auth.router)
 app.include_router(events.router)
