@@ -240,7 +240,9 @@ def test_detection_engine_reports_both_ssh_rules_for_password_spray(client):
 
     assert response.status_code == 200
     body = response.json()
-    assert body["rules_evaluated"] == ["AUTH-SSH-001", "AUTH-SSH-002"]
+    assert body["rules_evaluated"] == [
+        "AUTH-SSH-001", "AUTH-SSH-002", "AUTH-CHAIN-001", "PRIV-ESC-001", "PROC-SUSP-001",
+    ]
     assert {alert["rule_id"] for alert in body["alerts"]} == {
         "AUTH-SSH-001",
         "AUTH-SSH-002",
@@ -832,3 +834,107 @@ def test_read_only_analyst_cannot_create_saved_queries(client):
         "query": {},
     })
     assert response.status_code == 403
+
+
+def test_detection_correlates_repeated_failures_with_later_success(client):
+    now = datetime.now(timezone.utc)
+    for attempt in range(5):
+        created = client.post("/api/v1/events", json=sample_event(
+            event_type="authentication.failure",
+            timestamp=(now - timedelta(seconds=10 - attempt)).isoformat(),
+            username="compromised-user",
+            message=f"Windows logon failure {attempt + 1}",
+        ))
+        assert created.status_code == 201
+    success = client.post("/api/v1/events", json=sample_event(
+        event_type="authentication.success",
+        timestamp=now.isoformat(),
+        username="compromised-user",
+        message="Successful interactive logon",
+    ))
+    assert success.status_code == 201
+
+    run = client.post("/api/v1/detections/run", json={"window_minutes": 10, "threshold": 5})
+    assert run.status_code == 200
+    alert = next(item for item in run.json()["alerts"] if item["rule_id"] == "AUTH-CHAIN-001")
+    assert alert["severity"] == "high"
+    assert alert["attack_technique_id"] == "T1110.001"
+    assert alert["event_count"] == 6
+    assert len(alert["evidence_event_ids"]) == 6
+
+
+def test_detection_flags_privilege_escalation_event(client):
+    now = datetime.now(timezone.utc)
+    created = client.post("/api/v1/events", json=sample_event(
+        event_type="privilege.escalation",
+        severity="high",
+        username="lab-user",
+        message="User added to local administrators group",
+        timestamp=now.isoformat(),
+    ))
+    assert created.status_code == 201
+    run = client.post("/api/v1/detections/run", json={"window_minutes": 10, "threshold": 5})
+    alert = next(item for item in run.json()["alerts"] if item["rule_id"] == "PRIV-ESC-001")
+    assert alert["attack_technique_id"] == "T1548"
+    assert alert["evidence_event_ids"] == [created.json()["id"]]
+
+
+def test_detection_flags_suspicious_encoded_powershell_process(client):
+    now = datetime.now(timezone.utc)
+    created = client.post("/api/v1/events", json=sample_event(
+        event_type="process.started",
+        severity="medium",
+        username="lab-user",
+        message="powershell.exe -NoProfile -EncodedCommand SQBFAFgA",
+        timestamp=now.isoformat(),
+    ))
+    assert created.status_code == 201
+    run = client.post("/api/v1/detections/run", json={"window_minutes": 10, "threshold": 5})
+    alert = next(item for item in run.json()["alerts"] if item["rule_id"] == "PROC-SUSP-001")
+    assert alert["attack_technique_id"] == "T1059"
+    assert created.json()["id"] in alert["evidence_event_ids"]
+
+
+def test_authentication_success_before_failures_does_not_trigger_chain_rule(client):
+    now = datetime.now(timezone.utc)
+    client.post("/api/v1/events", json=sample_event(
+        event_type="authentication.success",
+        timestamp=(now - timedelta(minutes=1)).isoformat(),
+        username="lab-user",
+        message="Successful login",
+    ))
+    for attempt in range(5):
+        client.post("/api/v1/events", json=sample_event(
+            event_type="authentication.failure",
+            timestamp=(now - timedelta(seconds=5 - attempt)).isoformat(),
+            username="lab-user",
+            message=f"Failed login {attempt}",
+        ))
+    run = client.post("/api/v1/detections/run", json={"window_minutes": 10, "threshold": 5})
+    assert run.status_code == 200
+    assert "AUTH-CHAIN-001" not in {item["rule_id"] for item in run.json()["alerts"]}
+
+
+def test_cross_event_detection_refreshes_one_stable_alert_on_replay(client):
+    now = datetime.now(timezone.utc)
+    for attempt in range(5):
+        client.post("/api/v1/events", json=sample_event(
+            event_type="authentication.failure",
+            timestamp=(now - timedelta(seconds=6 - attempt)).isoformat(),
+            username="stable-user",
+            message=f"Repeated authentication failure {attempt}",
+        ))
+    client.post("/api/v1/events", json=sample_event(
+        event_type="authentication.success",
+        timestamp=now.isoformat(),
+        username="stable-user",
+        message="Authentication succeeded",
+    ))
+    first = client.post("/api/v1/detections/run", json={"window_minutes": 10, "threshold": 5})
+    second = client.post("/api/v1/detections/run", json={"window_minutes": 10, "threshold": 5})
+    first_alert = next(item for item in first.json()["alerts"] if item["rule_id"] == "AUTH-CHAIN-001")
+    second_alert = next(item for item in second.json()["alerts"] if item["rule_id"] == "AUTH-CHAIN-001")
+    assert first.json()["alerts_created"] == 1
+    assert second.json()["alerts_created"] == 0
+    assert second.json()["alerts_updated"] == 1
+    assert first_alert["id"] == second_alert["id"]

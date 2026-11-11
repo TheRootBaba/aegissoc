@@ -415,3 +415,18 @@ Invoke-RestMethod -Method Post -Uri "http://localhost:8000/api/v1/events/query" 
 ```
 
 Saved queries are stored in `saved_event_queries` by migration `0007_saved_event_queries`. Shared queries are visible to authenticated users; personal queries remain visible to their owner and administrators may delete any query.
+
+
+## Detection coverage
+
+The scheduled/manual detection runner now evaluates five deterministic rules over the selected rolling event window:
+
+| Rule | Detection | MITRE ATT&CK |
+|---|---|---|
+| AUTH-SSH-001 | SSH brute-force threshold by source IP and host | T1110 — Brute Force |
+| AUTH-SSH-002 | SSH password spray across distinct usernames | T1110.003 — Password Spraying |
+| AUTH-CHAIN-001 | Repeated authentication failures followed by a later success for the same source, host, and account | T1110.001 — Password Guessing |
+| PRIV-ESC-001 | Canonical privilege-escalation telemetry | T1548 — Abuse Elevation Control Mechanism |
+| PROC-SUSP-001 | Suspicious process execution patterns, including encoded PowerShell, certutil, bitsadmin, mshta, rundll32, regsvr32, and script-host launchers | T1059 — Command and Scripting Interpreter |
+
+Every alert stores event IDs as evidence, includes ATT&CK mapping, and is deduplicated by a stable rule/asset/account fingerprint. The authentication-chain rule explicitly requires the successful login to occur after the thresholded failures; a success that predates the failures does not qualify. These are deterministic starter rules, not a replacement for vendor-specific endpoint telemetry or behavioral baselining.
