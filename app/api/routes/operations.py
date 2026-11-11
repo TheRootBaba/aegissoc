@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.security import get_current_user, require_roles
+from app.core.security import require_roles
 from app.db.session import get_db
 from app.models import (
     ConnectorConfig, DetectionAlert, DetectionExecution, DetectionSchedule, OperationalJobRun,
@@ -25,9 +25,21 @@ router = APIRouter(
 def operations_health(db: Session = Depends(get_db)):
     now = datetime.now(timezone.utc)
     recent_cutoff = now - timedelta(minutes=15)
-    source_rows = db.execute(
-        select(SourceRegistry.health_status, func.count()).group_by(SourceRegistry.health_status)
-    ).all()
+    source_rows = []
+    for source in db.scalars(select(SourceRegistry)).all():
+        last_success = source.last_successful_event_at
+        if last_success is not None and last_success.tzinfo is None:
+            last_success = last_success.replace(tzinfo=timezone.utc)
+        if source.health_status == "failing":
+            derived_state = "failing"
+        elif last_success is None:
+            derived_state = "inactive"
+        elif last_success < now - timedelta(minutes=15):
+            derived_state = "stale"
+        else:
+            derived_state = source.health_status
+        source_rows.append(derived_state)
+    source_counts = {state: source_rows.count(state) for state in set(source_rows)}
     failing_schedules = db.scalar(
         select(func.count()).select_from(DetectionSchedule).where(
             DetectionSchedule.enabled.is_(True),
@@ -42,20 +54,35 @@ def operations_health(db: Session = Depends(get_db)):
     recent_events = db.scalar(
         select(func.count()).select_from(SecurityEvent).where(SecurityEvent.created_at >= recent_cutoff)
     ) or 0
-    connector_rows = db.execute(
-        select(ConnectorConfig.health_status, func.count()).group_by(ConnectorConfig.health_status)
-    ).all()
+    connector_states = list(db.scalars(select(ConnectorConfig.health_status)).all())
+    connector_counts = {state: connector_states.count(state) for state in set(connector_states)}
+    latest_backup = db.scalar(
+        select(OperationalJobRun).where(
+            OperationalJobRun.job_name == "database_backup"
+        ).order_by(OperationalJobRun.completed_at.desc()).limit(1)
+    )
+    degraded = (
+        failing_schedules > 0
+        or any(state in ("failing", "misconfigured", "stale") for state in source_rows)
+        or any(state == "misconfigured" for state in connector_states)
+        or (latest_retention is not None and latest_retention.status == "failed")
+        or (latest_backup is not None and latest_backup.status == "failed")
+    )
     return {
-        "status": "degraded" if failing_schedules or any(state in ("failing", "misconfigured") for state, _ in source_rows + connector_rows) else "operational",
+        "status": "degraded" if degraded else "operational",
         "checked_at": now,
-        "sources": {state: count for state, count in source_rows},
-        "connectors": {state: count for state, count in connector_rows},
+        "sources": source_counts,
+        "connectors": connector_counts,
         "enabled_schedules_with_failures": failing_schedules,
         "events_last_15_minutes": recent_events,
         "retention": {
             "last_run_at": latest_retention.completed_at if latest_retention else None,
             "last_status": latest_retention.status if latest_retention else "never_run",
             "records_affected": latest_retention.records_affected if latest_retention else 0,
+        },
+        "backup": {
+            "last_run_at": latest_backup.completed_at if latest_backup else None,
+            "last_status": latest_backup.status if latest_backup else "never_run",
         },
     }
 
