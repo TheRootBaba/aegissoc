@@ -75,6 +75,12 @@ def create_workspace(
     current_user: User = Depends(require_roles("admin")),
     db: Session = Depends(get_db),
 ) -> dict:
+    # Workspace rows are protected by FORCE ROW LEVEL SECURITY. Grant this
+    # transaction the narrowly scoped workspace-management policy before insert.
+    set_workspace_context(
+        db, None, user_id=current_user.id,
+        manage_memberships=True, manage_workspaces=True,
+    )
     existing = db.scalar(select(Workspace.id).where(Workspace.slug == payload.slug))
     if existing is not None:
         raise HTTPException(status_code=409, detail="Workspace slug already exists")
