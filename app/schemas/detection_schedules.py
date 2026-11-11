@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from uuid import UUID
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class DetectionScheduleCreate(BaseModel):
@@ -17,6 +17,14 @@ class DetectionScheduleUpdate(BaseModel):
     window_minutes: int | None = Field(default=None, ge=1, le=1440)
     threshold: int | None = Field(default=None, ge=2, le=100)
     enabled: bool | None = None
+
+    @model_validator(mode="after")
+    def reject_null_updates(self):
+        if not self.model_fields_set:
+            raise ValueError("At least one schedule field must be updated")
+        if any(getattr(self, field) is None for field in self.model_fields_set):
+            raise ValueError("Schedule update fields cannot be null")
+        return self
 
 
 class DetectionScheduleRead(BaseModel):
