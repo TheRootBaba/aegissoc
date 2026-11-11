@@ -62,7 +62,7 @@ def set_rule_enabled(rule_id: str, enabled: bool, db: Session = Depends(get_db),
 @router.post("/rules/{rule_id}/test", response_model=dict,
              dependencies=[Depends(require_roles("admin", "analyst"))])
 def test_rule(rule_id: str, payload: SigmaTestRequest, db: Session = Depends(get_db)):
-    rule = db.get(SigmaRule, rule_id)
+    rule = db.scalar(select(SigmaRule).where(SigmaRule.rule_id == rule_id))
     if rule is None:
         raise HTTPException(404, "Sigma rule not found")
     sample = SimpleNamespace(
