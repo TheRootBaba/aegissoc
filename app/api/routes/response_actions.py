@@ -3,6 +3,7 @@ import hmac
 import ipaddress
 import json
 import os
+import re
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 import httpx
@@ -147,7 +148,10 @@ def execute(request_id: UUID, db: Session = Depends(get_db), user: User = Depend
     if reference:
         if not reference.startswith("env://"):
             raise HTTPException(422, "Response connector credential_ref must use env://NAME")
-        secret = os.getenv(reference[6:])
+        variable = reference[6:]
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", variable):
+            raise HTTPException(422, "Response connector credential reference is invalid")
+        secret = os.getenv(variable)
         if not secret:
             raise HTTPException(503, "Response connector credential is unavailable in the worker environment")
         headers["X-Aegis-Signature"] = "sha256=" + hmac.new(secret.encode(), encoded, hashlib.sha256).hexdigest()
@@ -157,10 +161,11 @@ def execute(request_id: UUID, db: Session = Depends(get_db), user: User = Depend
     db.commit()
     try:
         with httpx.Client(timeout=httpx.Timeout(10.0, connect=5.0), follow_redirects=False, verify=True) as client:
-            response = client.post(config["endpoint"], content=encoded, headers=headers)
-        request.response_code = response.status_code
-        request.execution_status = "delivered" if 200 <= response.status_code < 300 else "rejected"
-        request.status = "succeeded" if 200 <= response.status_code < 300 else "failed"
+            with client.stream("POST", config["endpoint"], content=encoded, headers=headers) as response:
+                response_code = response.status_code
+        request.response_code = response_code
+        request.execution_status = "delivered" if 200 <= response_code < 300 else "rejected"
+        request.status = "succeeded" if 200 <= response_code < 300 else "failed"
         request.result_summary = "Webhook accepted the action request." if request.status == "succeeded" else "Webhook returned a non-success HTTP status."
     except httpx.HTTPError as exc:
         request.execution_status = "transport_error"
