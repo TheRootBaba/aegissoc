@@ -1376,6 +1376,7 @@ $("connector-type").addEventListener("change", () => {
   const examples = {
     wazuh: '{ "manager_url": "https://wazuh.example.internal" }',
     wazuh_manager: '{ "endpoint": "https://wazuh.example.internal/security/events", "allowed_hosts": ["wazuh.example.internal"], "interval_seconds": 60 }',
+    wazuh_indexer: '{ "endpoint": "https://indexer.example.internal:9200/wazuh-alerts-*/_search", "allowed_hosts": ["indexer.example.internal"], "auth_scheme": "basic", "page_size": 500, "lookback": "now-7d", "interval_seconds": 60 }',
     misp: '{ "endpoint": "https://misp.example.internal/attributes/restSearch", "allowed_hosts": ["misp.example.internal"], "auth_header": "X-MISP-Auth", "page_size": 1000, "interval_seconds": 300 }',
     opencti: '{ "endpoint": "https://opencti.example.internal/graphql", "allowed_hosts": ["opencti.example.internal"], "interval_seconds": 300 }',
     response_webhook: '{ "endpoint": "https://response.example.internal/actions", "allowed_hosts": ["response.example.internal"] }',
