@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
@@ -86,7 +86,7 @@ def update_alert(alert_id: UUID, payload: AlertUpdate, db: Session = Depends(get
 def add_alert_note(alert_id: UUID, payload: AlertNoteCreate, db: Session = Depends(get_db)):
     """Append an analyst note and a corresponding immutable audit event."""
     alert = _get_alert(db, alert_id)
-    note = AlertNote(alert_id=alert.id, author=payload.author, body=payload.body.strip())
+    note = AlertNote(id=uuid4(), alert_id=alert.id, author=payload.author, body=payload.body.strip())
     if not note.body:
         raise HTTPException(status_code=422, detail="Note body must not be blank")
     db.add(note)
