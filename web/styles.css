@@ -411,20 +411,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--focus); box-shad
 
 
 /* AegisSOC visual system v2 — tuned for long analyst sessions and dense investigation work. */
-:root {
-  color-scheme: light;
-  --bg: #F3F5F2; --surface: #FFFFFF; --elevated: #E9EFEC;
-  --line: #DCE4E0; --line-strong: #C5D2CC;
-  --text: #172A32; --muted: #52666C; --dim: #71838A;
-  --green: #287B62; --amber: #98631E; --red: #B64C55; --blue: #456F9B;
-  --focus: #0B8D83; --navy: #173746; --navy-raised: #204957; --teal: #0B8D83;
-  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
-  --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --shadow-float: 0 12px 32px rgb(23 42 50 / 12%);
-  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
-  --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px;
-  --content-gutter: 32px; --content-columns: 12;
-}
+
 html { background: var(--bg); }
 body { color: var(--text); font: 400 13px/1.55 var(--sans); letter-spacing: -.005em; }
 .sidebar { width: 252px; padding: 24px 16px 16px; background: #0C1015; border-color: #202832; }
@@ -652,7 +639,7 @@ body { font-family: var(--sans); font-size: 14px; line-height: 1.65; letter-spac
 .system-status strong { color: #E6F0ED; }
 .system-status small, .user-meta small { color: #A9C2BE; }
 .main-content { background: var(--bg); padding-left: 40px; padding-right: 40px; }
-.topbar { background: rgb(243 245 242 / 94%); border-bottom: 1px solid var(--line); backdrop-filter: blur(12px); }
+.topbar { background: rgb(243 245 242 / 94%); border-bottom: 1px solid var(--line);  }
 .breadcrumb span, .breadcrumb b { color: var(--dim); }
 .breadcrumb strong { color: var(--text); }
 .page-intro { padding-top: 38px; padding-bottom: 34px; }
@@ -733,3 +720,24 @@ label { color: #40575E; font-size: 12px; line-height: 1.55; font-weight: 600; }
 @media(prefers-reduced-motion:reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+/* Light semantic states keep severity readable without changing the brand ratio. */
+.source-state, .data-chip.status-healthy, .status-resolved, .status-false_positive, .sev-low, .sev-info {
+  background: #E7F2EC; border-color: #C8DFD1; color: #287B62;
+}
+.source-state.stale, .data-chip.status-warning, .sev-medium, .status-acknowledged, .status-in_progress {
+  background: #F7F0E2; border-color: #E9D8B6; color: #98631E;
+}
+.source-state.failing, .sev-critical, .sev-high, .status-open, #audit-status.audit-invalid {
+  background: #F8E9E9; border-color: #EBC8CA; color: #A6404A;
+}
+.sev-low, .sev-info { background: #EAF0F7; border-color: #CCD9E7; color: #456F9B; }
+.attack-card, .query-workbench, .schedule-create-panel, .connector-create-panel,
+.query-aggregations, .schedule-card, .schedule-history, .case-create-form,
+.recovery-note { background: #F7F9F7; border-color: var(--line); }
+.toolbar-mark, .source-symbol { background: #E9EFEC; color: #426B68; }
+.data-table tbody tr:hover, .data-table tbody tr.selected { background: #F0F6F2; }
+.table-wrap { scrollbar-color: #B8C9C1 #F3F5F2; }
+.row-link:hover, .page-intro h1 span { color: var(--teal); }
+.button-primary { background: var(--teal); border-color: var(--teal); color: #FFFFFF; }
+.button-primary:hover { background: #08766F; border-color: #08766F; }
