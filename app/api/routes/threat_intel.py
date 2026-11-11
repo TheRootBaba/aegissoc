@@ -104,7 +104,7 @@ def lookup_indicator(value: str = Query(min_length=3, max_length=255), db: Sessi
 @router.get("/matches", response_model=list[IndicatorMatch])
 def find_indicator_matches(limit: int = Query(default=100, ge=1, le=500), db: Session = Depends(get_db)):
     now = datetime.now(timezone.utc)
-    indicators = [x for x in db.scalars(select(ThreatIndicator).where(ThreatIndicator.status == "active")).all() if _is_active(x, now)]
+    indicators = [x for x in db.scalars(select(ThreatIndicator).where(ThreatIndicator.status == "active").limit(1000)).all() if _is_active(x, now)]
     if not indicators: return []
     events = db.scalars(select(SecurityEvent).order_by(SecurityEvent.timestamp.desc()).limit(5000)).all()
     matches = []
@@ -133,9 +133,14 @@ def correlated_entities(entity_type: str | None = Query(default=None, alias="typ
             if value and (not entity_type or kind == entity_type) and (not search or search.lower() in value.lower()):
                 groups[(kind, value)].append(event)
     alerts = db.scalars(select(DetectionAlert).order_by(DetectionAlert.last_seen.desc()).limit(5000)).all()
+    alert_index = {"ip": defaultdict(list), "host": defaultdict(list), "user": defaultdict(list)}
+    for alert in alerts:
+        if alert.source_ip: alert_index["ip"][alert.source_ip].append(alert)
+        if alert.hostname: alert_index["host"][alert.hostname].append(alert)
+        if alert.username: alert_index["user"][alert.username].append(alert)
     result = []
     for (kind, value), records in groups.items():
-        linked = [a for a in alerts if (kind == "ip" and a.source_ip == value) or (kind == "host" and a.hostname == value) or (kind == "user" and a.username == value)]
+        linked = alert_index[kind].get(value, [])
         if len(records) < min_events and not linked: continue
         result.append(CorrelatedEntity(entity_type=kind, value=value, event_count=len(records), alert_count=len(linked),
             source_count=len({e.source for e in records}), sources=sorted({e.source for e in records}),
