@@ -22,7 +22,7 @@ class UserRead(BaseModel):
     is_active: bool
     created_at: datetime
 class CurrentUserRead(UserRead):
-    pass
+    workspace_role: Role | None = None
 
 
 class OIDCIdentityCreate(BaseModel):
