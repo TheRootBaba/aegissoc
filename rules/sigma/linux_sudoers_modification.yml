@@ -1,0 +1,16 @@
+title: Linux Sudoers Modification
+id: AEGIS-LNX-SUDO-001
+status: stable
+description: Detects process telemetry associated with changes to sudoers configuration.
+logsource:
+  product: linux
+  category: process_creation
+detection:
+  selection:
+    event_type: process.started
+    CommandLine|contains: /etc/sudoers
+  condition: selection
+level: high
+tags:
+  - attack.persistence
+  - attack.t1548.003
