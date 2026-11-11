@@ -231,7 +231,7 @@ def run_ssh_brute_force_detection(
         ]
         evidence = prior_failures + [first_success]
         _record_match(
-            db, matches, rule_id=AUTH_SUCCESS_AFTER_FAILURES_RULE_ID,
+            db, matches, rule_configs=rule_configs, rule_id=AUTH_SUCCESS_AFTER_FAILURES_RULE_ID,
             title="Successful login after repeated authentication failures",
             source_ip=source_ip, hostname=hostname, events=evidence,
             usernames=[username], window_minutes=window_minutes, severity="high",
@@ -241,7 +241,7 @@ def run_ssh_brute_force_detection(
 
     for (source_ip, hostname, username), events in privilege_groups.items():
         _record_match(
-            db, matches, rule_id=PRIVILEGE_ESCALATION_RULE_ID,
+            db, matches, rule_configs=rule_configs, rule_id=PRIVILEGE_ESCALATION_RULE_ID,
             title="Privilege escalation activity detected", source_ip=source_ip,
             hostname=hostname, events=events, usernames=[username] if username else [],
             window_minutes=window_minutes, severity="high",
@@ -251,7 +251,7 @@ def run_ssh_brute_force_detection(
 
     for (source_ip, hostname, username, indicator), events in process_groups.items():
         _record_match(
-            db, matches, rule_id=SUSPICIOUS_PROCESS_RULE_ID,
+            db, matches, rule_configs=rule_configs, rule_id=SUSPICIOUS_PROCESS_RULE_ID,
             title="Suspicious process execution detected", source_ip=source_ip,
             hostname=hostname, events=events, usernames=[username] if username else [],
             window_minutes=window_minutes, severity="high",
