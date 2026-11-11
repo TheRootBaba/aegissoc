@@ -10,15 +10,18 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
-from app.core.security import require_roles
+from app.core.security import get_current_user, require_roles
 from app.db.session import get_db
-from app.models import SecurityEvent
+from app.models import SavedEventQuery, SecurityEvent
 from app.services.source_inventory import record_ingestion
 from app.schemas.events import (
     BulkEventIngest,
     BulkEventIngestResponse,
     SecurityEventCreate,
     SecurityEventRead,
+    InvestigationQuery,
+    InvestigationQueryResult,
+    SavedEventQueryCreate,
 )
 from app.services.event_normalizer import normalize_event
 from app.services.wazuh_adapter import normalize_wazuh_alert
@@ -216,6 +219,161 @@ def event_stats(db: Session = Depends(get_db)):
     source_rows = db.execute(select(SecurityEvent.source, func.count()).group_by(SecurityEvent.source)).all()
     return {"total_events": total, "by_severity": {key: count for key, count in severity_rows},
             "by_source": {key: count for key, count in source_rows}}
+
+
+
+FIELD_COLUMNS = {
+    "source": SecurityEvent.source,
+    "event_type": SecurityEvent.event_type,
+    "severity": SecurityEvent.severity,
+    "hostname": SecurityEvent.hostname,
+    "source_ip": SecurityEvent.source_ip,
+    "username": SecurityEvent.username,
+    "external_id": SecurityEvent.external_id,
+    "message": SecurityEvent.message,
+}
+GROUP_COLUMNS = {key: FIELD_COLUMNS[key] for key in (
+    "source", "event_type", "severity", "hostname", "source_ip", "username"
+)}
+
+
+def _build_investigation_statement(query: InvestigationQuery):
+    """Compile validated filter objects into parameterized SQL predicates."""
+    from sqlalchemy import or_
+
+    statement = select(SecurityEvent)
+    if query.search:
+        needle = f"%{query.search.strip().lower()}%"
+        statement = statement.where(or_(*[
+            func.lower(column).like(needle)
+            for column in (
+                SecurityEvent.message, SecurityEvent.event_type, SecurityEvent.source,
+                SecurityEvent.hostname, SecurityEvent.source_ip, SecurityEvent.username,
+                SecurityEvent.external_id,
+            )
+        ]))
+    for item in query.filters:
+        column, value = FIELD_COLUMNS[item.field], item.value
+        if item.operator == "exists":
+            statement = statement.where(column.is_not(None) if value is not False else column.is_(None))
+        elif item.operator == "in":
+            if not isinstance(value, list):
+                raise HTTPException(status_code=422, detail="The in operator requires a list of values")
+            statement = statement.where(column.in_(value))
+        elif not isinstance(value, str):
+            raise HTTPException(status_code=422, detail="This filter operator requires a string value")
+        elif item.operator == "eq":
+            statement = statement.where(column == value)
+        elif item.operator == "neq":
+            statement = statement.where(column != value)
+        elif item.operator == "contains":
+            statement = statement.where(func.lower(column).like(f"%{value.lower()}%"))
+        elif item.operator == "starts_with":
+            statement = statement.where(func.lower(column).like(f"{value.lower()}%"))
+    if query.start_time is not None:
+        statement = statement.where(SecurityEvent.timestamp >= query.start_time)
+    if query.end_time is not None:
+        statement = statement.where(SecurityEvent.timestamp <= query.end_time)
+    return statement
+
+
+@router.get("/fields")
+def discover_event_fields(db: Session = Depends(get_db)):
+    """Describe supported search fields and return bounded facet samples."""
+    fields = []
+    for name, column in FIELD_COLUMNS.items():
+        if name == "message":
+            fields.append({"name": name, "type": "text", "distinct_values": None})
+            continue
+        values = db.execute(
+            select(column, func.count().label("count"))
+            .where(column.is_not(None))
+            .group_by(column)
+            .order_by(func.count().desc(), column.asc())
+            .limit(20)
+        ).all()
+        fields.append({
+            "name": name,
+            "type": "severity" if name == "severity" else "keyword",
+            "distinct_values": [{"value": value, "count": count} for value, count in values],
+        })
+    return {"fields": fields, "operators": ["eq", "neq", "contains", "starts_with", "in", "exists"]}
+
+
+@router.post("/query", response_model=InvestigationQueryResult)
+def run_investigation_query(query: InvestigationQuery, db: Session = Depends(get_db)):
+    """Run a bounded multi-condition search with optional group-by aggregation."""
+    if query.start_time and query.end_time and query.start_time > query.end_time:
+        raise HTTPException(status_code=422, detail="start_time must be earlier than or equal to end_time")
+    statement = _build_investigation_statement(query)
+    total = db.scalar(select(func.count()).select_from(statement.order_by(None).subquery())) or 0
+    events = list(db.scalars(
+        statement.order_by(SecurityEvent.timestamp.desc(), SecurityEvent.id.desc())
+        .offset(query.offset).limit(query.limit)
+    ).all())
+    aggregations = []
+    if query.group_by:
+        column = GROUP_COLUMNS[query.group_by]
+        aggregate_statement = select(column.label("value"), func.count().label("count")).select_from(SecurityEvent)
+        if statement.whereclause is not None:
+            aggregate_statement = aggregate_statement.where(statement.whereclause)
+        grouped = db.execute(
+            aggregate_statement.group_by(column).order_by(func.count().desc(), column.asc()).limit(25)
+        ).all()
+        aggregations = [{"value": value, "count": count} for value, count in grouped]
+    return {"total": total, "limit": query.limit, "offset": query.offset,
+            "events": events, "aggregations": aggregations}
+
+
+@router.get("/saved-queries")
+def list_saved_queries(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    statement = select(SavedEventQuery).where(
+        (SavedEventQuery.created_by == current_user.username) | (SavedEventQuery.is_shared.is_(True))
+    ).order_by(SavedEventQuery.updated_at.desc())
+    return [{
+        "id": item.id, "name": item.name, "description": item.description,
+        "query": item.query, "is_shared": item.is_shared,
+        "created_by": item.created_by, "created_at": item.created_at, "updated_at": item.updated_at,
+    } for item in db.scalars(statement).all()]
+
+
+@router.post("/saved-queries", status_code=201)
+def create_saved_query(payload: SavedEventQueryCreate, db: Session = Depends(get_db),
+                       current_user=Depends(require_roles("admin", "analyst"))):
+    from sqlalchemy.exc import IntegrityError
+
+    item = SavedEventQuery(
+        name=payload.name.strip(), description=payload.description,
+        query=payload.query.model_dump(mode="json"), is_shared=payload.is_shared,
+        created_by=current_user.username,
+    )
+    if not item.name:
+        raise HTTPException(status_code=422, detail="Saved query name cannot be blank")
+    db.add(item)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="You already have a saved query with this name") from exc
+    db.refresh(item)
+    return {
+        "id": item.id, "name": item.name, "description": item.description,
+        "query": item.query, "is_shared": item.is_shared,
+        "created_by": item.created_by, "created_at": item.created_at, "updated_at": item.updated_at,
+    }
+
+
+@router.delete("/saved-queries/{query_id}", status_code=204)
+def delete_saved_query(query_id: uuid.UUID, db: Session = Depends(get_db),
+                       current_user=Depends(get_current_user)):
+    item = db.get(SavedEventQuery, query_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Saved query not found")
+    if item.created_by != current_user.username and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only the owner or an administrator can delete this query")
+    db.delete(item)
+    db.commit()
+    return Response(status_code=204)
 
 
 @router.get("/{event_id}", response_model=SecurityEventRead)

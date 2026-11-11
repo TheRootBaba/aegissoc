@@ -3,6 +3,7 @@
 const $ = (id) => document.getElementById(id);
 const state = {
   alerts: [], events: [], sources: [], eventStats: {}, alertStats: {}, users: [],
+  savedQueries: [], queryFields: [], queryResult: null, pendingSavedQuery: null,
   selectedId: null, token: null, user: null, toastTimer: null,
 };
 const esc = (value) => String(value ?? "—").replace(/[&<>"']/g, (char) => ({
@@ -96,7 +97,7 @@ function renderMetrics() {
   $("nav-alert-count").textContent = count(open);
   $("alert-count").textContent = count(state.alertStats.total_alerts ?? state.alerts.length) + " alerts";
   $("event-count").textContent = count(state.events.length) + " recent events";
-  $("event-total-footer").textContent = count(state.eventStats.total_events ?? state.events.length);
+  $("event-total-footer").textContent = count(state.queryResult?.total ?? state.eventStats.total_events ?? state.events.length);
 }
 function renderAlerts() {
   const severity = $("severity-filter").value;
@@ -120,12 +121,109 @@ function renderAlerts() {
   $("alert-footer").textContent = rows.length + " visible · " + state.alerts.length + " loaded";
 }
 function renderEvents() {
-  $("events-body").innerHTML = state.events.length ? state.events.slice(0, 25).map((event) =>
+  const rows = state.queryResult?.events ?? state.events.slice(0, 25);
+  $("events-body").innerHTML = rows.length ? rows.map((event) =>
     "<tr><td><strong>" + esc(event.event_type) + '</strong><div class="sub-cell">' +
     esc(event.source) + "</div></td><td>" + pill(event.severity, "sev-") +
     "</td><td>" + esc(event.hostname) + "</td><td>" + esc(event.source_ip) +
     "</td><td>" + esc(date(event.timestamp)) + "</td></tr>").join("") :
-    '<tr><td colspan="5" class="table-empty">No events ingested yet. Connect a source or send a lab event to get started.</td></tr>';
+    '<tr><td colspan="5" class="table-empty">No events match this investigation. Adjust the filters or widen the time range.</td></tr>';
+  $("event-count").textContent = state.queryResult
+    ? count(state.queryResult.total) + " matches" : count(state.events.length) + " recent events";
+  $("event-query-footer").innerHTML = state.queryResult
+    ? "Showing <strong>" + count(rows.length) + "</strong> of <strong id=\"event-total-footer\">" + count(state.queryResult.total) + "</strong> matching events"
+    : "All-time volume: <strong id=\"event-total-footer\">" + count(state.eventStats.total_events ?? state.events.length) + "</strong>";
+  renderQueryAggregations();
+}
+function renderQueryAggregations() {
+  const panel = $("query-aggregations");
+  const groups = state.queryResult?.aggregations || [];
+  if (!groups.length) { panel.hidden = true; panel.innerHTML = ""; return; }
+  panel.hidden = false;
+  panel.innerHTML = '<div class="aggregation-heading"><span>QUERY BREAKDOWN</span><strong>' +
+    esc($("event-query-group").selectedOptions[0]?.textContent || "Grouped results") +
+    '</strong></div><div class="aggregation-list">' + groups.map((item) =>
+      '<div class="aggregation-item"><span>' + esc(item.value || "Unspecified") +
+      '</span><strong>' + count(item.count) + '</strong></div>').join("") + '</div>';
+}
+function currentInvestigationQuery() {
+  const query = {
+    search: $("event-query-text").value.trim() || null,
+    filters: [],
+    group_by: $("event-query-group").value || null,
+    limit: 100,
+    offset: 0,
+  };
+  if ($("event-query-severity").value) query.filters.push({
+    field: "severity", operator: "eq", value: $("event-query-severity").value,
+  });
+  if ($("event-query-source").value) query.filters.push({
+    field: "source", operator: "eq", value: $("event-query-source").value,
+  });
+  const hours = $("event-query-time").value;
+  if (hours !== "all") {
+    query.end_time = new Date().toISOString();
+    query.start_time = new Date(Date.now() - Number(hours) * 3600000).toISOString();
+  }
+  return query;
+}
+async function runEventQuery(query = null) {
+  const button = $("run-event-query");
+  button.disabled = true;
+  button.textContent = "Searching…";
+  $("query-feedback").textContent = "Executing a bounded investigation query…";
+  try {
+    const payload = query || state.pendingSavedQuery || currentInvestigationQuery();
+    state.pendingSavedQuery = null;
+    state.queryResult = await api("/api/v1/events/query", {
+      method: "POST", body: JSON.stringify(payload),
+    });
+    renderEvents();
+    $("query-feedback").textContent = state.queryResult.total + " matching events · " +
+      state.queryResult.events.length + " displayed";
+  } catch (error) {
+    $("query-feedback").textContent = error.message;
+    showToast(error.message, "error");
+  } finally {
+    button.disabled = false;
+    button.textContent = "Run investigation";
+  }
+}
+function renderSavedQueries() {
+  const select = $("saved-query-select");
+  const selected = select.value;
+  select.innerHTML = '<option value="">Load a saved investigation…</option>' +
+    state.savedQueries.map((item) => '<option value="' + esc(item.id) + '">' +
+      esc(item.name) + (item.is_shared ? " · shared" : "") + '</option>').join("");
+  if (state.savedQueries.some((item) => item.id === selected)) select.value = selected;
+}
+async function saveEventQuery() {
+  const name = $("saved-query-name").value.trim();
+  if (!name) { $("query-feedback").textContent = "Enter a name before saving this investigation."; return; }
+  try {
+    await api("/api/v1/events/saved-queries", {
+      method: "POST",
+      body: JSON.stringify({
+        name, query: currentInvestigationQuery(),
+        is_shared: $("saved-query-shared").checked,
+      }),
+    });
+    $("saved-query-name").value = "";
+    $("saved-query-shared").checked = false;
+    state.savedQueries = await api("/api/v1/events/saved-queries");
+    renderSavedQueries();
+    $("query-feedback").textContent = "Investigation saved to your workspace.";
+    showToast("Saved investigation created.");
+  } catch (error) {
+    $("query-feedback").textContent = error.message;
+    showToast(error.message, "error");
+  }
+}
+async function loadSavedQuery() {
+  const item = state.savedQueries.find((saved) => saved.id === $("saved-query-select").value);
+  if (!item) return;
+  state.pendingSavedQuery = item.query;
+  await runEventQuery(item.query);
 }
 function renderSources() {
   const sources = state.sources || [];
@@ -139,6 +237,13 @@ function renderSources() {
     ? (counts.healthy || 0) + " healthy · " + (counts.stale || 0) + " stale · " +
       (counts.failing || 0) + " failing · " + (counts.inactive || 0) + " inactive"
     : "No sources observed";
+  const sourceSelect = $("event-query-source");
+  const selectedSource = sourceSelect.value;
+  sourceSelect.innerHTML = '<option value="">All sources</option>' + sources.map((source) =>
+    '<option value="' + esc(source.source_name) + '">' + esc(source.display_name) + '</option>'
+  ).join("");
+  if (sources.some((source) => source.source_name === selectedSource)) sourceSelect.value = selectedSource;
+
   $("source-grid").innerHTML = sources.length ? sources.map((source) => {
     const status = source.health_status || "inactive";
     const symbol = source.source_type === "wazuh" ? "◈" :
@@ -269,24 +374,29 @@ async function loadInvestigation(id) {
 }
 async function refreshDashboard() {
   try {
-    const [alerts, events, eventStats, alertStats, sources] = await Promise.all([
+    const [alerts, events, eventStats, alertStats, sources, savedQueries, queryFields] = await Promise.all([
       api("/api/v1/alerts?limit=200"),
       api("/api/v1/events?limit=25"),
       api("/api/v1/events/stats"),
       api("/api/v1/alerts/stats"),
       api("/api/v1/sources"),
+      api("/api/v1/events/saved-queries"),
+      api("/api/v1/events/fields"),
     ]);
     state.alerts = alerts;
     state.events = events;
     state.eventStats = eventStats;
     state.alertStats = alertStats;
     state.sources = sources;
+    state.savedQueries = savedQueries;
+    state.queryFields = queryFields.fields || [];
     setHealth(true, "API operational");
     $("last-updated").textContent = "Last synced " + new Date().toLocaleTimeString();
     renderMetrics();
     renderAlerts();
     renderEvents();
     renderSources();
+    renderSavedQueries();
     if (state.selectedId && state.alerts.some((alert) => alert.id === state.selectedId)) {
       await loadInvestigation(state.selectedId);
     }
@@ -464,6 +574,24 @@ $("run-detections").addEventListener("click", async () => {
 });
 $("create-user-form").addEventListener("submit", createUser);
 $("source-create-form").addEventListener("submit", registerSource);
+$("run-event-query").addEventListener("click", () => runEventQuery());
+$("reset-event-query").addEventListener("click", () => {
+  $("event-query-text").value = "";
+  $("event-query-severity").value = "";
+  $("event-query-source").value = "";
+  $("event-query-time").value = "24";
+  $("event-query-group").value = "";
+  state.queryResult = null;
+  state.pendingSavedQuery = null;
+  $("query-feedback").textContent = "Showing the latest event activity.";
+  renderEvents();
+});
+$("save-event-query").addEventListener("click", saveEventQuery);
+$("saved-query-select").addEventListener("change", loadSavedQuery);
+$("event-query-text").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") runEventQuery();
+});
+
 $("severity-filter").addEventListener("change", renderAlerts);
 $("attack-filter").addEventListener("change", renderAlerts);
 $("alert-search").addEventListener("input", renderAlerts);

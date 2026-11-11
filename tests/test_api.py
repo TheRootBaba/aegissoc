@@ -705,3 +705,130 @@ def test_read_only_users_can_view_sources_but_cannot_register_them(client):
     })
     assert listed.status_code == 200
     assert created.status_code == 403
+
+
+def test_investigation_query_combines_text_filters_time_and_aggregation(client):
+    now = datetime.now(timezone.utc)
+    client.post("/api/v1/events", json=sample_event(
+        source="edr-lab", severity="high", username="alice",
+        message="Suspicious powershell execution",
+        timestamp=(now - timedelta(minutes=2)).isoformat(),
+    ))
+    client.post("/api/v1/events", json=sample_event(
+        source="edr-lab", severity="high", username="bob",
+        message="Suspicious script execution",
+        timestamp=(now - timedelta(minutes=1)).isoformat(),
+    ))
+    client.post("/api/v1/events", json=sample_event(
+        source="wazuh", severity="low", username="alice",
+        message="Routine service start",
+        timestamp=now.isoformat(),
+    ))
+
+    response = client.post("/api/v1/events/query", json={
+        "search": "suspicious",
+        "filters": [
+            {"field": "severity", "operator": "eq", "value": "high"},
+            {"field": "source", "operator": "starts_with", "value": "edr"},
+        ],
+        "start_time": (now - timedelta(minutes=5)).isoformat(),
+        "end_time": now.isoformat(),
+        "group_by": "username",
+        "limit": 10,
+    })
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 2
+    assert {event["username"] for event in body["events"]} == {"alice", "bob"}
+    assert {item["value"] for item in body["aggregations"]} == {"alice", "bob"}
+    assert sum(item["count"] for item in body["aggregations"]) == 2
+
+
+def test_investigation_query_supports_in_exists_and_pagination(client):
+    client.post("/api/v1/events", json=sample_event(source="wazuh", username="root"))
+    client.post("/api/v1/events", json=sample_event(source="edr", username=None))
+    response = client.post("/api/v1/events/query", json={
+        "filters": [
+            {"field": "source", "operator": "in", "value": ["wazuh", "edr"]},
+            {"field": "username", "operator": "exists", "value": True},
+        ],
+        "limit": 1,
+    })
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    assert len(response.json()["events"]) == 1
+
+
+def test_investigation_query_rejects_unknown_fields_and_invalid_time_windows(client):
+    unknown = client.post("/api/v1/events/query", json={
+        "filters": [{"field": "raw.password", "operator": "eq", "value": "secret"}]
+    })
+    naive = client.post("/api/v1/events/query", json={
+        "start_time": "2026-11-11T10:00:00",
+    })
+    reversed_range = client.post("/api/v1/events/query", json={
+        "start_time": "2026-11-12T10:00:00Z",
+        "end_time": "2026-11-11T10:00:00Z",
+    })
+    too_many_filters = client.post("/api/v1/events/query", json={
+        "filters": [{"field": "source", "operator": "eq", "value": "x"}] * 21,
+    })
+    assert unknown.status_code == 422
+    assert naive.status_code == 422
+    assert reversed_range.status_code == 422
+    assert too_many_filters.status_code == 422
+
+
+def test_event_field_discovery_returns_bounded_facets(client):
+    client.post("/api/v1/events", json=sample_event(source="edr-lab"))
+    response = client.get("/api/v1/events/fields")
+    assert response.status_code == 200
+    body = response.json()
+    assert "contains" in body["operators"]
+    source = next(field for field in body["fields"] if field["name"] == "source")
+    assert source["distinct_values"][0]["value"] == "edr-lab"
+    assert source["distinct_values"][0]["count"] == 1
+
+
+def test_saved_investigation_queries_are_persistent_and_deduplicated(client):
+    payload = {
+        "name": "High severity endpoint activity",
+        "description": "High severity endpoint events",
+        "query": {
+            "filters": [{"field": "severity", "operator": "eq", "value": "high"}],
+            "group_by": "source",
+            "limit": 50,
+        },
+        "is_shared": True,
+    }
+    created = client.post("/api/v1/events/saved-queries", json=payload)
+    assert created.status_code == 201
+    assert created.json()["created_by"] == "test-admin"
+    assert created.json()["query"]["filters"][0]["value"] == "high"
+
+    duplicate = client.post("/api/v1/events/saved-queries", json=payload)
+    assert duplicate.status_code == 409
+    listed = client.get("/api/v1/events/saved-queries")
+    assert listed.status_code == 200
+    assert [item["id"] for item in listed.json()] == [created.json()["id"]]
+
+    deleted = client.delete(f"/api/v1/events/saved-queries/{created.json()['id']}")
+    assert deleted.status_code == 204
+    assert client.get("/api/v1/events/saved-queries").json() == []
+
+
+def test_read_only_analyst_cannot_create_saved_queries(client):
+    from types import SimpleNamespace
+    from app.core.security import get_current_user
+
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
+        id=UUID("00000000-0000-0000-0000-000000000055"),
+        username="viewer",
+        role="read_only",
+        is_active=True,
+    )
+    response = client.post("/api/v1/events/saved-queries", json={
+        "name": "Not permitted",
+        "query": {},
+    })
+    assert response.status_code == 403

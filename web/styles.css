@@ -11,3 +11,25 @@
 @media(max-width:900px){.metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.page-intro{align-items:flex-start;flex-direction:column}.intro-meta{margin:0}.source-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:680px){.sidebar{position:relative;width:auto;height:auto;inset:auto;padding:14px 15px;border-right:0;border-bottom:1px solid var(--line)}.workspace-switch,.nav-caption,.sidebar-bottom{display:none}.nav-group{display:flex;gap:5px;overflow-x:auto;margin-top:14px;padding-bottom:2px}.nav-link{height:36px;flex:0 0 auto;padding:0 10px;font-size:10px}.nav-icon{display:none}.main-content{margin-left:0;padding:0 14px 22px}.topbar{height:58px}.breadcrumb{font-size:8px}.topbar-actions{gap:7px}.connection-state{font-size:8px}.topbar-divider{display:none}.top-signout{display:none}.page-intro{padding:27px 0 20px}.page-intro h1{font-size:32px}.intro-copy{font-size:10px}.metrics-grid{gap:8px;margin-bottom:28px}.metric-card{min-height:112px;padding:13px}.metric-number{font-size:26px}.metric-bottom{font-size:8px}.section-heading{align-items:flex-start;flex-direction:column}.section-heading-side{width:100%;justify-content:space-between}.source-grid{grid-template-columns:1fr}.alert-workspace{display:block}.investigation-card{margin-top:10px}.filter-controls{width:100%}.search-input{width:100%;flex:1 1 100%}.filter-controls select{flex:1}.card-toolbar{align-items:flex-start}.table-footer,.app-footer{font-size:7px}.app-footer{flex-direction:column}.auth-card{padding:23px}.toast-region{right:12px;bottom:12px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* Investigation workbench */
+.query-workbench{padding:20px 22px 17px;border-bottom:1px solid var(--line2);background:linear-gradient(145deg,#12233a88,#0c1728aa)}
+.query-search-label,.query-controls label,.saved-query-controls label{display:flex;flex-direction:column;gap:7px;color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.04em}
+.query-search{width:100%;height:42px;margin-top:8px;padding:0 14px;border:1px solid #2b4563;border-radius:9px;background:#081323;color:var(--text);outline:none}
+.query-search:focus,.query-controls select:focus,.saved-query-controls input:focus,.saved-query-controls select:focus{border-color:var(--cyan);box-shadow:0 0 0 3px #62dfd018}
+.query-controls{display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto auto;align-items:end;gap:10px;margin-top:15px}
+.query-controls select,.saved-query-controls input,.saved-query-controls select{width:100%;min-width:0;height:36px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:#0b1728;color:var(--text);outline:none}
+.query-run-button{height:36px;white-space:nowrap}
+.saved-query-controls{display:grid;grid-template-columns:1.2fr 1.3fr auto auto;align-items:end;gap:10px;margin-top:14px;padding-top:14px;border-top:1px solid #22334a}
+.saved-query-controls .share-query-toggle{flex-direction:row;align-items:center;align-self:end;gap:8px;min-height:36px;white-space:nowrap}
+.share-query-toggle input{width:14px;height:14px;accent-color:var(--cyan)}
+.button-secondary{background:#18374a;border:1px solid #2c6570;color:#b9fff5;height:36px}
+.query-feedback{min-height:14px;margin-top:9px;color:var(--dim);font-size:10px}
+.query-aggregations{margin-top:14px;padding:12px 14px;border:1px solid var(--line);border-radius:9px;background:#091525}
+.aggregation-heading{display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:9px;letter-spacing:.1em}
+.aggregation-heading strong{color:var(--cyan);font-size:10px;letter-spacing:0}
+.aggregation-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.aggregation-item{display:flex;gap:12px;align-items:center;padding:7px 10px;border:1px solid #243b56;border-radius:7px;background:#102039;font-size:10px}
+.aggregation-item strong{color:var(--cyan);font-family:var(--mono)}
+@media(max-width:1100px){.query-controls{grid-template-columns:repeat(2,minmax(0,1fr))}.saved-query-controls{grid-template-columns:1fr 1fr}.query-run-button,.saved-query-controls .button{width:100%}}
+@media(max-width:680px){.query-workbench{padding:14px}.query-controls,.saved-query-controls{grid-template-columns:1fr}.saved-query-controls .share-query-toggle{min-height:22px}.query-controls button{width:100%}}

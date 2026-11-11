@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 Severity = Literal["low", "medium", "high", "critical", "info"]
@@ -65,3 +65,81 @@ class BulkEventIngestResponse(BaseModel):
     duplicates: int
     rejected: int
     results: list[BulkEventResult]
+
+
+class EventQueryFilter(BaseModel):
+    field: Literal[
+        "source", "event_type", "severity", "hostname", "source_ip",
+        "username", "external_id", "message",
+    ]
+    operator: Literal[
+        "eq", "neq", "contains", "starts_with", "in", "exists",
+    ] = "eq"
+    value: str | list[str] | bool | None = None
+
+    @field_validator("value")
+    @classmethod
+    def validate_value(cls, value):
+        if isinstance(value, str) and len(value) > 500:
+            raise ValueError("filter value must be at most 500 characters")
+        if isinstance(value, list):
+            if not 1 <= len(value) <= 50 or any(not isinstance(item, str) or len(item) > 255 for item in value):
+                raise ValueError("in filters require 1–50 strings of at most 255 characters")
+        return value
+
+    @model_validator(mode="after")
+    def validate_operator_value(self):
+        if self.operator == "exists" and self.value not in (None, True, False):
+            raise ValueError("exists filters accept only a boolean or null value")
+        if self.operator == "in" and not isinstance(self.value, list):
+            raise ValueError("in filters require a list of values")
+        if self.operator not in {"exists", "in"} and not isinstance(self.value, str):
+            raise ValueError("this filter operator requires a string value")
+        return self
+
+
+class InvestigationQuery(BaseModel):
+    search: str | None = Field(default=None, max_length=500)
+    filters: list[EventQueryFilter] = Field(default_factory=list, max_length=20)
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+    group_by: Literal["source", "event_type", "severity", "hostname", "source_ip", "username"] | None = None
+    limit: int = Field(default=50, ge=1, le=200)
+    offset: int = Field(default=0, ge=0)
+
+    @field_validator("start_time", "end_time")
+    @classmethod
+    def require_timezone(cls, value):
+        if value is not None:
+            if value.tzinfo is None or value.utcoffset() is None:
+                raise ValueError("time boundaries must include a timezone offset")
+            return value.astimezone(timezone.utc)
+        return value
+
+
+class InvestigationQueryResult(BaseModel):
+    total: int
+    limit: int
+    offset: int
+    events: list[SecurityEventRead]
+    aggregations: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class SavedEventQueryCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=500)
+    query: InvestigationQuery
+    is_shared: bool = False
+
+
+class SavedEventQueryRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    description: str | None
+    query: dict[str, Any]
+    is_shared: bool
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
