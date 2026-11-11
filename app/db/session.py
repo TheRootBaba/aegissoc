@@ -15,22 +15,21 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 def set_workspace_context(db: Session, workspace_id: UUID | str | None, *,
                           user_id: UUID | str | None = None, worker: bool = False, manage_memberships: bool = False, manage_workspaces: bool = False) -> None:
     """Bind the current transaction and future transactions to one workspace."""
-    if workspace_id is not None:
-        selected_workspace = UUID(str(workspace_id))
-        previous_workspace = db.info.get("workspace_id")
-        if previous_workspace is not None and UUID(str(previous_workspace)) != selected_workspace:
-            if db.new or db.dirty or db.deleted:
-                raise RuntimeError("Cannot switch workspace context while the session has pending changes")
-            db.expire_all()
+    selected_workspace = UUID(str(workspace_id)) if workspace_id is not None else None
+    previous_workspace = db.info.get("workspace_id")
+    previous_workspace = UUID(str(previous_workspace)) if previous_workspace is not None else None
+    if previous_workspace != selected_workspace:
+        if db.new or db.dirty or db.deleted:
+            raise RuntimeError("Cannot switch workspace context while the session has pending changes")
+        db.expire_all()
+    if selected_workspace is None:
+        db.info.pop("workspace_id", None)
+    else:
         db.info["workspace_id"] = selected_workspace
-    if user_id is not None:
-        db.info["user_id"] = UUID(str(user_id))
-    if worker:
-        db.info["worker"] = True
-    if manage_memberships:
-        db.info["manage_memberships"] = True
-    if manage_workspaces:
-        db.info["manage_workspaces"] = True
+    db.info["user_id"] = UUID(str(user_id)) if user_id is not None else None
+    db.info["worker"] = bool(worker)
+    db.info["manage_memberships"] = bool(manage_memberships)
+    db.info["manage_workspaces"] = bool(manage_workspaces)
     if db.get_bind().dialect.name == "postgresql":
         db.execute(
             text(
@@ -43,12 +42,11 @@ def set_workspace_context(db: Session, workspace_id: UUID | str | None, *,
             {
                 "workspace_id": str(db.info.get("workspace_id") or ""),
                 "user_id": str(db.info.get("user_id") or ""),
-                "worker": "on" if db.info.get("worker") else "off",
-                "manage_memberships": "on" if db.info.get("manage_memberships") else "off",
-                "manage_workspaces": "on" if db.info.get("manage_workspaces") else "off",
+                "worker": "on" if db.info["worker"] else "off",
+                "manage_memberships": "on" if db.info["manage_memberships"] else "off",
+                "manage_workspaces": "on" if db.info["manage_workspaces"] else "off",
             },
         )
-
 
 def workspace_id_for_session(db: Session) -> UUID:
     value = db.info.get("workspace_id")
