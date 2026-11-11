@@ -1477,3 +1477,63 @@ def test_entity_correlation_groups_same_identity_across_sources(client):
     assert entity["source_count"] == 2
     assert set(entity["sources"]) == {"sensor-alpha", "sensor-beta"}
     assert len(entity["event_ids"]) == 2
+
+
+def test_asset_inventory_and_vulnerability_lifecycle(client):
+    created = client.post("/api/v1/asset-risk/assets", json={
+        "asset_key": "prod-web-01", "hostname": "web-01.internal", "asset_type": "server",
+        "environment": "production", "owner": "platform", "criticality": "critical",
+        "tags": ["internet-facing", "linux"],
+    })
+    assert created.status_code == 201
+    asset = created.json()
+    assert asset["asset_key"] == "prod-web-01"
+    assert client.post("/api/v1/asset-risk/assets", json={
+        "asset_key": "prod-web-01", "hostname": "duplicate.internal",
+    }).status_code == 409
+
+    finding = client.post(f"/api/v1/asset-risk/assets/{asset['id']}/findings", json={
+        "vulnerability_id": "cve-2026-12345", "title": "Remote code execution in service",
+        "severity": "critical", "source": "lab-scanner", "description": "Synthetic test finding",
+    })
+    assert finding.status_code == 201
+    finding_id = finding.json()["id"]
+    assert finding.json()["vulnerability_id"] == "CVE-2026-12345"
+    updated = client.patch(f"/api/v1/asset-risk/findings/{finding_id}", json={"status": "in_progress"})
+    assert updated.status_code == 200
+    assert updated.json()["status"] == "in_progress"
+    assert len(client.get(f"/api/v1/asset-risk/assets/{asset['id']}/findings").json()) == 1
+
+
+def test_response_playbook_tracks_required_steps_and_audits(client):
+    case = client.post("/api/v1/cases", json={
+        "title": "Synthetic response case", "description": "Playbook integration test",
+        "priority": "p2", "severity": "high",
+    })
+    assert case.status_code == 201
+    run = client.post("/api/v1/asset-risk/playbooks", json={
+        "case_id": case.json()["id"], "title": "Credential compromise response",
+        "steps": [
+            {"title": "Validate identity and scope", "required": True},
+            {"title": "Preserve authentication evidence", "required": True},
+            {"title": "Notify incident owner", "required": False},
+        ],
+    })
+    assert run.status_code == 201
+    run_id = run.json()["id"]
+    assert run.json()["status"] == "in_progress"
+
+    first = client.patch(f"/api/v1/asset-risk/playbooks/{run_id}/steps/0", json={"completed": True})
+    assert first.status_code == 200
+    assert first.json()["status"] == "in_progress"
+    second = client.patch(f"/api/v1/asset-risk/playbooks/{run_id}/steps/1", json={"completed": True})
+    assert second.status_code == 200
+    assert second.json()["status"] == "completed"
+    assert second.json()["steps"][0]["completed_by"] == "test-admin"
+    assert client.patch(f"/api/v1/asset-risk/playbooks/{run_id}/steps/9", json={"completed": True}).status_code == 404
+
+
+def test_asset_risk_read_endpoints_are_bounded_and_validate_filters(client):
+    assert client.get("/api/v1/asset-risk/assets?limit=201").status_code == 422
+    assert client.get("/api/v1/asset-risk/assets?status=unknown").status_code == 422
+    assert client.get("/api/v1/asset-risk/playbooks?limit=0").status_code == 422

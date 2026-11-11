@@ -6,7 +6,7 @@ const state = {
   savedQueries: [], queryFields: [], queryResult: null, pendingSavedQuery: null,
   auditEntries: [], auditVerification: null, cases: [], detectionRules: [], selectedCaseId: null,
   operationsHealth: {}, operationsMetrics: {}, retentionPolicies: [], operationJobs: [], connectors: [],
-  indicators: [], indicatorMatches: [], entities: [],
+  indicators: [], indicatorMatches: [], entities: [], assets: [], playbooks: [], findings: [],
   selectedId: null, token: null, user: null, toastTimer: null,
 };
 const esc = (value) => String(value ?? "—").replace(/[&<>"']/g, (char) => ({
@@ -60,6 +60,7 @@ function clearSession() {
   state.retentionPolicies = [];
   state.operationJobs = [];
   state.connectors = [];
+  state.assets = []; state.playbooks = []; state.findings = [];
   state.eventStats = {};
   state.alertStats = {};
   state.users = [];
@@ -536,7 +537,7 @@ async function loadInvestigation(id) {
 }
 async function refreshDashboard() {
   try {
-    const [alerts, events, eventStats, alertStats, sources, savedQueries, queryFields, schedules, auditEntries, operationsHealth, operationsMetrics, retentionPolicies, operationJobs, connectors, cases, detectionRules, indicators, indicatorMatches, entities] = await Promise.all([
+    const [alerts, events, eventStats, alertStats, sources, savedQueries, queryFields, schedules, auditEntries, operationsHealth, operationsMetrics, retentionPolicies, operationJobs, connectors, cases, detectionRules, indicators, indicatorMatches, entities, assets, playbooks] = await Promise.all([
       api("/api/v1/alerts?limit=200"),
       api("/api/v1/events?limit=25"),
       api("/api/v1/events/stats"),
@@ -556,6 +557,8 @@ async function refreshDashboard() {
       api("/api/v1/threat-intel/indicators?limit=200"),
       api("/api/v1/threat-intel/matches?limit=100"),
       api("/api/v1/threat-intel/entities?min_events=1&limit=200"),
+      api("/api/v1/asset-risk/assets?limit=200"),
+      api("/api/v1/asset-risk/playbooks?limit=100"),
     ]);
     state.alerts = alerts;
     state.events = events;
@@ -574,6 +577,7 @@ async function refreshDashboard() {
     state.indicators = indicators;
     state.indicatorMatches = indicatorMatches;
     state.entities = entities;
+    state.assets = assets; state.playbooks = playbooks;
     state.savedQueries = savedQueries;
     state.queryFields = queryFields.fields || [];
     setHealth(true, "API operational");
@@ -590,6 +594,8 @@ async function refreshDashboard() {
     renderDetectionRules();
     renderThreatIntel();
     renderEntities();
+    renderAssetRisk();
+    renderPlaybooks();
     renderSavedQueries();
     if (state.selectedId && state.alerts.some((alert) => alert.id === state.selectedId)) {
       await loadInvestigation(state.selectedId);
@@ -1111,6 +1117,124 @@ async function refreshEntities() {
   finally { button.disabled = false; }
 }
 
+
+function renderAssetRisk() {
+  const rows = state.assets || [];
+  $("asset-count").textContent = count(rows.length) + " assets";
+  $("assets-body").innerHTML = rows.length ? rows.map((asset) =>
+    '<tr><td><button class="text-link" type="button" data-asset-select="' + esc(asset.id) + '">' +
+    '<strong>' + esc(asset.hostname) + '</strong><div class="sub-cell">' + esc(asset.asset_key) + '</div></button></td>' +
+    '<td>' + esc(asset.environment) + '</td><td>' + pill(asset.criticality, "sev-") + '</td>' +
+    '<td>' + esc(asset.owner || "Unassigned") + '</td><td>' + pill(asset.status, "status-") + '</td></tr>'
+  ).join("") : '<tr><td colspan="5" class="table-empty">No managed assets registered yet.</td></tr>';
+  const options = '<option value="">Select managed asset…</option>' + rows.map((a) =>
+    '<option value="' + esc(a.id) + '">' + esc(a.asset_key + " · " + a.hostname) + '</option>').join("");
+  $("finding-asset").innerHTML = options;
+  $("playbook-case").innerHTML = '<option value="">No linked case</option>' + state.cases.map((item) =>
+    '<option value="' + esc(item.id) + '">' + esc(item.case_number + " · " + item.title) + '</option>').join("");
+}
+async function loadAssetFindings(assetId) {
+  try {
+    const rows = await api("/api/v1/asset-risk/assets/" + encodeURIComponent(assetId) + "/findings");
+    state.findings = rows;
+    $("finding-list").innerHTML = rows.length ? rows.map((item) =>
+      '<div class="finding-row"><div><strong>' + esc(item.vulnerability_id) + ' · ' + esc(item.title) + '</strong>' +
+      '<small>' + esc(item.source) + ' · Discovered ' + esc(date(item.discovered_at)) + '</small></div>' +
+      '<div class="finding-actions">' + pill(item.severity, "sev-") + pill(item.status, "status-") +
+      (item.status === "open" || item.status === "in_progress" ? '<button class="button button-secondary" data-finding-status="' + esc(item.id) + '" data-next-status="remediated" type="button">Mark remediated</button>' : '') +
+      '</div></div>'
+    ).join("") : '<div class="source-empty">No findings recorded for this asset.</div>';
+  } catch (error) { showToast(error.message, "error"); }
+}
+function renderPlaybooks() {
+  const rows = state.playbooks || [];
+  $("playbook-count").textContent = count(rows.length) + " runs";
+  $("playbook-list").innerHTML = rows.length ? rows.map((run) =>
+    '<article class="playbook-run"><div class="playbook-run-head"><div><strong>' + esc(run.title) + '</strong><small>' +
+    esc(run.case_id ? "Linked case " + run.case_id : "Standalone run") + ' · ' + esc(run.created_by) + '</small></div>' +
+    pill(run.status, "status-") + '</div><ol>' + run.steps.map((step, index) =>
+      '<li class="' + (step.completed ? 'step-complete' : '') + '"><span>' + esc(step.title) + (step.required ? ' <em>Required</em>' : ' <em>Optional</em>') + '</span>' +
+      '<button class="button button-secondary" type="button" data-playbook-run="' + esc(run.id) + '" data-step-index="' + index + '" data-completed="' + (!step.completed) + '">' +
+      (step.completed ? "Reopen" : "Complete") + '</button></li>'
+    ).join("") + '</ol></article>'
+  ).join("") : '<div class="source-empty">No playbook runs yet. Start one from the checklist above.</div>';
+}
+async function createAsset(event) {
+  event.preventDefault();
+  const feedback = $("asset-feedback");
+  try {
+    await api("/api/v1/asset-risk/assets", { method: "POST", body: JSON.stringify({
+      asset_key: $("asset-key").value.trim(), hostname: $("asset-hostname").value.trim(),
+      environment: $("asset-environment").value, criticality: $("asset-criticality").value,
+      owner: $("asset-owner").value.trim() || null,
+    }) });
+    $("asset-form").reset();
+    feedback.textContent = "Asset registered and audit logged.";
+    await refreshDashboard();
+  } catch (error) { feedback.textContent = error.message; showToast(error.message, "error"); }
+}
+async function createFinding(event) {
+  event.preventDefault();
+  const assetId = $("finding-asset").value;
+  if (!assetId) return;
+  try {
+    await api("/api/v1/asset-risk/assets/" + encodeURIComponent(assetId) + "/findings", { method: "POST", body: JSON.stringify({
+      vulnerability_id: $("finding-id").value.trim(), title: $("finding-title").value.trim(),
+      severity: $("finding-severity").value, source: $("finding-source").value.trim(),
+    }) });
+    $("finding-form").reset();
+    $("finding-asset").value = assetId;
+    await loadAssetFindings(assetId);
+    showToast("Vulnerability finding recorded.");
+  } catch (error) { showToast(error.message, "error"); }
+}
+async function createPlaybook(event) {
+  event.preventDefault();
+  const steps = $("playbook-steps").value.split(/\r?\n/).map((title) => title.trim()).filter(Boolean);
+  try {
+    await api("/api/v1/asset-risk/playbooks", { method: "POST", body: JSON.stringify({
+      title: $("playbook-title").value.trim(), case_id: $("playbook-case").value || null,
+      steps: steps.map((title) => ({ title, required: true })),
+    }) });
+    $("playbook-form").reset();
+    $("playbook-feedback").textContent = "Playbook started. Each step is recorded as an auditable analyst action.";
+    await refreshDashboard();
+    showToast("Response playbook started.");
+  } catch (error) { $("playbook-feedback").textContent = error.message; showToast(error.message, "error"); }
+}
+async function handleAssetRiskAction(event) {
+  const asset = event.target.closest("[data-asset-select]");
+  if (asset) {
+    $("finding-asset").value = asset.dataset.assetSelect;
+    await loadAssetFindings(asset.dataset.assetSelect);
+    return;
+  }
+  const finding = event.target.closest("[data-finding-status]");
+  if (finding) {
+    try {
+      await api("/api/v1/asset-risk/findings/" + encodeURIComponent(finding.dataset.findingStatus), {
+        method: "PATCH", body: JSON.stringify({ status: finding.dataset.nextStatus }),
+      });
+      await loadAssetFindings($("finding-asset").value);
+      showToast("Vulnerability status updated.");
+    } catch (error) { showToast(error.message, "error"); }
+  }
+}
+async function handlePlaybookAction(event) {
+  const button = event.target.closest("[data-playbook-run]");
+  if (!button) return;
+  button.disabled = true;
+  try {
+    await api("/api/v1/asset-risk/playbooks/" + encodeURIComponent(button.dataset.playbookRun) +
+      "/steps/" + button.dataset.stepIndex, {
+        method: "PATCH", body: JSON.stringify({ completed: button.dataset.completed === "true" }),
+      });
+    state.playbooks = await api("/api/v1/asset-risk/playbooks?limit=100");
+    renderPlaybooks();
+    showToast("Playbook checklist updated and audit logged.");
+  } catch (error) { showToast(error.message, "error"); button.disabled = false; }
+}
+
 function setActiveNav() {
   const current = location.hash.replace("#", "") || "overview";
   document.querySelectorAll("[data-nav]").forEach((link) => {
@@ -1121,7 +1245,7 @@ function setActiveNav() {
     current === "sources" ? "Data source health" : current === "operations" ? "Operational health" :
     current === "connectors" ? "Integration registry" : current === "schedules" ? "Detection schedules" :
     current === "cases" ? "Incident cases" : current === "detection-rules" ? "Detection rule library" :
-    current === "audit" ? "Security audit trail" : current === "threat-intel" ? "Threat intelligence" : current === "entity-correlation" ? "Entity correlation" : "Overview";
+    current === "audit" ? "Security audit trail" : current === "threat-intel" ? "Threat intelligence" : current === "entity-correlation" ? "Entity correlation" : current === "asset-risk" ? "Asset risk" : current === "response-playbooks" ? "Response playbooks" : "Overview";
 }
 
 $("login-form").addEventListener("submit", signIn);
@@ -1182,6 +1306,14 @@ $("case-list").addEventListener("click", (event) => {
 $("case-detail").addEventListener("click", handleCaseDetailClick);
 $("case-detail").addEventListener("submit", addCaseNote);
 $("indicator-form").addEventListener("submit", createIndicator);
+$("asset-form").addEventListener("submit", createAsset);
+$("finding-form").addEventListener("submit", createFinding);
+$("playbook-form").addEventListener("submit", createPlaybook);
+$("asset-inventory").addEventListener("click", handleAssetRiskAction);
+$("finding-list").addEventListener("click", handleAssetRiskAction);
+$("playbook-list").addEventListener("click", handlePlaybookAction);
+$("refresh-assets").addEventListener("click", refreshDashboard);
+$("finding-asset").addEventListener("change", () => { if ($("finding-asset").value) loadAssetFindings($("finding-asset").value); });
 $("indicator-list").addEventListener("click", handleIndicatorAction);
 $("refresh-intel").addEventListener("click", refreshDashboard);
 $("refresh-entities").addEventListener("click", refreshEntities);

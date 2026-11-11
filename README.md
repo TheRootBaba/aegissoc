@@ -507,3 +507,21 @@ The dashboard now uses a matte charcoal palette, Geist / Geist Mono typography, 
 ## Dashboard design system v3
 
 The analyst workspace moves to a light mineral canvas (#F3F5F2), deep blue-green navigation (#173746), and focused teal actions (#0B8D83), following a 60/30/10 composition. Inter is used for interface copy and IBM Plex Mono for technical identifiers. The refreshed design guide is in [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md).
+
+
+## Phase 1.22 — Asset inventory and vulnerability triage
+
+- Curated managed-asset register with stable unique asset keys, hostname, environment, owner, criticality, lifecycle, tags and notes.
+- Source-attributed vulnerability findings linked to assets, with severity, discovery and remediation due dates.
+- Triage lifecycle: open, in progress, accepted risk, remediated, or false positive.
+- Analyst changes are audit logged. This is an inventory and triage layer, not a scanner; findings must be supplied by authorized tools or analysts.
+
+## Phase 1.23 — Auditable response playbooks
+
+- Start case-linked or standalone response playbook runs from named checklist steps.
+- Track required and optional steps, completion state, server-derived analyst attribution and timestamps.
+- Completion is derived from required steps; reopening a step returns the run to in-progress.
+- Every run and step change is recorded in the tamper-evident audit chain. Steps are inert data and do not execute commands or perform endpoint actions.
+- API and operational boundaries: [Asset risk and response playbooks](docs/ASSET_RISK_AND_PLAYBOOKS.md).
+
+Migration `0013_asset_risk_playbooks` follows `0012_threat_intel_correlation`.
