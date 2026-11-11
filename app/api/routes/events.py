@@ -3,6 +3,8 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -41,7 +43,11 @@ def ingest_normalized_event(
     db: Session = Depends(get_db),
 ):
     """Normalize a source-specific JSON event, then persist the canonical event."""
-    normalized = normalize_event(payload, source=source)
+    try:
+        normalized = normalize_event(payload, source=source)
+    except ValidationError as exc:
+        # Treat source-payload validation like normal FastAPI request validation.
+        raise RequestValidationError(exc.errors()) from exc
     event = SecurityEvent(**normalized.model_dump())
     db.add(event)
     db.commit()
