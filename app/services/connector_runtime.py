@@ -85,9 +85,14 @@ def _poll_url(connector: ConnectorConfig) -> tuple[str, dict]:
             f"{parsed.scheme}://{parsed.netloc}/security/user/authenticate"
         )
         auth_parsed = urlsplit(auth_url)
-        if auth_parsed.scheme != "https" or auth_parsed.hostname.lower() not in [
-            str(host).lower() for host in config["allowed_hosts"]
-        ]:
+        if (
+            auth_parsed.scheme != "https"
+            or not auth_parsed.hostname
+            or auth_parsed.username
+            or auth_parsed.password
+            or auth_parsed.fragment
+            or auth_parsed.hostname.lower() not in [str(host).lower() for host in config["allowed_hosts"]]
+        ):
             raise ValueError("Wazuh Manager authentication endpoint must use HTTPS and an allowlisted host")
         if not secret or ":" not in secret:
             raise ValueError("Wazuh Manager credential must reference username:password")
