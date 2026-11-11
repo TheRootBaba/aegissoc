@@ -5,10 +5,12 @@ from collections import defaultdict, deque
 from threading import Lock
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.session import get_db
-from app.models import User
+from app.models import User, Workspace, WorkspaceMembership
+from app.db.session import set_workspace_context
 
 bearer_scheme = HTTPBearer(auto_error=False)
 _HASH_ITERATIONS = 310_000
@@ -88,8 +90,11 @@ def clear_login_rate_limit(client_key: str) -> None:
     with _login_lock:
         _login_attempts.pop(client_key, None)
 
-def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-                     db: Session = Depends(get_db)) -> User:
+def get_current_user(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+) -> User:
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(status_code=401, detail="Bearer access token required",
                             headers={"WWW-Authenticate": "Bearer"})
@@ -101,6 +106,39 @@ def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(
     user = db.get(User, user_id)
     if user is None or not user.is_active or user.username != claims["username"] or user.role != claims.get("role"):
         raise HTTPException(status_code=401, detail="User is inactive or no longer exists")
+
+    # Membership visibility is bound to the authenticated subject before resolving a workspace.
+    set_workspace_context(db, None, user_id=user.id)
+    if request.url.path.startswith("/api/v1/workspaces"):
+        return user
+
+    memberships = db.execute(
+        select(WorkspaceMembership.workspace_id, WorkspaceMembership.role)
+        .join(Workspace, Workspace.id == WorkspaceMembership.workspace_id)
+        .where(
+            WorkspaceMembership.user_id == user.id,
+            WorkspaceMembership.is_active.is_(True),
+            Workspace.is_active.is_(True),
+        )
+        .order_by(Workspace.name.asc(), Workspace.id.asc())
+    ).all()
+    requested = request.headers.get("X-Workspace-ID")
+    if requested:
+        try:
+            selected_id = UUID(requested)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="X-Workspace-ID must be a UUID") from exc
+        selected = next((row for row in memberships if row.workspace_id == selected_id), None)
+        if selected is None:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+    else:
+        if not memberships:
+            raise HTTPException(status_code=403, detail="No active workspace membership")
+        if len(memberships) > 1:
+            raise HTTPException(status_code=400, detail="X-Workspace-ID is required when the user belongs to multiple workspaces")
+        selected = memberships[0]
+
+    set_workspace_context(db, selected.workspace_id, user_id=user.id)
     return user
 
 def require_roles(*roles: str):
