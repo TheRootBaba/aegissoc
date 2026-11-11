@@ -167,10 +167,10 @@ def upgrade() -> None:
         ("trg_response_action_workspace_ref", "response_action_requests", "incident_cases", "case_id"),
     )
     for trigger_name, child_table, parent_table, parent_column in trigger_specs:
-        op.execute(sa.text(
+        op.execute(
             f"CREATE TRIGGER {trigger_name} BEFORE INSERT OR UPDATE ON {child_table} "
-            "FOR EACH ROW EXECUTE FUNCTION aegis_enforce_workspace_reference(:parent_table, :parent_column)"
-        ).bindparams(parent_table=parent_table, parent_column=parent_column))
+            f"FOR EACH ROW EXECUTE FUNCTION aegis_enforce_workspace_reference('{parent_table}', '{parent_column}')"
+        )
 
     for table in TENANT_TABLES:
         op.execute(f'ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY')
