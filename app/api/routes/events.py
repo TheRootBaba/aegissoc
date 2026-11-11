@@ -6,12 +6,19 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, st
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from app.core.security import require_roles
 from app.db.session import get_db
 from app.models import SecurityEvent
-from app.schemas.events import SecurityEventCreate, SecurityEventRead
+from app.schemas.events import (
+    BulkEventIngest,
+    BulkEventIngestResponse,
+    SecurityEventCreate,
+    SecurityEventRead,
+)
 from app.services.event_normalizer import normalize_event
 from app.services.wazuh_adapter import normalize_wazuh_alert
 
@@ -19,6 +26,65 @@ router = APIRouter(
     prefix="/api/v1/events", tags=["events"],
     dependencies=[Depends(require_roles("admin", "analyst", "read_only"))],
 )
+
+
+
+
+def _persist_event(db: Session, payload: SecurityEventCreate) -> tuple[str, uuid.UUID]:
+    """Insert once per (source, external_id), safely under concurrent retries.
+
+    PostgreSQL is the production database and SQLite backs the isolated test
+    suite. Both support ON CONFLICT DO NOTHING, so a replay racing another
+    request cannot turn an otherwise successful ingest into a 500 response.
+    """
+    values = payload.model_dump()
+    dialect = db.get_bind().dialect.name
+
+    if dialect == "postgresql":
+        statement = pg_insert(SecurityEvent).values(**values)
+    elif dialect == "sqlite":
+        statement = sqlite_insert(SecurityEvent).values(**values)
+    else:
+        if payload.external_id:
+            existing_id = db.scalar(
+                select(SecurityEvent.id).where(
+                    SecurityEvent.source == payload.source,
+                    SecurityEvent.external_id == payload.external_id,
+                )
+            )
+            if existing_id is not None:
+                return "duplicate", existing_id
+        event = SecurityEvent(**values)
+        db.add(event)
+        db.flush()
+        return "accepted", event.id
+
+    event_id = db.scalar(
+        statement.on_conflict_do_nothing(
+            index_elements=[SecurityEvent.source, SecurityEvent.external_id]
+        ).returning(SecurityEvent.id)
+    )
+    if event_id is not None:
+        return "accepted", event_id
+
+    existing_id = db.scalar(
+        select(SecurityEvent.id).where(
+            SecurityEvent.source == payload.source,
+            SecurityEvent.external_id == payload.external_id,
+        )
+    )
+    if existing_id is None:
+        raise RuntimeError("Event insert conflicted but the existing event was not found")
+    return "duplicate", existing_id
+
+
+def _validation_summary(exc: ValidationError) -> str:
+    """Describe invalid fields without echoing attacker-controlled input values."""
+    details = exc.errors(include_input=False, include_url=False)
+    return "; ".join(
+        f"{'.'.join(str(part) for part in item['loc'])}: {item['msg']}"
+        for item in details
+    )
 
 
 def _require_aware(value: datetime | None, parameter: str) -> datetime | None:
@@ -30,16 +96,11 @@ def _require_aware(value: datetime | None, parameter: str) -> datetime | None:
 @router.post("", response_model=SecurityEventRead, status_code=status.HTTP_201_CREATED,
              dependencies=[Depends(require_roles("admin", "analyst"))])
 def ingest_event(payload: SecurityEventCreate, response: Response, db: Session = Depends(get_db)):
-    if payload.external_id:
-        existing = db.scalar(select(SecurityEvent).where(SecurityEvent.source == payload.source, SecurityEvent.external_id == payload.external_id))
-        if existing is not None:
-            response.status_code = status.HTTP_200_OK
-            return existing
-    event = SecurityEvent(**payload.model_dump())
-    db.add(event)
+    outcome, event_id = _persist_event(db, payload)
     db.commit()
-    db.refresh(event)
-    return event
+    if outcome == "duplicate":
+        response.status_code = status.HTTP_200_OK
+    return db.get(SecurityEvent, event_id)
 
 
 @router.post("/ingest/{source}", response_model=SecurityEventRead, status_code=status.HTTP_201_CREATED,
@@ -50,18 +111,61 @@ def ingest_normalized_event(payload: dict[str, Any], response: Response,
         normalized = normalize_wazuh_alert(payload) if source.lower() == "wazuh" else normalize_event(payload, source=source)
     except ValidationError as exc:
         raise RequestValidationError(exc.errors()) from exc
-    except ValueError as exc:
+    except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    if normalized.external_id:
-        existing = db.scalar(select(SecurityEvent).where(SecurityEvent.source == normalized.source, SecurityEvent.external_id == normalized.external_id))
-        if existing is not None:
-            response.status_code = status.HTTP_200_OK
-            return existing
-    event = SecurityEvent(**normalized.model_dump())
-    db.add(event)
+    outcome, event_id = _persist_event(db, normalized)
     db.commit()
-    db.refresh(event)
-    return event
+    if outcome == "duplicate":
+        response.status_code = status.HTTP_200_OK
+    return db.get(SecurityEvent, event_id)
+
+
+@router.post(
+    "/ingest/{source}/bulk",
+    response_model=BulkEventIngestResponse,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_roles("admin", "analyst"))],
+)
+def ingest_event_batch(
+    batch: BulkEventIngest,
+    source: str = Path(min_length=1, max_length=80),
+    db: Session = Depends(get_db),
+):
+    """Normalize and ingest up to 500 source events with per-record outcomes.
+
+    Valid records are committed together. Invalid records are reported by
+    index without discarding valid siblings; duplicate source IDs resolve to
+    the original event ID and do not create extra rows.
+    """
+    results = []
+    accepted = duplicates = rejected = 0
+
+    for index, raw_event in enumerate(batch.events):
+        try:
+            normalized = (
+                normalize_wazuh_alert(raw_event)
+                if source.lower() == "wazuh"
+                else normalize_event(raw_event, source=source)
+            )
+            outcome, event_id = _persist_event(db, normalized)
+            results.append({"index": index, "status": outcome, "event_id": event_id})
+            if outcome == "accepted":
+                accepted += 1
+            else:
+                duplicates += 1
+        except (ValidationError, ValueError, TypeError) as exc:
+            rejected += 1
+            error = _validation_summary(exc) if isinstance(exc, ValidationError) else str(exc)
+            results.append({"index": index, "status": "rejected", "error": error})
+
+    db.commit()
+    return {
+        "received": len(batch.events),
+        "accepted": accepted,
+        "duplicates": duplicates,
+        "rejected": rejected,
+        "results": results,
+    }
 
 
 @router.get("", response_model=list[SecurityEventRead])
