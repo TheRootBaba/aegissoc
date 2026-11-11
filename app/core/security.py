@@ -94,8 +94,12 @@ def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(
         raise HTTPException(status_code=401, detail="Bearer access token required",
                             headers={"WWW-Authenticate": "Bearer"})
     claims = decode_access_token(credentials.credentials)
-    user = db.get(User, UUID(claims["sub"]))
-    if user is None or not user.is_active or user.username != claims["username"]:
+    try:
+        user_id = UUID(claims["sub"])
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=401, detail="Invalid token subject") from exc
+    user = db.get(User, user_id)
+    if user is None or not user.is_active or user.username != claims["username"] or user.role != claims.get("role"):
         raise HTTPException(status_code=401, detail="User is inactive or no longer exists")
     return user
 
