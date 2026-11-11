@@ -161,8 +161,8 @@ level: medium
     assert run.json()["matches"] == 1
     assert run.json()["alerts_created"] == 1
 
-def test_response_action_requires_separate_approval_and_explicit_execution(api_client, monkeypatch):
-    from app.api.routes import response_actions
+def test_response_action_requires_approval_then_queues_durable_worker_delivery(api_client, isolated_db, monkeypatch):
+    from app.services import response_execution
     connector = api_client.post("/api/v1/connectors", json={
         "connector_key": "approved-webhook", "connector_type": "response_webhook",
         "display_name": "Approved response receiver",
@@ -180,24 +180,33 @@ def test_response_action_requires_separate_approval_and_explicit_execution(api_c
     assert self_approval.status_code == 403
 
     app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
-        id="second-admin", username="second-admin", role="admin", is_active=True
+        id=uuid4(), username="second-admin", role="admin", is_active=True
     )
     approved = api_client.post(f"/api/v1/response-actions/{request_id}/approve", json={"note": "Reviewed change window"})
     assert approved.status_code == 200
+
     class FakeResponse:
         status_code = 202
+        headers = {"X-Aegis-Action-Reference": "receiver-action-202"}
         def __enter__(self): return self
         def __exit__(self, *args): return False
     class FakeClient:
         def __enter__(self): return self
         def __exit__(self, *args): return False
         def stream(self, *args, **kwargs): return FakeResponse()
-    monkeypatch.setattr(response_actions.httpx, "Client", lambda **kwargs: FakeClient())
-    executed = api_client.post(f"/api/v1/response-actions/{request_id}/execute")
-    assert executed.status_code == 200
-    assert executed.json()["status"] == "succeeded"
-    app.dependency_overrides.pop(get_current_user, None)
+    monkeypatch.setattr(response_execution.httpx, "Client", lambda **kwargs: FakeClient())
 
+    queued = api_client.post(f"/api/v1/response-actions/{request_id}/execute")
+    assert queued.status_code == 200
+    assert queued.json()["status"] == "approved"
+    assert queued.json()["execution_status"] == "queued"
+    assert response_execution.run_due_response_actions_once(isolated_db) == 1
+    result = api_client.get(f"/api/v1/response-actions?status=succeeded")
+    assert result.status_code == 200
+    assert result.json()[0]["id"] == request_id
+    assert result.json()[0]["execution_attempts"] == 1
+    assert result.json()[0]["external_reference"] == "receiver-action-202"
+    app.dependency_overrides.pop(get_current_user, None)
 
 def test_http_poll_worker_ingests_events_idempotently(isolated_db, monkeypatch):
     from app.services import connector_runtime
