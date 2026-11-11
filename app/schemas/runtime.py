@@ -23,13 +23,21 @@ class ScannerFindingInput(BaseModel):
     description: str = Field(default="", max_length=4000)
     due_at: datetime | None = None
 
-    @field_validator("vulnerability_id", "title")
+    @field_validator("vulnerability_id")
     @classmethod
-    def strip_required_text(cls, value: str) -> str:
+    def normalize_vulnerability_id(cls, value: str) -> str:
         value = value.strip()
         if len(value) < 3:
-            raise ValueError("Value must contain at least three non-whitespace characters")
-        return value.upper() if cls.__name__ == "ScannerFindingInput" and value.upper().startswith("CVE-") else value
+            raise ValueError("Vulnerability identifier cannot be blank")
+        return value.upper()
+
+    @field_validator("title")
+    @classmethod
+    def strip_title(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 3:
+            raise ValueError("Finding title cannot be blank")
+        return value
 
 class ScannerAssetInput(BaseModel):
     asset_key: str = Field(min_length=2, max_length=160)
