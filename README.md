@@ -58,7 +58,7 @@ Event producers (manual lab input / Wazuh JSON alerts)
 1. Copy the example environment file and set a strong local database password:
 
    ```powershell
-   Copy-Item .env.example .env
+   if (-not (Test-Path .env)) { Copy-Item .env.example .env } else { Write-Host ".env already exists; preserving existing credentials." }
    ```
 
 2. Start the stack:
