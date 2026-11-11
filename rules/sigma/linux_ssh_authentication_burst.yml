@@ -1,0 +1,16 @@
+title: Linux SSH authentication burst
+id: AEGIS-LNX-SSH-001
+status: experimental
+description: Detects repeated SSH authentication failures from a single source address.
+logsource:
+  product: linux
+  service: sshd
+detection:
+  selection:
+    event_type: authentication.failure
+    message|contains: Failed password
+  condition: selection
+level: medium
+tags:
+  - attack.credential_access
+  - attack.t1110

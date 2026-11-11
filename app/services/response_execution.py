@@ -136,6 +136,31 @@ def _retry_delay(attempt: int) -> int:
 
 def run_due_response_actions_once(db: Session, *, now: datetime | None = None, batch_size: int = 10) -> int:
     run_at = now or datetime.now(timezone.utc)
+    expired_query = select(ResponseActionRequest).where(
+        ResponseActionRequest.status.in_(("pending", "approved")),
+        ResponseActionRequest.expires_at.is_not(None),
+    ).limit(batch_size)
+    if db.get_bind().dialect.name == "postgresql":
+        expired_query = expired_query.with_for_update(skip_locked=True)
+    candidates = list(db.scalars(expired_query).all())
+    expired = []
+    for item in candidates:
+        expiry = item.expires_at
+        if expiry is not None and expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+        if expiry is None or expiry > run_at:
+            continue
+        item.status = "expired"
+        item.execution_status = "expired"
+        item.next_attempt_at = None
+        item.locked_until = None
+        item.executed_at = run_at
+        expired.append(item)
+        append_audit_entry(db, actor="response-worker", action="response_action.expired",
+                           resource_type="response_action", resource_id=str(item.id),
+                           details={"expired_at": item.expires_at.isoformat() if item.expires_at else None})
+    if expired:
+        db.commit()
     eligible = or_(
         (
             (ResponseActionRequest.status == "approved")
@@ -174,6 +199,33 @@ def run_due_response_actions_once(db: Session, *, now: datetime | None = None, b
         if request is None:
             continue
         started = datetime.now(timezone.utc)
+        if request.dry_run:
+            request.status = "succeeded"
+            request.execution_status = "simulated"
+            request.result_summary = "Dry run completed. No request was sent to the receiver."
+            request.executed_at = started
+            request.next_attempt_at = None
+            request.locked_until = None
+            append_audit_entry(db, actor="response-worker", action="response_action.simulated",
+                               resource_type="response_action", resource_id=str(request.id),
+                               details={"action_type": request.action_type, "connector_key": request.connector_key})
+            db.commit()
+            completed += 1
+            continue
+        request_expiry = request.expires_at
+        if request_expiry is not None and request_expiry.tzinfo is None:
+            request_expiry = request_expiry.replace(tzinfo=timezone.utc)
+        if request_expiry is not None and request_expiry <= started:
+            request.status = "expired"
+            request.execution_status = "expired"
+            request.executed_at = started
+            request.next_attempt_at = None
+            request.locked_until = None
+            append_audit_entry(db, actor="response-worker", action="response_action.expired",
+                               resource_type="response_action", resource_id=str(request.id), details={})
+            db.commit()
+            completed += 1
+            continue
         connector = db.scalar(select(ConnectorConfig).where(
             ConnectorConfig.connector_key == request.connector_key,
             ConnectorConfig.connector_type == "response_webhook",

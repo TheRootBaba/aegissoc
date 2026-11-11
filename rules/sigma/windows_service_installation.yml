@@ -1,0 +1,15 @@
+title: Windows service installation
+id: AEGIS-WIN-SVC-001
+status: experimental
+description: Detects service installation events that may indicate persistence.
+logsource:
+  product: windows
+  service: system
+detection:
+  selection:
+    event_type: service.installed
+  condition: selection
+level: medium
+tags:
+  - attack.persistence
+  - attack.t1543.003

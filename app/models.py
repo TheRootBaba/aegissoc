@@ -388,6 +388,8 @@ class ResponseActionRequest(Base):
     action_type: Mapped[str] = mapped_column(String(32), nullable=False)
     target: Mapped[str] = mapped_column(String(255), nullable=False)
     parameters: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    dry_run: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
     requested_by: Mapped[str] = mapped_column(String(64), nullable=False)
     approved_by: Mapped[str | None] = mapped_column(String(64), nullable=True)

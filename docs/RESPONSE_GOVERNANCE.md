@@ -73,3 +73,11 @@ All state changes are audit logged. The response record includes request/decisio
 ## Safe test procedure
 
 Use a local mock receiver that records the request, validates the HMAC and stores idempotency keys. Test duplicate delivery, a receiver timeout after accepting the action, a reconciliation success, a pending receiver state and a not-found retry. Verify that one idempotency key never causes the mock receiver to apply the same side effect twice. Only then consider connecting an approved non-production receiver.
+
+## Action lifecycle controls
+
+New requests receive a bounded expiry (24 hours by default; configurable from 5 minutes to 7 days). The worker expires pending or queued actions before delivery and records the transition in the audit chain. Administrators can cancel requests while they are pending or approved; a request already being submitted cannot be canceled safely because the receiver may have accepted it.
+
+Set `dry_run: true` when creating a request to exercise approval and worker lifecycle without contacting the configured receiver. A dry run completes with `execution_status=simulated`, zero delivery attempts, and an audit entry. It is not evidence that the receiver can perform the action.
+
+Cancellation is intentionally not described as rollback. Once a receiver has accepted an action, reversal requires a receiver-specific compensation contract and reconciliation. The current generic webhook contract does not claim that every action can be reversed.

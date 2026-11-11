@@ -660,3 +660,114 @@ def test_response_worker_reconciles_expired_lease_before_redelivery(api_client, 
     assert request.external_reference == "reconciled-action-42"
     assert request.execution_attempts == 1
     app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_response_worker_dry_run_never_contacts_receiver(isolated_db, monkeypatch):
+    from app.models import ResponseActionRequest
+    from app.services import response_execution
+
+    request = ResponseActionRequest(
+        connector_key="receiver-not-required", action_type="isolate_host",
+        target="lab-host-01", parameters={}, dry_run=True,
+        status="approved", execution_status="queued",
+        next_attempt_at=datetime.now(timezone.utc) - __import__("datetime").timedelta(minutes=1), requested_by="analyst",
+        approved_by="admin", idempotency_key="d" * 64,
+    )
+    isolated_db.add(request)
+    isolated_db.commit()
+
+    def forbidden_client(**kwargs):
+        raise AssertionError("dry-run must not construct an HTTP client")
+
+    monkeypatch.setattr(response_execution.httpx, "Client", forbidden_client)
+    assert response_execution.run_due_response_actions_once(isolated_db) == 1
+    isolated_db.refresh(request)
+    assert request.status == "succeeded"
+    assert request.execution_status == "simulated"
+    assert request.execution_attempts == 0
+    assert "No request was sent" in request.result_summary
+
+
+def test_response_worker_expires_queued_action_before_delivery(isolated_db, monkeypatch):
+    from datetime import timedelta
+    from app.models import ResponseActionRequest
+    from app.services import response_execution
+
+    now = datetime.now(timezone.utc)
+    request = ResponseActionRequest(
+        connector_key="receiver-not-required", action_type="notify",
+        target="soc@example.invalid", parameters={}, dry_run=False,
+        status="approved", execution_status="queued",
+        next_attempt_at=now - timedelta(minutes=1),
+        expires_at=now - timedelta(seconds=1), requested_by="analyst",
+        approved_by="admin", idempotency_key="e" * 64,
+    )
+    isolated_db.add(request)
+    isolated_db.commit()
+
+    def forbidden_client(**kwargs):
+        raise AssertionError("expired action must not be delivered")
+
+    monkeypatch.setattr(response_execution.httpx, "Client", forbidden_client)
+    assert response_execution.run_due_response_actions_once(isolated_db, now=now) == 0
+    isolated_db.refresh(request)
+    assert request.status == "expired"
+    assert request.execution_status == "expired"
+    assert request.next_attempt_at is None
+
+
+def test_response_action_cancel_endpoint_stops_queued_delivery(api_client):
+    from app.core.security import get_current_user
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
+        id=uuid4(), username="phase-admin", role="admin", is_active=True
+    )
+    connector = api_client.post("/api/v1/connectors", json={
+        "connector_key": "cancel-webhook", "connector_type": "response_webhook",
+        "display_name": "Cancel receiver",
+        "config": {"endpoint": "https://response.example/actions", "allowed_hosts": ["response.example"]},
+        "enabled": True,
+    })
+    assert connector.status_code == 201
+    created = api_client.post("/api/v1/response-actions", json={
+        "connector_key": "cancel-webhook", "action_type": "notify",
+        "target": "soc@example.invalid",
+    })
+    assert created.status_code == 201, created.text
+    request_id = created.json()["id"]
+    canceled = api_client.post(
+        f"/api/v1/response-actions/{request_id}/cancel",
+        json={"note": "Change window withdrawn"},
+    )
+    assert canceled.status_code == 200
+    assert canceled.json()["status"] == "canceled"
+    assert canceled.json()["execution_status"] == "canceled"
+    app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_builtin_sigma_pack_rules_parse_and_unsupported_syntax_is_rejected():
+    from pathlib import Path
+    from app.services.sigma_engine import parse_sigma_document
+
+    pack = Path(__file__).resolve().parents[1] / "rules" / "sigma"
+    rule_files = sorted(pack.glob("*.yml"))
+    assert len(rule_files) >= 3
+    parsed = [parse_sigma_document(path.read_text(encoding="utf-8")) for path in rule_files]
+    assert {rule["rule_id"] for rule in parsed} == {
+        "AEGIS-WIN-PS-001", "AEGIS-LNX-SSH-001", "AEGIS-WIN-SVC-001"
+    }
+    unsupported = """title: Unsupported pipeline
+id: unsupported-pipeline-001
+status: test
+logsource:
+  product: windows
+detection:
+  selection:
+    event_type: process.started
+  condition: selection | count() by hostname
+level: high
+"""
+    with pytest.raises(ValueError):
+        parse_sigma_document(unsupported)

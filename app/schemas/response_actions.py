@@ -9,6 +9,8 @@ class ResponseActionCreate(BaseModel):
     action_type: Literal["notify", "block_ip", "disable_user", "isolate_host"]
     target: str = Field(min_length=1, max_length=255)
     parameters: dict = Field(default_factory=dict)
+    dry_run: bool = False
+    expires_in_minutes: int = Field(default=1440, ge=5, le=10080)
 
 class ResponseActionDecision(BaseModel):
     note: str = Field(min_length=3, max_length=500)
@@ -21,6 +23,8 @@ class ResponseActionRead(BaseModel):
     action_type: str
     target: str
     parameters: dict
+    dry_run: bool
+    expires_at: datetime | None
     status: str
     requested_by: str
     approved_by: str | None
