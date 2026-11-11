@@ -3,7 +3,7 @@ from typing import Literal
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
-ConnectorType = Literal["wazuh", "syslog", "http_event", "generic", "http_poll", "threat_feed", "wazuh_manager", "wazuh_indexer", "misp", "opencti", "response_webhook"]
+ConnectorType = Literal["wazuh", "syslog", "http_event", "generic", "http_poll", "threat_feed", "wazuh_manager", "wazuh_indexer", "misp", "opencti", "response_webhook", "nessus", "tenable", "qualys"]
 
 class ConnectorCreate(BaseModel):
     connector_key: str = Field(min_length=2, max_length=80, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
