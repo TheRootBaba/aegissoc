@@ -913,3 +913,28 @@ def test_authentication_success_before_failures_does_not_trigger_chain_rule(clie
     run = client.post("/api/v1/detections/run", json={"window_minutes": 10, "threshold": 5})
     assert run.status_code == 200
     assert "AUTH-CHAIN-001" not in {item["rule_id"] for item in run.json()["alerts"]}
+
+
+def test_cross_event_detection_refreshes_one_stable_alert_on_replay(client):
+    now = datetime.now(timezone.utc)
+    for attempt in range(5):
+        client.post("/api/v1/events", json=sample_event(
+            event_type="authentication.failure",
+            timestamp=(now - timedelta(seconds=6 - attempt)).isoformat(),
+            username="stable-user",
+            message=f"Repeated authentication failure {attempt}",
+        ))
+    client.post("/api/v1/events", json=sample_event(
+        event_type="authentication.success",
+        timestamp=now.isoformat(),
+        username="stable-user",
+        message="Authentication succeeded",
+    ))
+    first = client.post("/api/v1/detections/run", json={"window_minutes": 10, "threshold": 5})
+    second = client.post("/api/v1/detections/run", json={"window_minutes": 10, "threshold": 5})
+    first_alert = next(item for item in first.json()["alerts"] if item["rule_id"] == "AUTH-CHAIN-001")
+    second_alert = next(item for item in second.json()["alerts"] if item["rule_id"] == "AUTH-CHAIN-001")
+    assert first.json()["alerts_created"] == 1
+    assert second.json()["alerts_created"] == 0
+    assert second.json()["alerts_updated"] == 1
+    assert first_alert["id"] == second_alert["id"]
