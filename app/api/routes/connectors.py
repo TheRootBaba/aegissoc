@@ -183,7 +183,7 @@ def connector_executions(connector_id: UUID, limit: int = 50, db: Session = Depe
         ConnectorExecution.connector_id == connector_id
     ).order_by(ConnectorExecution.started_at.desc()).limit(limit)).all())
 
-@router.get("/runtime/health")
+@router.get("/runtime-health")
 def connector_runtime_health(db: Session = Depends(get_db)):
     from sqlalchemy import func
     rows = db.execute(select(ConnectorExecution.status, func.count()).group_by(ConnectorExecution.status)).all()
