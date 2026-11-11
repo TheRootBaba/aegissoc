@@ -11,7 +11,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user, require_roles
-from app.db.session import get_db
+from app.db.session import get_db, workspace_id_for_session
 from app.models import ConnectorConfig, SavedEventQuery, SecurityEvent
 from app.services.source_inventory import record_ingestion
 from app.services.audit_chain import append_audit_entry
@@ -44,6 +44,7 @@ def _persist_event(db: Session, payload: SecurityEventCreate) -> tuple[str, uuid
     request cannot turn an otherwise successful ingest into a 500 response.
     """
     values = payload.model_dump()
+    values['workspace_id'] = workspace_id_for_session(db)
     dialect = db.get_bind().dialect.name
 
     if dialect == "postgresql":
