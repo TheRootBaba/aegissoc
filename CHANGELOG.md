@@ -9,6 +9,7 @@ Notable project changes are recorded here. This changelog is maintained manually
 - Keep successful empty polls separate from event freshness; an empty poll does not mark a source healthy.
 
 ### Dashboard fixes
+- Bump the dashboard script asset version so browsers load the updated active-alert and operations metrics logic.
 - Record the latest event time during Wazuh Indexer polling, including duplicate records.
 - Restore connector status from saved poll history when the summary fields were not updated.
 - Count open, acknowledged and in-progress alerts as active work.
