@@ -178,4 +178,4 @@ The CI workflow also validates PostgreSQL migrations and RLS behavior, runs the 
 
 ## Product evidence
 
-See the [dashboard and API screenshot gallery](docs/SCREENSHOT_GALLERY.md) for genuine captures of the current interface, the related engineering guides, and recorded local walkthroughs. Screenshots are evidence of the captured environment and should not be read as a production certification.
+See the [dashboard and API screenshot gallery](docs/SCREENSHOT_GALLERY.md), the [organized screenshot index](evidence/README.md), and the [timestamped runtime verification evidence](docs/evidence/README.md) for genuine captures and lab checks. Screenshots and runtime snapshots describe their captured environment and should not be read as a production certification.
