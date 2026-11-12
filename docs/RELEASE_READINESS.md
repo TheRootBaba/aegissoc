@@ -81,7 +81,7 @@ The six failures below are historical results from PR #31, not the result of the
 
 ## Documentation and evidence inventory
 
-The existing screenshot gallery contains genuine dashboard captures for the overview, alert queue, cases, investigation workbench, detection rules and schedules, entity correlation, threat intelligence, integrations, asset risk, response playbook, audit trail, team access, and operations/retention.
+The [organized screenshot gallery](SCREENSHOT_GALLERY.md) contains genuine dashboard captures for the overview, alert queue, cases, investigation workbench, detection rules and schedules, entity correlation, threat intelligence, integrations, asset risk, response playbook, audit trail, team access, and operations/retention. A timestamped local runtime/test evidence bundle is indexed in [docs/evidence/README.md](evidence/README.md). The screenshots predate this branch and are not asserted to be captures of the exact candidate SHA.
 
 Add or refresh the following captures from the release candidate using synthetic data only:
 
