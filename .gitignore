@@ -15,6 +15,9 @@ build/
 .env.*
 !.env.example
 
+# Optional local Wazuh source checkout
+/wazuh-docker/
+
 # Local provider trust material and private keys
 wazuh-api-ca-bundle.pem
 *.pem
