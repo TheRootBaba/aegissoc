@@ -896,3 +896,48 @@ def test_overdue_detection_schedule_degrades_operations_health(api_client, isola
     assert health.status_code == 200
     assert health.json()["status"] == "degraded"
     assert health.json()["enabled_schedules_overdue"] == 1
+
+
+def test_source_inventory_recovers_event_time_from_existing_telemetry(isolated_db):
+    from app.services.source_inventory import record_ingestion
+
+    workspace_id = UUID(isolated_db.info["workspace_id"])
+    event_time = datetime.now(timezone.utc) - timedelta(hours=2)
+    source = SourceRegistry(
+        workspace_id=workspace_id,
+        source_name="wazuh-indexer-lab",
+        source_type="wazuh",
+        display_name="Wazuh Indexer - Local Lab",
+        health_status="inactive",
+        accepted_events=911,
+        duplicate_events=688,
+        rejected_events=0,
+    )
+    isolated_db.add(source)
+    isolated_db.add(SecurityEvent(
+        workspace_id=workspace_id,
+        source="wazuh-indexer-lab",
+        external_id="stored-wazuh-event-001",
+        event_type="wazuh.alert",
+        severity="medium",
+        timestamp=event_time,
+        message="Previously ingested Wazuh event",
+        raw={"fixture": True},
+    ))
+    isolated_db.commit()
+
+    record_ingestion(
+        isolated_db,
+        "wazuh-indexer-lab",
+        accepted=0,
+        duplicates=0,
+        rejected=0,
+        source_type="wazuh",
+        display_name="Wazuh Indexer - Local Lab",
+    )
+    isolated_db.commit()
+    isolated_db.refresh(source)
+
+    assert source.last_successful_event_at.replace(tzinfo=timezone.utc) == event_time
+    assert source.accepted_events == 911
+    assert source.duplicate_events == 688
