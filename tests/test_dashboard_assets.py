@@ -210,6 +210,6 @@ def test_dashboard_navigation_targets_existing_sections():
 def test_screenshot_gallery_references_existing_image_assets():
     gallery_path = ROOT / "docs" / "SCREENSHOT_GALLERY.md"
     gallery = gallery_path.read_text(encoding="utf-8")
-    image_paths = re.findall(r'!\[[^]]*\]\(([^)]+)\\)', gallery)
+    image_paths = re.findall(r'!\[[^]]*\]\(([^)]+)\)', gallery)
     assert image_paths
     assert all((gallery_path.parent / image_path).resolve().is_file() for image_path in image_paths)
