@@ -118,6 +118,7 @@ def _poll_url(connector: ConnectorConfig) -> tuple[str, dict]:
 
 def _ingest_event_records(db: Session, connector: ConnectorConfig, records: list) -> tuple[int, int, int]:
     accepted = duplicates = rejected = 0
+    event_timestamps = []
     for item in records:
         try:
             item = get_adapter(connector.connector_type).normalize_payload(item)
@@ -125,10 +126,17 @@ def _ingest_event_records(db: Session, connector: ConnectorConfig, records: list
             outcome, _ = _persist_event(db, normalized)
             accepted += int(outcome == "accepted")
             duplicates += int(outcome == "duplicate")
+            if normalized.timestamp is not None:
+                event_timestamps.append(normalized.timestamp)
             _record_connector_observation(db, connector.connector_key)
         except Exception:
             rejected += 1
-    record_ingestion(db, connector.connector_key, accepted=accepted, duplicates=duplicates, rejected=rejected)
+    source_type = "wazuh" if connector.connector_type in {"wazuh", "wazuh_manager", "wazuh_indexer"} else None
+    record_ingestion(
+        db, connector.connector_key, accepted=accepted, duplicates=duplicates,
+        rejected=rejected, event_timestamp=max(event_timestamps, default=None),
+        source_type=source_type, display_name=connector.display_name,
+    )
     return accepted, duplicates, rejected
 
 def _ingest_indicators(db: Session, connector: ConnectorConfig, records: list) -> tuple[int, int, int]:

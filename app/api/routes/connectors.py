@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -31,7 +31,64 @@ def _check(connector: ConnectorConfig):
 
 @router.get("", response_model=list[ConnectorRead])
 def list_connectors(db: Session = Depends(get_db)):
-    return list(db.scalars(select(ConnectorConfig).order_by(ConnectorConfig.connector_key.asc())).all())
+    connectors = list(db.scalars(
+        select(ConnectorConfig).order_by(ConnectorConfig.connector_key.asc())
+    ).all())
+    if not connectors:
+        return []
+
+    connector_ids = [connector.id for connector in connectors]
+    latest_rows = select(
+        ConnectorExecution.connector_id.label("connector_id"),
+        ConnectorExecution.status.label("status"),
+        ConnectorExecution.completed_at.label("completed_at"),
+        ConnectorExecution.started_at.label("started_at"),
+        func.row_number().over(
+            partition_by=ConnectorExecution.connector_id,
+            order_by=(
+                ConnectorExecution.completed_at.desc().nulls_last(),
+                ConnectorExecution.started_at.desc(),
+            ),
+        ).label("position"),
+    ).where(ConnectorExecution.connector_id.in_(connector_ids)).subquery()
+    latest = {
+        row.connector_id: row
+        for row in db.execute(select(latest_rows).where(latest_rows.c.position == 1))
+    }
+
+    success_rows = select(
+        ConnectorExecution.connector_id.label("connector_id"),
+        ConnectorExecution.completed_at.label("completed_at"),
+        func.row_number().over(
+            partition_by=ConnectorExecution.connector_id,
+            order_by=ConnectorExecution.completed_at.desc(),
+        ).label("position"),
+    ).where(
+        ConnectorExecution.connector_id.in_(connector_ids),
+        ConnectorExecution.status.in_({"success", "partial"}),
+        ConnectorExecution.completed_at.is_not(None),
+    ).subquery()
+    latest_success = {
+        row.connector_id: row
+        for row in db.execute(select(success_rows).where(success_rows.c.position == 1))
+    }
+
+    result = []
+    for connector in connectors:
+        data = ConnectorRead.model_validate(connector).model_dump()
+        latest_execution = latest.get(connector.id)
+        successful_execution = latest_success.get(connector.id)
+        if data["last_success_at"] is None and successful_execution is not None:
+            data["last_success_at"] = successful_execution.completed_at
+        if data["last_checked_at"] is None and latest_execution is not None:
+            data["last_checked_at"] = latest_execution.completed_at or latest_execution.started_at
+        if connector.enabled and connector.health_status == "unverified" and latest_execution is not None:
+            if latest_execution.status == "success":
+                data["health_status"] = "observed"
+            elif latest_execution.status in {"partial", "failed"}:
+                data["health_status"] = "degraded"
+        result.append(data)
+    return result
 
 
 @router.post("", response_model=ConnectorRead, status_code=status.HTTP_201_CREATED)

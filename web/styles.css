@@ -290,7 +290,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--focus); box-shad
 .toast-region { position: fixed; z-index: 50; right: 20px; bottom: 18px; display: grid; gap: 7px; }
 .toast { max-width: min(420px,calc(100vw - 40px)); padding: 11px 13px; border: 1px solid #315B4B; border-radius: 5px; background: #14221D; color: #A9D7C1; box-shadow: var(--shadow-float); font-size: 11px; }
 .toast.error { border-color: #663942; background: #26181B; color: #D99AA0; }
-.operations-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; margin-bottom: 12px; }
+.operations-metrics { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 12px; margin-bottom: 12px; }
 .ops-metric { display: flex; min-height: 94px; flex-direction: column; padding: 12px 13px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); }
 .ops-metric span { color: var(--dim); font: 9px var(--mono); letter-spacing: .06em; }
 .ops-metric strong { margin-top: 10px; color: var(--text); font: 500 20px var(--mono); }

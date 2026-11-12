@@ -2,7 +2,7 @@
 
 Dashboard screenshots are organized under [`evidence/dashboard/`](../evidence/README.md). Runtime/API/test captures are indexed separately in [`docs/evidence/`](evidence/README.md).
 
-These captures were supplied from a running AegisSOC dashboard. They are product evidence, not generated mock-ups. The API demo was recorded against the FastAPI OpenAPI page at `/docs`.
+These screenshots came from an earlier AegisSOC lab build. They show the real application, but they do not show the dashboard fixes in this branch. Take a fresh set from the final build before publishing.
 
 Before publishing screenshots from another environment, review them for account names, workspace identifiers, internal hostnames, IP addresses, tokens and customer data. Replace or redact sensitive captures at the source; do not blur evidence in a way that changes what the screen appears to show.
 

@@ -203,7 +203,7 @@ def ingest_event_batch(
     the original event ID and do not create extra rows.
     """
     results = []
-    accepted_timestamps = []
+    observed_timestamps = []
     accepted = duplicates = rejected = 0
 
     for index, raw_event in enumerate(batch.events):
@@ -211,8 +211,9 @@ def ingest_event_batch(
             normalized = _normalize_source_event(db, source, raw_event)
             outcome, event_id = _persist_event(db, normalized)
             results.append({"index": index, "status": outcome, "event_id": event_id})
+            if normalized.timestamp is not None:
+                observed_timestamps.append(normalized.timestamp)
             if outcome == "accepted":
-                accepted_timestamps.append(normalized.timestamp)
                 accepted += 1
             else:
                 duplicates += 1
@@ -221,7 +222,7 @@ def ingest_event_batch(
             error = _validation_summary(exc) if isinstance(exc, ValidationError) else str(exc)
             results.append({"index": index, "status": "rejected", "error": error})
 
-    record_ingestion(db, source, accepted=accepted, duplicates=duplicates, rejected=rejected, event_timestamp=max(accepted_timestamps, default=None))
+    record_ingestion(db, source, accepted=accepted, duplicates=duplicates, rejected=rejected, event_timestamp=max(observed_timestamps, default=None))
     if accepted or duplicates:
         _record_connector_observation(db, source)
     db.commit()

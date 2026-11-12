@@ -1,5 +1,6 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from pathlib import Path
 from uuid import UUID, uuid4
 import pytest
 from fastapi.testclient import TestClient
@@ -11,7 +12,7 @@ from app.core.security import get_current_user
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
-from app.models import ConnectorConfig, ManagedAsset, SecurityEvent, ThreatIndicator, Workspace
+from app.models import ConnectorConfig, ConnectorExecution, DetectionSchedule, ManagedAsset, SecurityEvent, SourceRegistry, ThreatIndicator, Workspace
 from app.services.integrations import get_adapter
 from app.services.sigma_engine import parse_sigma_document, rule_matches
 
@@ -779,3 +780,119 @@ level: high
 """
     with pytest.raises(ValueError):
         parse_sigma_document(unsupported)
+
+
+def test_wazuh_indexer_poll_records_event_time_and_source_type(isolated_db, monkeypatch):
+    from app.services import connector_runtime
+
+    connector = ConnectorConfig(
+        connector_key="wazuh-indexer-lab",
+        connector_type="wazuh_indexer",
+        display_name="Wazuh Indexer - Local Lab",
+        config={},
+        enabled=True,
+        health_status="unverified",
+    )
+    isolated_db.add(connector)
+    isolated_db.commit()
+
+    first_time = datetime(2026, 11, 11, 1, 20, tzinfo=timezone.utc)
+    replay_time = datetime(2026, 11, 11, 1, 25, tzinfo=timezone.utc)
+
+    class Adapter:
+        def normalize_payload(self, item):
+            return item
+
+    monkeypatch.setattr(connector_runtime, "get_adapter", lambda _: Adapter())
+    monkeypatch.setattr(
+        connector_runtime,
+        "_normalize_source_event",
+        lambda db, source, item: SimpleNamespace(timestamp=item["timestamp"]),
+    )
+    monkeypatch.setattr(
+        connector_runtime,
+        "_persist_event",
+        lambda db, event: ("duplicate" if event.timestamp == replay_time else "accepted", uuid4()),
+    )
+    monkeypatch.setattr(
+        connector_runtime,
+        "_record_connector_observation",
+        lambda db, source: setattr(connector, "health_status", "observed"),
+    )
+
+    result = connector_runtime._ingest_event_records(
+        isolated_db,
+        connector,
+        [{"timestamp": first_time}, {"timestamp": replay_time}],
+    )
+
+    source = isolated_db.query(SourceRegistry).filter_by(source_name="wazuh-indexer-lab").one()
+    assert result == (1, 1, 0)
+    assert source.source_type == "wazuh"
+    assert source.display_name == "Wazuh Indexer - Local Lab"
+    assert source.accepted_events == 1
+    assert source.duplicate_events == 1
+    assert source.last_successful_event_at.replace(tzinfo=timezone.utc) == replay_time
+    assert connector.health_status == "observed"
+
+
+def test_dashboard_alert_count_includes_acknowledged_work_and_flags_overdue_schedules():
+    web = Path(__file__).resolve().parents[1] / "web"
+    source = (web / "app.js").read_text(encoding="utf-8")
+    html = (web / "index.html").read_text(encoding="utf-8")
+    assert 'const active = (byStatus.open || 0) + (byStatus.acknowledged || 0) + (byStatus.in_progress || 0);' in source
+    assert 'Overdue · ' in source
+    assert 'Last successful poll: ' in source
+    assert "<span>ACTIVE ALERTS</span>" in html
+
+
+def test_connector_list_uses_latest_successful_execution_when_status_was_not_refreshed(api_client, isolated_db):
+    now = datetime.now(timezone.utc)
+    connector = ConnectorConfig(
+        connector_key="wazuh-history",
+        connector_type="wazuh_indexer",
+        display_name="Wazuh Indexer",
+        config={},
+        enabled=True,
+        health_status="unverified",
+    )
+    isolated_db.add(connector)
+    isolated_db.flush()
+    isolated_db.add(ConnectorExecution(
+        connector_id=connector.id,
+        status="success",
+        started_at=now,
+        completed_at=now,
+        duration_ms=120,
+        records_seen=10,
+        accepted=8,
+        duplicates=2,
+        rejected=0,
+    ))
+    isolated_db.commit()
+
+    response = api_client.get("/api/v1/connectors")
+    assert response.status_code == 200
+    item = next(row for row in response.json() if row["connector_key"] == "wazuh-history")
+    assert item["health_status"] == "observed"
+    assert item["last_success_at"] is not None
+    assert item["last_checked_at"] is not None
+
+
+def test_overdue_detection_schedule_degrades_operations_health(api_client, isolated_db):
+    created = api_client.post("/api/v1/detection-schedules", json={
+        "name": "late-schedule",
+        "interval_seconds": 300,
+        "window_minutes": 10,
+        "threshold": 5,
+    })
+    assert created.status_code == 201, created.text
+    schedule = isolated_db.query(DetectionSchedule).filter_by(name="late-schedule").one()
+    schedule.next_run_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+    schedule.locked_until = None
+    isolated_db.commit()
+
+    health = api_client.get("/api/v1/operations/health")
+    assert health.status_code == 200
+    assert health.json()["status"] == "degraded"
+    assert health.json()["enabled_schedules_overdue"] == 1

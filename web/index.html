@@ -57,19 +57,19 @@
       </header>
 
       <section class="page-intro" id="overview">
-        <div><div class="eyebrow"><span class="eyebrow-line"></span> SECURITY OPERATIONS CENTER <span class="eyebrow-tag">LOCAL LAB</span></div><h1>Security operations.<br><span>Under control.</span></h1><p class="intro-copy">One operational view of detection, telemetry, and response. Prioritize the signals that matter and move investigations forward with context.</p></div>
+        <div><div class="eyebrow"><span class="eyebrow-line"></span> SECURITY OPERATIONS CENTER <span class="eyebrow-tag">LOCAL LAB</span></div><h1>Security operations.<br><span>Under control.</span></h1><p class="intro-copy">See incoming activity, review alerts and keep track of response work.</p></div>
         <div class="intro-meta"><span class="live-pulse"></span><span><strong>LIVE WORKSPACE</strong><small id="last-updated">Waiting for first sync</small></span></div>
       </section>
 
       <section class="metrics-grid" aria-label="Security metrics">
-        <article class="metric-card metric-primary"><div class="metric-top"><span>OPEN ALERTS</span><span class="metric-icon">◎</span></div><div class="metric-number" id="metric-open">—</div><div class="metric-bottom"><span class="metric-dot dot-amber"></span>Require analyst attention</div><div class="metric-glow"></div></article>
-        <article class="metric-card"><div class="metric-top"><span>HIGH / CRITICAL</span><span class="metric-icon icon-red">⌁</span></div><div class="metric-number" id="metric-high">—</div><div class="metric-bottom"><span class="metric-dot dot-red"></span>Elevated severity alerts</div></article>
+        <article class="metric-card metric-primary"><div class="metric-top"><span>ACTIVE ALERTS</span><span class="metric-icon">◎</span></div><div class="metric-number" id="metric-open">—</div><div class="metric-bottom"><span class="metric-dot dot-amber"></span>Open or being reviewed</div><div class="metric-glow"></div></article>
+        <article class="metric-card"><div class="metric-top"><span>HIGH / CRITICAL</span><span class="metric-icon icon-red">⌁</span></div><div class="metric-number" id="metric-high">—</div><div class="metric-bottom"><span class="metric-dot dot-red"></span>Across all alert statuses</div></article>
         <article class="metric-card"><div class="metric-top"><span>EVENTS INGESTED</span><span class="metric-icon icon-blue">⌘</span></div><div class="metric-number" id="metric-events">—</div><div class="metric-bottom"><span class="metric-dot dot-blue"></span>All-time canonical telemetry</div></article>
         <article class="metric-card"><div class="metric-top"><span>IN INVESTIGATION</span><span class="metric-icon icon-green">◷</span></div><div class="metric-number" id="metric-progress">—</div><div class="metric-bottom"><span class="metric-dot dot-green"></span>Assigned or actively reviewed</div></article>
       </section>
 
       <section class="section-block" id="sources">
-        <div class="section-heading"><div><div class="section-kicker">01 / INGESTION & COVERAGE</div><h2>Data source health</h2><p>Observed producer activity, ingestion outcomes, and source freshness.</p></div><div class="section-heading-side"><span class="data-chip" id="source-health-summary">Awaiting source telemetry</span><span class="result-count" id="source-count">0 sources</span></div></div>
+        <div class="section-heading"><div><div class="section-kicker">01 / INGESTION & COVERAGE</div><h2>Data source health</h2><p>Shows when each source last sent an event. A successful poll does not mean new events arrived.</p></div><div class="section-heading-side"><span class="data-chip" id="source-health-summary">Awaiting source telemetry</span><span class="result-count" id="source-count">0 sources</span></div></div>
         <div class="source-layout">
           <div class="source-grid" id="source-grid"><div class="source-empty">Loading registered and observed sources…</div></div>
           <aside class="surface-card source-register" id="source-register-panel" hidden>
@@ -87,12 +87,13 @@
 
 
       <section class="section-block" id="operations">
-        <div class="section-heading"><div><div class="section-kicker">02 / RELIABILITY & GOVERNANCE</div><h2>Operational health</h2><p>Ingestion throughput, detection execution, retention policy, and maintenance history.</p></div><div class="section-heading-side"><span class="data-chip" id="operations-status">Awaiting telemetry</span><button class="button button-secondary" id="run-retention" type="button" hidden>Run cleanup</button></div></div>
+        <div class="section-heading"><div><div class="section-kicker">02 / RELIABILITY & GOVERNANCE</div><h2>Operational health</h2><p>Recent activity, detection runs, retention and maintenance.</p></div><div class="section-heading-side"><span class="data-chip" id="operations-status">Awaiting telemetry</span><button class="button button-secondary" id="run-retention" type="button" hidden>Run cleanup</button></div></div>
         <div class="operations-metrics" id="operations-metrics">
           <article class="ops-metric"><span>EVENTS · 1H</span><strong id="ops-events-hour">—</strong><small>Created in the last hour</small></article>
           <article class="ops-metric"><span>EVENTS · 24H</span><strong id="ops-events-day">—</strong><small>Created in the last day</small></article>
           <article class="ops-metric"><span>DETECTION FAILURES</span><strong id="ops-detection-failures">—</strong><small>Failed executions · 24h</small></article>
           <article class="ops-metric"><span>INGEST REJECTIONS</span><strong id="ops-ingest-rejected">—</strong><small>Lifetime source counter</small></article>
+          <article class="ops-metric"><span>OVERDUE SCHEDULES</span><strong id="ops-schedules-overdue">—</strong><small>Enabled schedules past due</small></article>
         </div>
         <div class="operations-grid">
           <div class="surface-card retention-panel">
@@ -108,7 +109,7 @@
       </section>
 
       <section class="section-block" id="connectors">
-        <div class="section-heading"><div><div class="section-kicker">03 / SOURCE ADAPTER FRAMEWORK</div><h2>Integration registry</h2><p>Manage connector contracts and external credential references. Health checks validate configuration, not remote connectivity.</p></div><span class="result-count" id="connector-count">0 connectors</span></div>
+        <div class="section-heading"><div><div class="section-kicker">03 / SOURCE ADAPTER FRAMEWORK</div><h2>Integration registry</h2><p>Configuration checks validate saved settings. The last successful poll shows whether the remote service responded.</p></div><span class="result-count" id="connector-count">0 connectors</span></div>
         <div class="surface-card connector-workspace">
           <div class="connector-create-panel" id="connector-create-panel" hidden>
             <div class="schedule-create-heading"><strong>Register an integration</strong><span>ADMINISTRATOR CONTROL</span></div>
@@ -145,7 +146,7 @@
       </section>
 
       <section class="section-block" id="alerts">
-        <div class="section-heading"><div><div class="section-kicker">02 / DETECTION & RESPONSE</div><h2>Alert intelligence</h2><p>Prioritize active threats and manage investigations.</p></div><div class="section-heading-side"><span class="data-chip"><span class="status-orb"></span> Detection engine</span><span class="result-count" id="alert-count">0 alerts</span></div></div>
+        <div class="section-heading"><div><div class="section-kicker">02 / DETECTION & RESPONSE</div><h2>Alert intelligence</h2><p>Review alerts, assign owners and track investigations.</p></div><div class="section-heading-side"><span class="data-chip"><span class="status-orb"></span> Detection engine</span><span class="result-count" id="alert-count">0 alerts</span></div></div>
         <div class="alert-workspace">
           <div class="surface-card alert-list-card">
             <div class="card-toolbar"><div class="toolbar-title"><span class="toolbar-mark">◈</span><span><strong>Detection queue</strong><small>Latest signals · newest first</small></span></div><div class="filter-controls"><label class="sr-only" for="alert-search">Search alerts</label><input id="alert-search" class="search-input" type="search" placeholder="Search alerts…"><label class="sr-only" for="severity-filter">Filter severity</label><select id="severity-filter"><option value="">All severity</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="info">Info</option></select><label class="sr-only" for="attack-filter">Filter ATT&CK technique</label><select id="attack-filter"><option value="">All techniques</option><option value="T1110">T1110 · Brute Force</option><option value="T1110.003">T1110.003 · Password Spraying</option></select></div></div>
