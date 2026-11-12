@@ -57,5 +57,12 @@ jobs:
           node-version: "22"
       - name: Check dashboard JavaScript syntax
         run: node --check web/app.js
+      - name: Validate standalone and Wazuh Compose configurations
+        run: |
+          cp .env.example .env
+          touch wazuh-api-ca-bundle.pem
+          docker compose config --quiet
+          docker compose -f compose.yaml -f compose.wazuh.yaml config --quiet
+          rm -f .env wazuh-api-ca-bundle.pem
       - name: Run API tests
         run: python -m pytest -q
