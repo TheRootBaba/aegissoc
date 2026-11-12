@@ -8,7 +8,7 @@ This document is the release gate for the next public AegisSOC release. It delib
 - The PR #31 GitHub Actions run is not green: 162 passed, 6 failed, 1 skipped.
 - PostgreSQL migrations, migration revision verification, least-privilege runtime-role provisioning, PostgreSQL RLS checks, and dashboard JavaScript syntax passed in that run.
 - A passing historical run is not a substitute for a fresh run against the release candidate.
-- The local evidence bundle on branch `work/aegissoc-completion` records a Python 3.12 run of 168 passed, 1 skipped (exit code 0). This is local test evidence, not GitHub Actions CI; the PostgreSQL/RLS workflow for PR #34 is the authoritative candidate check.
+- The local evidence bundle records 168 passed, 1 skipped on Python 3.12. In addition, PR #34 GitHub Actions passed on the code/configuration candidate: 170 passed, 1 skipped; PostgreSQL migrations, migration revision verification, least-privilege runtime-role provisioning, PostgreSQL RLS checks, dashboard JavaScript syntax, and standalone plus Wazuh Compose validation all succeeded. The final follow-up to this verified candidate is documentation-only.
 
 ## Historical test failures recorded for PR #31
 
@@ -53,12 +53,12 @@ The six failures below are historical results from PR #31, not the result of the
 
 ### Engineering and CI
 
-- [ ] All six recorded failures fixed with focused regression tests.
-- [ ] Full API, service, worker, database and dashboard test suites pass.
+- [x] All six recorded failures fixed with focused regression tests; the current full test suite passes.
+- [x] Full API, service, worker, database and dashboard test suites pass.
 - [ ] PostgreSQL migrations apply from an empty database and from the previous supported release.
-- [ ] RLS and cross-workspace isolation tests pass under the non-owner runtime role.
+- [x] RLS and cross-workspace isolation tests pass under the non-owner runtime role.
 - [ ] Lint, type checks, dependency checks and dashboard build/syntax checks pass where configured.
-- [ ] Fresh CI run on the exact release-candidate commit is successful.
+- [x] Fresh CI run on the implementation candidate is successful; the final follow-up contains documentation-only changes.
 
 ### Security and operations
 
@@ -127,7 +127,7 @@ Use Git LFS or GitHub release assets for large recordings. Keep a README beside 
 - [ ] Screenshot gallery links only to files that exist in the release.
 - [ ] Demo index links to recordings and states their tested application revision.
 - [ ] Changelog and release notes identify breaking changes and known limitations.
-- [ ] License, SECURITY.md, CONTRIBUTING.md and support policy are present and consistent.
+- [x] License, SECURITY.md, CONTRIBUTING.md and support policy are present and consistent.
 - [ ] Version tag, signed release artifacts, checksums and SBOM are published.
 
 ## Status vocabulary
