@@ -2,9 +2,9 @@
 
 This directory contains a timestamped snapshot from the local Windows lab on 2026-11-12. It is organized by evidence type:
 
-- [API](run-20261112-003500/api/) — liveness/readiness, connector runtime health and execution history, event and alert statistics.
-- [Docker](run-20261112-003500/docker/) — AegisSOC services, Wazuh services, Windows Wazuh agent service, Docker and Compose versions.
-- [Tests](run-20261112-003500/tests/) — local Python 3.12 pytest output and process exit code.
+- [API health](run-20261112-003500/api/01-health-live.json) · [connector executions](run-20261112-003500/api/05-wazuh-connector-executions.json) · [event statistics](run-20261112-003500/api/06-event-statistics.json) — liveness/readiness, connector runtime health and execution history, event and alert statistics.
+- [Docker services](run-20261112-003500/docker/01-aegissoc-services.txt) · [Wazuh services](run-20261112-003500/docker/02-wazuh-services.txt) — AegisSOC services, Wazuh services, Windows Wazuh agent service, Docker and Compose versions.
+- [pytest results](run-20261112-003500/tests/01-pytest-results.txt) · [exit code](run-20261112-003500/tests/02-pytest-exit-code.txt) — local Python 3.12 pytest output and process exit code.
 - [Run metadata](run-20261112-003500/notes/run-info.txt) — capture timestamp and local project path.
 
 ## Recorded results
