@@ -10,3 +10,19 @@ __pycache__/
 htmlcov/
 dist/
 build/
+
+# Local credentials and environment overrides
+.env.*
+!.env.example
+
+# Local provider trust material and private keys
+wazuh-api-ca-bundle.pem
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local database files
+*.sqlite
+*.sqlite3
+*.db
