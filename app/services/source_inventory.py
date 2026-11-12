@@ -1,12 +1,12 @@
 """Atomic source inventory counters shared by single and bulk ingestion."""
 from datetime import datetime, timezone
 
-from sqlalchemy import case
+from sqlalchemy import case, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
-from app.models import SourceRegistry
+from app.models import SecurityEvent, SourceRegistry
 from app.db.session import workspace_id_for_session
 
 
@@ -23,15 +23,23 @@ def record_ingestion(
 ) -> None:
     """Atomically upsert one source's request outcome and cumulative counters."""
     now = datetime.now(timezone.utc)
+    workspace_id = workspace_id_for_session(db)
+    if event_timestamp is None:
+        event_timestamp = db.scalar(
+            select(func.max(SecurityEvent.timestamp)).where(
+                SecurityEvent.workspace_id == workspace_id,
+                SecurityEvent.source == source_name,
+            )
+        )
     values = {
-        "workspace_id": workspace_id_for_session(db),
+        "workspace_id": workspace_id,
         "source_name": source_name,
         "source_type": source_type or ("wazuh" if source_name.lower() == "wazuh" else "generic"),
         "display_name": display_name or source_name,
         "description": None,
         "health_status": "healthy" if accepted + duplicates else ("failing" if rejected else "inactive"),
         "last_attempt_at": now,
-        "last_successful_event_at": event_timestamp if accepted + duplicates else None,
+        "last_successful_event_at": event_timestamp,
         "accepted_events": accepted,
         "duplicate_events": duplicates,
         "rejected_events": rejected,
@@ -71,7 +79,6 @@ def record_ingestion(
         ))
         return
 
-    from sqlalchemy import select
     source = db.scalar(select(SourceRegistry).where(SourceRegistry.source_name == source_name))
     if source is None:
         db.add(SourceRegistry(**values))
@@ -88,7 +95,7 @@ def record_ingestion(
             source.display_name = display_name
     elif rejected:
         source.health_status = "failing"
-    if (accepted or duplicates) and event_timestamp and (
+    if event_timestamp and (
         source.last_successful_event_at is None or event_timestamp > source.last_successful_event_at
     ):
         source.last_successful_event_at = event_timestamp

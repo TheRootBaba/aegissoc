@@ -2,7 +2,9 @@
 
 [![Tests](https://github.com/TheRootBaba/aegissoc/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/TheRootBaba/aegissoc/actions/workflows/tests.yml)
 
-AegisSOC collects security events, raises alerts, helps analysts investigate incidents and manages approved response actions. It is designed for local labs and development. It is **not a certified production SIEM**.
+AegisSOC collects security events, raises alerts, supports incident investigations and manages approved response actions. It is built for local labs and development; it is **not a certified production SIEM**.
+
+**Created and maintained by BABA AHMED EL BEKAY.**
 
 ## What is implemented
 
