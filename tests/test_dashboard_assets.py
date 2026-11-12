@@ -195,7 +195,7 @@ def test_dashboard_exposes_asset_risk_and_response_playbook_workspaces():
     assert "function renderAssetRisk()" in script
     assert "function renderPlaybooks()" in script
     assert "styles.css?v=3.2" in html
-    assert "app.js?v=3.2" in html
+    assert "app.js?v=3.3" in html
 
 
 def test_dashboard_navigation_targets_existing_sections():
