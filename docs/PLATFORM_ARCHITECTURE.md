@@ -1,6 +1,6 @@
 # AegisSOC platform architecture
 
-This document describes the code that is in the repository today. It is an implementation map, not a target-state diagram. Provider-specific gaps and deployment requirements are called out where they matter.
+The diagrams and notes below describe the implementation in this repository. They do not describe planned features. Provider-specific gaps and deployment requirements are noted in the relevant sections.
 
 ## Runtime topology
 
@@ -139,7 +139,7 @@ Approval and execution are separate operations, and self-approval is prohibited.
 
 ## Persistence, migrations and audit
 
-Alembic owns schema changes. The current migration head is `0019_sigma_correlation`. The API startup path uses the migration-owner connection for schema changes and provisions/uses the restricted runtime role for normal application traffic. Workers use the runtime connection. Do not point production application traffic at the migration-owner account.
+Alembic owns schema changes. The current migration head is `0020_response_action_lifecycle`. The API startup path uses the migration-owner connection for schema changes and provisions/uses the restricted runtime role for normal application traffic. Workers use the runtime connection. Do not point production application traffic at the migration-owner account.
 
 The security audit chain detects edits, deletion, reordering and broken hash linkage within the database trust boundary. It is not immutable against an administrator who can rewrite both the audit rows and chain state. Production deployments should export or anchor audit evidence outside the database's administrative boundary.
 
