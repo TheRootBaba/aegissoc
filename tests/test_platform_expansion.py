@@ -844,6 +844,7 @@ def test_dashboard_alert_count_includes_acknowledged_work_and_flags_overdue_sche
     assert 'Overdue · ' in source
     assert 'Last successful poll: ' in source
     assert "<span>ACTIVE ALERTS</span>" in html
+    assert 'src="/static/app.js?v=3.3"' in html
 
 
 def test_connector_list_uses_latest_successful_execution_when_status_was_not_refreshed(api_client, isolated_db):
