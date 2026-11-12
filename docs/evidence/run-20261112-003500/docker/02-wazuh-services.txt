@@ -1,0 +1,4 @@
+﻿NAME                            IMAGE                           COMMAND                  SERVICE           CREATED       STATUS       PORTS
+single-node-wazuh.dashboard-1   wazuh/wazuh-dashboard:4.14.10   "/entrypoint.sh"         wazuh.dashboard   5 hours ago   Up 3 hours   0.0.0.0:443->5601/tcp, [::]:443->5601/tcp
+single-node-wazuh.indexer-1     wazuh/wazuh-indexer:4.14.10     "/entrypoint.sh openÔÇª"   wazuh.indexer     5 hours ago   Up 3 hours   0.0.0.0:9200->9200/tcp, [::]:9200->9200/tcp
+single-node-wazuh.manager-1     wazuh/wazuh-manager:4.14.10     "/init"                  wazuh.manager     5 hours ago   Up 2 hours   0.0.0.0:1514-1515->1514-1515/tcp, [::]:1514-1515->1514-1515/tcp, 0.0.0.0:514->514/udp, [::]:514->514/udp, 0.0.0.0:55000->55000/tcp, [::]:55000->55000/tcp

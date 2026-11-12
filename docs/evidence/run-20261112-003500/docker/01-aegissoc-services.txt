@@ -1,0 +1,6 @@
+﻿NAME                            IMAGE                         COMMAND                  SERVICE              CREATED             STATUS                 PORTS
+aegissoc-api-1                  aegissoc-api                  "sh -c 'DATABASE_URLÔÇª"   api                  2 hours ago         Up 2 hours (healthy)   0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+aegissoc-db-1                   postgres:16-alpine            "docker-entrypoint.sÔÇª"   db                   19 hours ago        Up 3 hours (healthy)   5432/tcp
+aegissoc-integration-worker-1   aegissoc-integration-worker   "python -m scripts.rÔÇª"   integration-worker   About an hour ago   Up About an hour       8000/tcp
+aegissoc-retention-worker-1     aegissoc-retention-worker     "python -m scripts.rÔÇª"   retention-worker     19 hours ago        Up 3 hours             8000/tcp
+aegissoc-scheduler-1            aegissoc-scheduler            "python -m scripts.dÔÇª"   scheduler            19 hours ago        Up 3 hours             8000/tcp

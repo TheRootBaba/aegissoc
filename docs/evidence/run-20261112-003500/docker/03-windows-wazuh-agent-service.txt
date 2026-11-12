@@ -1,0 +1,9 @@
+﻿
+
+Name        : WazuhSvc
+DisplayName : Wazuh
+Status      : Running
+StartType   : Automatic
+
+
+
