@@ -152,6 +152,10 @@ For a reviewer walkthrough and screenshots captured from the real application, f
 - [Operations, backup and recovery](docs/OPERATIONS_RUNBOOK.md)
 - [Dashboard design system](docs/DESIGN_SYSTEM.md)
 - [Demo and screenshot capture](docs/DEMO_CAPTURE.md)
+- [Contributor guide](CONTRIBUTING.md)
+- [Security reporting policy](SECURITY.md)
+- [Support policy](SUPPORT.md)
+- [Changelog](CHANGELOG.md)
 
 ## Development checks
 
