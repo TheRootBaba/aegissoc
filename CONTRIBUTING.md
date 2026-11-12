@@ -1,15 +1,10 @@
-# Contributing to AegisSOC
+# Contributing
 
-Thanks for helping improve AegisSOC. Contributions should preserve its explicit security boundaries and documented integration limits.
+Thanks for taking the time to work on AegisSOC. The main thing to protect when changing the project is its security model: workspace boundaries, approval checks and the limits of each integration need to remain clear.
 
-## Development environment
+## Local setup
 
-- Python 3.12
-- Git
-- Node.js 22 for dashboard JavaScript syntax checks
-- Docker Desktop / Docker Compose for local PostgreSQL-backed integration work
-
-Create a virtual environment and install dependencies:
+The project uses Python 3.12. Node.js 22 is used for the dashboard JavaScript check. Docker Desktop and Docker Compose are needed for PostgreSQL-backed integration work.
 
 ```powershell
 py -3.12 -m venv .venv
@@ -20,25 +15,30 @@ pytest -q
 node --check web/app.js
 ```
 
-For a local deployment, follow the root [README](README.md). The default Compose stack is standalone; use `compose.wazuh.yaml` only when connecting to an existing Wazuh single-node Docker network and local CA bundle.
+For a running instance, follow the root [README](README.md). The default Compose stack runs without Wazuh. Use `compose.wazuh.yaml` only when connecting to an existing Wazuh single-node Docker network and its local CA bundle.
 
-## Change expectations
+## Before opening a pull request
 
-- Add regression tests for behavior changes, including authorization and workspace boundaries.
-- Keep PostgreSQL RLS tests meaningful; SQLite tests do not prove PostgreSQL tenant isolation.
-- Use synthetic fixtures and documentation-only IP ranges in tests and examples.
-- Validate external provider response shapes with fixtures. Do not silently guess unsupported API fields or claim provider certification from mocks.
-- Keep Sigma support bounded and document unsupported syntax.
+- Add a regression test when behavior changes, especially around authentication, authorization and workspace isolation.
+- Do not treat SQLite tests as proof that PostgreSQL row-level security works. Keep the PostgreSQL checks in place.
+- Use synthetic events and documentation-only IP ranges in fixtures and examples.
+- Test provider response formats with fixtures. Do not infer support for undocumented API fields or describe a mock test as provider certification.
+- Keep Sigma support within the documented subset.
 - Keep response actions approval-gated, allowlisted and idempotent.
-- Preserve accessible labels, keyboard behavior, responsive layout and reduced-motion support in dashboard changes.
-- Update the relevant guide and screenshot gallery when user-visible workflows change. Product screenshots must be genuine captures from the application, not generated mockups.
+- For dashboard changes, check keyboard access, labels, responsive layouts and reduced-motion behavior.
+- Update the relevant guide when a workflow changes. Screenshots must come from the running application, not generated mockups.
 
-## Pull requests
+## Pull request notes
 
-- Use a focused branch and descriptive commit messages.
-- Explain the user-visible behavior, security impact, migrations and operational implications.
-- Include test results and note any checks that could not be run.
-- Never include `.env`, credentials, private keys, local databases, customer telemetry or unredacted logs.
-- Do not mark work production-ready unless the release gates in [release readiness](docs/RELEASE_READINESS.md) are met.
+Keep each change focused and use a commit message that explains what changed. In the pull request, describe:
 
-GitHub Actions validates migrations, runtime-role provisioning, PostgreSQL RLS, dashboard JavaScript syntax, Compose configuration and the test suite on pull requests to `main`.
+- the behavior being changed and why;
+- any database migration or compatibility impact;
+- security implications and affected workspace boundaries;
+- tests you ran and checks you could not run.
+
+Do not include `.env`, credentials, private keys, local databases, customer telemetry or unredacted logs.
+
+AegisSOC should not be described as production-ready until the checks in [release readiness](docs/RELEASE_READINESS.md) have been completed for the release candidate.
+
+GitHub Actions runs the test suite and checks PostgreSQL migrations, runtime-role provisioning, RLS behavior, dashboard JavaScript syntax and both Compose configurations on pull requests to `main`.

@@ -4,6 +4,11 @@ Notable project changes are recorded here. This changelog is maintained manually
 
 ## Unreleased
 
+### Documentation
+- Reworked the README around the actual local setup, project boundaries and current feature set.
+- Replaced the stale release-readiness notes with the current CI and local Wazuh smoke-test results.
+- Tightened the contributor guide so test expectations and security constraints are clear.
+
 ### Source inventory
 - Recover a missing source last-event timestamp from telemetry already stored for that source when the integration worker next records a poll.
 - Keep successful empty polls separate from event freshness; an empty poll does not mark a source healthy.
