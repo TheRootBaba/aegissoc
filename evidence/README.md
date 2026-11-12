@@ -1,6 +1,6 @@
 # Product screenshot evidence
 
-These are original screenshots captured from the running AegisSOC dashboard. They are grouped by product area and linked from [the screenshot gallery](../docs/SCREENSHOT_GALLERY.md).
+These screenshots are from an earlier AegisSOC lab build. The names describe the screen and are grouped by product area. They are linked from [the screenshot gallery](../docs/SCREENSHOT_GALLERY.md). Take new screenshots from the final build before using them as release evidence.
 
 | File | Screen |
 |---|---|

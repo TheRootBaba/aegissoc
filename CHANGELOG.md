@@ -4,6 +4,14 @@ Notable project changes are recorded here. This changelog is maintained manually
 
 ## Unreleased
 
+### Dashboard fixes
+- Record the latest event time during Wazuh Indexer polling, including duplicate records.
+- Restore connector status from saved poll history when the summary fields were not updated.
+- Count open, acknowledged and in-progress alerts as active work.
+- Mark overdue detection schedules in the dashboard and operations health.
+- Show connector poll history separately from configuration validation.
+- Rename the lab evidence snapshot and remove the local Windows user path from its metadata.
+
 ### Repository and deployment
 - Corrected the API container startup command.
 - Kept the default Docker Compose deployment independent of the optional Wazuh Docker network and local CA bundle.

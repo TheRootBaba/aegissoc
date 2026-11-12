@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.security import require_roles
@@ -46,6 +46,13 @@ def operations_health(db: Session = Depends(get_db)):
             DetectionSchedule.consecutive_failures > 0,
         )
     ) or 0
+    overdue_schedules = db.scalar(
+        select(func.count()).select_from(DetectionSchedule).where(
+            DetectionSchedule.enabled.is_(True),
+            DetectionSchedule.next_run_at < now,
+            or_(DetectionSchedule.locked_until.is_(None), DetectionSchedule.locked_until <= now),
+        )
+    ) or 0
     latest_retention = db.scalar(
         select(OperationalJobRun).where(
             OperationalJobRun.job_name == "retention_cleanup"
@@ -63,6 +70,7 @@ def operations_health(db: Session = Depends(get_db)):
     )
     degraded = (
         failing_schedules > 0
+        or overdue_schedules > 0
         or any(state in ("failing", "misconfigured", "stale") for state in source_rows)
         or any(state == "misconfigured" for state in connector_states)
         or (latest_retention is not None and latest_retention.status == "failed")
@@ -74,6 +82,7 @@ def operations_health(db: Session = Depends(get_db)):
         "sources": source_counts,
         "connectors": connector_counts,
         "enabled_schedules_with_failures": failing_schedules,
+        "enabled_schedules_overdue": overdue_schedules,
         "events_last_15_minutes": recent_events,
         "retention": {
             "last_run_at": latest_retention.completed_at if latest_retention else None,

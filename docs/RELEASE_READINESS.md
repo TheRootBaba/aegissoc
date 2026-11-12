@@ -1,27 +1,15 @@
 # AegisSOC release readiness
 
-This document is the release gate for the next public AegisSOC release. It deliberately distinguishes merged implementation from independently verified deployment evidence.
+Use this checklist before publishing a release. Code being merged does not mean the deployment has been tested.
 
 ## Current baseline
 
-- Phases 1.35–1.37 are present in the merged implementation (PR #31).
-- The PR #31 GitHub Actions run is not green: 162 passed, 6 failed, 1 skipped.
-- PostgreSQL migrations, migration revision verification, least-privilege runtime-role provisioning, PostgreSQL RLS checks, and dashboard JavaScript syntax passed in that run.
-- A passing historical run is not a substitute for a fresh run against the release candidate.
-- The local evidence bundle records 168 passed, 1 skipped on Python 3.12. In addition, PR #34 GitHub Actions passed on the code/configuration candidate: 170 passed, 1 skipped; PostgreSQL migrations, migration revision verification, least-privilege runtime-role provisioning, PostgreSQL RLS checks, dashboard JavaScript syntax, and standalone plus Wazuh Compose validation all succeeded. The final follow-up to this verified candidate is documentation-only.
-
-## Historical test failures recorded for PR #31
-
-| Test | Recorded failure | Required closure |
-|---|---|---|
-| `tests/test_api.py::test_admin_can_create_user_and_user_can_login` | User creation/login returned HTTP 403 instead of 200 | Trace admin authorization and workspace membership setup; preserve least privilege and add regression coverage |
-| `tests/test_api.py::test_scheduler_worker_executes_due_schedule_and_persists_result` | Expected 5 executions, got 10 | Check scheduler batch/claim semantics and prevent duplicate processing |
-| `tests/test_dashboard_assets.py::test_dashboard_has_role_aware_team_and_source_management` | Expected role-guard string absent from current dashboard bundle | Test observable role-based behavior rather than a brittle source substring; retain admin/non-admin coverage |
-| `tests/test_platform_expansion.py::test_sigma_api_import_test_and_enable` | Composite primary key lookup supplied an incomplete identifier | Use both workspace ID and rule ID in lookup and add tenant-scoped regression |
-| `tests/test_platform_expansion.py::test_sigma_event_count_correlation_creates_grouped_evidence_alert` | Expected one alert, got zero | Trace fixture event fields, rule matching, correlation grouping and evidence creation |
-| `tests/test_platform_expansion.py::test_response_worker_retries_transient_receiver_failure_with_stable_idempotency` | Naive/aware datetime comparison raised TypeError | Normalize persisted timestamps at the boundary and test SQLite and PostgreSQL behavior |
-
-The six failures below are historical results from PR #31, not the result of the current local test run. The local branch evidence records the full pytest suite passing; retain this history for traceability and require the fresh PR #34 PostgreSQL/RLS workflow to confirm the fixes on the exact candidate commit.
+- PR #34 is merged into `main` at `3e7c70456e9db9de27543d42917b92f1a89d0291`.
+- Its GitHub Actions run passed on the merged implementation candidate: 170 passed, 1 skipped. PostgreSQL migrations, runtime-role setup, RLS tests, dashboard JavaScript syntax and both Compose configurations passed.
+- The six failures recorded during PR #31 are historical. The corresponding tests passed in the PR #34 full-suite run.
+- The local lab snapshot was captured at 00:35 UTC on 12 November 2026. It predates the dashboard state reported later that morning and is not a current health report.
+- PR #35 corrects source event timestamps, connector status reporting, active-alert counts and overdue-schedule visibility. GitHub Actions passed on the current head `304b7fbc9f6130c96394b3cc94607f368fa2e49a`: 174 passed, 1 skipped. PostgreSQL migrations, runtime-role setup, RLS, dashboard syntax and both Compose configurations passed. The local Wazuh smoke test is still outstanding.
+- A passing CI run verifies the tested code. It does not replace a clean installation, refreshed product screenshots or external-provider testing.
 
 ## Phase 1.35–1.37 verification still required
 
@@ -58,7 +46,9 @@ The six failures below are historical results from PR #31, not the result of the
 - [ ] PostgreSQL migrations apply from an empty database and from the previous supported release.
 - [x] RLS and cross-workspace isolation tests pass under the non-owner runtime role.
 - [ ] Lint, type checks, dependency checks and dashboard build/syntax checks pass where configured.
-- [x] Fresh CI run on the implementation candidate is successful; the final follow-up contains documentation-only changes.
+- [x] PR #34 implementation candidate passed CI (170 passed, 1 skipped).
+- [x] Dashboard health follow-up implementation passes CI (174 passed, 1 skipped).
+- [x] Final documentation and dashboard follow-up head passes CI (174 passed, 1 skipped).
 
 ### Security and operations
 
@@ -81,7 +71,7 @@ The six failures below are historical results from PR #31, not the result of the
 
 ## Documentation and evidence inventory
 
-The [organized screenshot gallery](SCREENSHOT_GALLERY.md) contains genuine dashboard captures for the overview, alert queue, cases, investigation workbench, detection rules and schedules, entity correlation, threat intelligence, integrations, asset risk, response playbook, audit trail, team access, and operations/retention. A timestamped local runtime/test evidence bundle is indexed in [docs/evidence/README.md](evidence/README.md). The screenshots predate this branch and are not asserted to be captures of the exact candidate SHA.
+The [organized screenshot gallery](SCREENSHOT_GALLERY.md) contains genuine historical dashboard captures for the overview, alert queue, cases, investigation workbench, detection rules and schedules, entity correlation, threat intelligence, integrations, asset risk, response playbook, audit trail, team access, and operations/retention. The timestamped local runtime/test bundle is indexed in [docs/evidence/README.md](evidence/README.md). It records the 00:35 UTC lab snapshot, not the later dashboard session. The screenshots predate the dashboard follow-up and do not show the current candidate. Recapture them after the local smoke test.
 
 Add or refresh the following captures from the release candidate using synthetic data only:
 

@@ -1,6 +1,8 @@
 # AegisSOC
 
-A local-first security operations platform for collecting security telemetry, investigating alerts and coordinating controlled response. The repository is an actively developed engineering project and lab deployment. It is **not a certified production SIEM**.
+[![Tests](https://github.com/TheRootBaba/aegissoc/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/TheRootBaba/aegissoc/actions/workflows/tests.yml)
+
+AegisSOC collects security events, raises alerts, helps analysts investigate incidents and manages approved response actions. It is designed for local labs and development. It is **not a certified production SIEM**.
 
 ## What is implemented
 
@@ -17,11 +19,11 @@ A local-first security operations platform for collecting security telemetry, in
 | Operations | Separate scheduler, retention, integration and response workers; health endpoints; backup verification; structured logs |
 | Identity | Local accounts and optional pre-provisioned OIDC identities; environment/file-backed secret references |
 
-Provider compatibility still depends on the API version, permissions and response shape of the target installation. Scanner imports normalize exports; they do not run scans. Sigma support is a documented subset, not a complete Sigma backend. Response actions are sent to a configured receiver; AegisSOC does not directly isolate endpoints or execute arbitrary commands.
+Integrations depend on the provider version, account permissions and API response format. Scanner adapters import existing exports; they do not run scans. Sigma support covers the documented subset only. Response actions go to a configured receiver. AegisSOC does not directly isolate endpoints or run commands on them.
 
 ## Architecture
 
-The API handles authenticated requests and serves the dashboard. PostgreSQL is the system of record. Background workers run independently so polling, detection schedules, retention and response delivery do not execute inside analyst-facing request handlers.
+The API handles sign-in and dashboard requests. PostgreSQL stores the data. Separate workers handle connector polling, scheduled detections, retention and response delivery.
 
 ```mermaid
 flowchart TB

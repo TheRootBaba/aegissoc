@@ -102,8 +102,7 @@ function clearSession() {
   showAuth();
 }
 async function api(path, options = {}) {
-  // Merge options first, then build headers so caller options cannot accidentally
-  // replace the bearer token. This was the cause of authenticated actions failing.
+  // Keep the session token when an action supplies its own headers.
   const headers = {
     Accept: "application/json",
     ...(options.body ? { "Content-Type": "application/json" } : {}),
@@ -124,14 +123,14 @@ async function api(path, options = {}) {
 function renderMetrics() {
   const byStatus = state.alertStats.by_status || {};
   const bySeverity = state.alertStats.by_severity || {};
-  const open = byStatus.open || 0;
+  const active = (byStatus.open || 0) + (byStatus.acknowledged || 0) + (byStatus.in_progress || 0);
   const high = (bySeverity.high || 0) + (bySeverity.critical || 0);
   const progress = (byStatus.acknowledged || 0) + (byStatus.in_progress || 0);
-  $("metric-open").textContent = count(open);
+  $("metric-open").textContent = count(active);
   $("metric-high").textContent = count(high);
   $("metric-events").textContent = count(state.eventStats.total_events ?? state.events.length);
   $("metric-progress").textContent = count(progress);
-  $("nav-alert-count").textContent = count(open);
+  $("nav-alert-count").textContent = count(active);
   $("alert-count").textContent = count(state.alertStats.total_alerts ?? state.alerts.length) + " alerts";
   $("event-count").textContent = count(state.events.length) + " recent events";
   $("event-total-footer").textContent = count(state.queryResult?.total ?? state.eventStats.total_events ?? state.events.length);
@@ -307,18 +306,23 @@ function renderSchedules() {
   $("schedule-create-panel").hidden = !isAdmin;
   $("schedule-count").textContent = count(schedules.length) + " schedules";
   $("schedules-grid").innerHTML = schedules.length ? schedules.map((schedule) => {
-    const status = schedule.enabled ? (schedule.last_status || "pending") : "paused";
-    const statusClass = status === "success" ? "healthy" : status === "failed" ? "failing" : "inactive";
+    const nextRun = schedule.next_run_at ? new Date(schedule.next_run_at) : null;
+    const overdue = Boolean(schedule.enabled && nextRun && !Number.isNaN(nextRun.getTime()) && nextRun.getTime() < Date.now() - 30000);
+    const status = schedule.enabled ? (overdue ? "overdue" : (schedule.last_status || "pending")) : "paused";
+    const statusClass = status === "success" ? "healthy" : (status === "failed" || overdue) ? "failing" : "inactive";
     const interval = schedule.interval_seconds < 3600
       ? Math.round(schedule.interval_seconds / 60) + " min"
       : schedule.interval_seconds % 3600 === 0
         ? schedule.interval_seconds / 3600 + " hr" : Math.round(schedule.interval_seconds / 60) + " min";
+    const nextRunText = nextRun && !Number.isNaN(nextRun.getTime())
+      ? (overdue ? "Overdue · " : "") + date(schedule.next_run_at)
+      : "Not scheduled";
     return '<article class="schedule-card"><div class="schedule-card-head"><div><strong>' +
       esc(schedule.name) + '</strong><small>Every ' + esc(interval) + ' · ' +
       esc(schedule.window_minutes) + 'm window · threshold ' + esc(schedule.threshold) +
       '</small></div><span class="source-state ' + statusClass + '">' + esc(status.replaceAll("_", " ")) +
       '</span></div><div class="schedule-timing"><span>Next run<strong>' +
-      esc(date(schedule.next_run_at)) + '</strong></span><span>Last run<strong>' +
+      esc(nextRunText) + '</strong></span><span>Last run<strong>' +
       esc(schedule.last_run_at ? date(schedule.last_run_at) : "Never") + '</strong></span><span>Failures<strong>' +
       count(schedule.consecutive_failures) + '</strong></span></div>' +
       (schedule.last_error ? '<div class="schedule-error">' + esc(schedule.last_error) + '</div>' : '') +
@@ -327,32 +331,8 @@ function renderSchedules() {
       (isAdmin ? '<button class="button button-secondary" type="button" data-schedule-toggle="' +
       esc(schedule.id) + '" data-enabled="' + esc(schedule.enabled) + '">' +
       (schedule.enabled ? "Pause" : "Enable") + '</button><button class="button button-quiet schedule-delete" type="button" data-schedule-delete="' +
-      esc(schedule.id) + '">Delete</button>' : '') + '</div></article>';
-  }).join("") : '<div class="source-empty">No detection schedules configured. Administrators can create the first recurring detection job here.</div>';
-}
-async function createDetectionSchedule(event) {
-  event.preventDefault();
-  const button = $("schedule-create-button");
-  button.disabled = true;
-  $("schedule-create-feedback").textContent = "Creating schedule…";
-  try {
-    await api("/api/v1/detection-schedules", { method: "POST", body: JSON.stringify({
-      name: $("schedule-name").value.trim(),
-      interval_seconds: Number($("schedule-interval").value),
-      window_minutes: Number($("schedule-window").value),
-      threshold: Number($("schedule-threshold").value),
-      enabled: true,
-    }) });
-    $("schedule-create-form").reset();
-    $("schedule-create-feedback").textContent = "Schedule created. Its first run is due after the configured interval.";
-    showToast("Detection schedule created.");
-    await refreshDashboard();
-  } catch (error) {
-    $("schedule-create-feedback").textContent = error.message;
-    showToast(error.message, "error");
-  } finally {
-    button.disabled = false;
-  }
+      esc(schedule.id) + '">Delete</button>' : "") + '</div></article>';
+  }).join("") : '<div class="source-empty">No detection schedules yet.</div>';
 }
 async function loadScheduleHistory(scheduleId) {
   try {
@@ -782,6 +762,7 @@ function renderOperations() {
   $("ops-events-day").textContent = count(metrics.events?.last_24_hours);
   $("ops-detection-failures").textContent = count(metrics.detection_executions?.failed_last_24_hours);
   $("ops-ingest-rejected").textContent = count(metrics.ingestion?.rejected_total);
+  $("ops-schedules-overdue").textContent = count(health.enabled_schedules_overdue);
   const status = health.status || "unknown";
   $("operations-status").textContent = status.replaceAll("_", " ");
   $("operations-status").className = "data-chip " + (status === "operational" ? "status-healthy" : "status-warning");
@@ -811,14 +792,37 @@ function renderConnectors() {
   $("connector-create-panel").hidden = !admin;
   $("connector-count").textContent = count(state.connectors.length) + " connectors";
   $("connector-list").innerHTML = state.connectors.length
-    ? state.connectors.map((connector) =>
-      '<article class="connector-row"><div class="connector-identity"><span class="connector-mark">' + esc(connector.connector_type.slice(0, 2).toUpperCase()) + '</span><div><strong>' + esc(connector.display_name) + '</strong><small>' + esc(connector.connector_key) + ' · ' + esc(connector.connector_type) + '</small></div></div><span class="source-state ' + (connector.health_status === "misconfigured" ? "failing" : connector.health_status === "disabled" ? "inactive" : connector.health_status === "observed" ? "healthy" : "stale") + '">' + esc(connector.health_status) + '</span><div class="connector-config-summary"><code>' + esc(JSON.stringify(connector.config || {})) + '</code><small>Credential ref: ' + esc(connector.credential_ref || "not configured") + '</small></div><div class="connector-actions">' +
-      (admin ? '<button class="button button-quiet" type="button" data-connector-check="' + esc(connector.id) + '">Validate config</button><button class="button button-quiet schedule-delete" type="button" data-connector-delete="' + esc(connector.id) + '">Delete</button>' : "") +
-      '</div></article>'
-    ).join("")
-    : '<div class="source-empty">No connectors registered. Add a Wazuh, Syslog, HTTP event, or generic adapter to bind a source key to its ingestion contract.</div>';
+    ? state.connectors.map((connector) => {
+      const config = connector.config || {};
+      const stateClass = connector.health_status === "misconfigured" || connector.health_status === "degraded"
+        ? "failing" : connector.health_status === "disabled" ? "inactive"
+          : connector.health_status === "observed" ? "healthy" : "stale";
+      const settings = [
+        config.endpoint ? "Endpoint: " + config.endpoint : "",
+        config.interval_seconds ? "Poll interval: " + config.interval_seconds + "s" : "",
+        config.page_size ? "Page size: " + config.page_size : "",
+        config.lookback ? "Lookback: " + config.lookback : "",
+      ].filter(Boolean).join(" · ");
+      const pollHistory = connector.last_success_at
+        ? "Last successful poll: " + date(connector.last_success_at)
+        : "No successful poll recorded";
+      const checked = connector.last_checked_at
+        ? "Last checked: " + date(connector.last_checked_at)
+        : "Not checked yet";
+      return '<article class="connector-row"><div class="connector-identity"><span class="connector-mark">' +
+        esc(connector.connector_type.slice(0, 2).toUpperCase()) + '</span><div><strong>' +
+        esc(connector.display_name) + '</strong><small>' + esc(connector.connector_key) + ' · ' +
+        esc(connector.connector_type) + '</small></div></div><span class="source-state ' + stateClass + '">' +
+        esc(connector.health_status) + '</span><div class="connector-config-summary"><span>' +
+        esc(settings || "No additional settings") + '</span><small>' + esc(pollHistory) + ' · ' +
+        esc(checked) + '</small><small>Credential reference: ' +
+        esc(connector.credential_ref || "Not configured") + '</small></div><div class="connector-actions">' +
+        (admin ? '<button class="button button-quiet" type="button" data-connector-check="' + esc(connector.id) +
+        '">Validate settings</button><button class="button button-quiet schedule-delete" type="button" data-connector-delete="' +
+        esc(connector.id) + '">Delete</button>' : "") + '</div></article>';
+    }).join("")
+    : '<div class="source-empty">No connectors registered. Add an integration to connect an external source.</div>';
 }
-
 async function saveRetentionPolicy(kind) {
   const button = document.querySelector('[data-retention-save="' + CSS.escape(kind) + '"]');
   if (!button) return;

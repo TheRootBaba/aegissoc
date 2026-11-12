@@ -18,18 +18,20 @@ def record_ingestion(
     duplicates: int,
     rejected: int,
     event_timestamp: datetime | None = None,
+    source_type: str | None = None,
+    display_name: str | None = None,
 ) -> None:
     """Atomically upsert one source's request outcome and cumulative counters."""
     now = datetime.now(timezone.utc)
     values = {
         "workspace_id": workspace_id_for_session(db),
         "source_name": source_name,
-        "source_type": "wazuh" if source_name.lower() == "wazuh" else "generic",
-        "display_name": source_name,
+        "source_type": source_type or ("wazuh" if source_name.lower() == "wazuh" else "generic"),
+        "display_name": display_name or source_name,
         "description": None,
         "health_status": "healthy" if accepted + duplicates else ("failing" if rejected else "inactive"),
         "last_attempt_at": now,
-        "last_successful_event_at": event_timestamp if accepted else None,
+        "last_successful_event_at": event_timestamp if accepted + duplicates else None,
         "accepted_events": accepted,
         "duplicate_events": duplicates,
         "rejected_events": rejected,
@@ -57,6 +59,8 @@ def record_ingestion(
             index_elements=[SourceRegistry.workspace_id, SourceRegistry.source_name],
             set_={
                 "health_status": next_status,
+                "source_type": case((excluded.source_type != "generic", excluded.source_type), else_=SourceRegistry.source_type),
+                "display_name": case((SourceRegistry.display_name == SourceRegistry.source_name, excluded.display_name), else_=SourceRegistry.display_name),
                 "last_attempt_at": excluded.last_attempt_at,
                 "last_successful_event_at": next_success,
                 "accepted_events": SourceRegistry.accepted_events + excluded.accepted_events,
@@ -78,9 +82,13 @@ def record_ingestion(
     source.rejected_events += rejected
     if accepted + duplicates:
         source.health_status = "healthy"
+        if source_type and source_type != "generic":
+            source.source_type = source_type
+        if display_name and source.display_name == source.source_name:
+            source.display_name = display_name
     elif rejected:
         source.health_status = "failing"
-    if accepted and event_timestamp and (
+    if (accepted or duplicates) and event_timestamp and (
         source.last_successful_event_at is None or event_timestamp > source.last_successful_event_at
     ):
         source.last_successful_event_at = event_timestamp
