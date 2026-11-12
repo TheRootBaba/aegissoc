@@ -2,30 +2,35 @@
 
 [![Tests](https://github.com/TheRootBaba/aegissoc/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/TheRootBaba/aegissoc/actions/workflows/tests.yml)
 
-AegisSOC collects security events, raises alerts, supports incident investigations and manages approved response actions. It is built for local labs and development; it is **not a certified production SIEM**.
+AegisSOC is a self-hosted security operations platform for collecting events, investigating alerts and managing approved response actions. The project is aimed at local labs and development environments. It is **not a certified production SIEM**.
 
-**Created and maintained by BABA AHMED EL BEKAY.**
+**Maintainer:** BABA AHMED EL BEKAY
 
-## What is implemented
+## What it does
 
-| Area | Current implementation |
+| Area | Included functionality |
 |---|---|
-| Ingestion | Canonical event API, source normalizers, native Wazuh alert ingestion, bounded bulk ingestion and replay protection |
-| Investigation | Event search, structured filters, saved queries, alert evidence and cross-source entity pivots |
-| Detection | Deterministic starter detections, ATT&CK metadata, governed Sigma subset, bounded event-count correlation and scheduled execution |
-| Incident workflow | Alert lifecycle, analyst notes, incident cases, linked evidence and audit history |
-| Threat intelligence | Local IOC registry, MISP and OpenCTI feed adapters, provenance, expiry and analyst revocation |
-| Asset risk | Managed asset inventory and scanner export imports for Nessus, Tenable and Qualys |
-| Response | Approval-gated response requests, separate execution, signed webhook delivery, idempotency and receiver reconciliation |
-| Workspace security | Membership-based workspace selection, ORM scoping, PostgreSQL RLS and workspace-aware background workers |
-| Operations | Separate scheduler, retention, integration and response workers; health endpoints; backup verification; structured logs |
-| Identity | Local accounts and optional pre-provisioned OIDC identities; environment/file-backed secret references |
+| Event ingestion | Canonical event API, source normalizers, Wazuh alert ingestion, bounded bulk ingestion and replay protection |
+| Investigation | Event search, filters, saved queries, alert evidence and pivots across related entities |
+| Detection | Built-in rules, ATT&CK metadata, a documented Sigma subset, event-count correlation and scheduled runs |
+| Incident handling | Alert lifecycle, analyst notes, cases, linked evidence and audit history |
+| Threat intelligence | Local IOC registry, MISP and OpenCTI adapters, source provenance, expiry and analyst revocation |
+| Asset risk | Asset inventory and imports from Nessus, Tenable and Qualys scanner exports |
+| Response | Approval-gated requests, separate execution, signed webhook delivery, idempotency and receiver reconciliation |
+| Workspace security | Membership-based workspace selection, ORM scoping, PostgreSQL RLS and workspace-aware workers |
+| Operations | Separate scheduler, retention, integration and response workers; health checks, backup verification and structured logs |
+| Identity | Local accounts, optional pre-provisioned OIDC identities and environment/file-backed secret references |
 
-Integrations depend on the provider version, account permissions and API response format. Scanner adapters import existing exports; they do not run scans. Sigma support covers the documented subset only. Response actions go to a configured receiver. AegisSOC does not directly isolate endpoints or run commands on them.
+A few limits are worth calling out:
 
-## Architecture
+- Scanner integrations import existing exports; they do not launch scans.
+- Sigma support is limited to the syntax described in the [detection guide](docs/SIGMA_DETECTION.md).
+- Response actions are sent to a configured receiver. AegisSOC does not directly isolate endpoints or execute commands on them.
+- Provider support depends on API versions, permissions and response formats. A passing fixture test is not provider certification.
 
-The API handles sign-in and dashboard requests. PostgreSQL stores the data. Separate workers handle connector polling, scheduled detections, retention and response delivery.
+## How it is put together
+
+The API serves the dashboard and handles user requests. PostgreSQL is the system of record. Background workers poll integrations, run scheduled detections, apply retention policies and deliver approved response requests.
 
 ```mermaid
 flowchart TB
@@ -49,50 +54,50 @@ flowchart TB
     backup --> archives[("Backup archive")]
 ```
 
-For the request flow, tenant boundary, provider behavior, response lifecycle and failure handling, see [Platform architecture](docs/PLATFORM_ARCHITECTURE.md).
+The [platform architecture guide](docs/PLATFORM_ARCHITECTURE.md) covers request flow, workspace boundaries, provider behavior, response handling and failure cases.
 
-## Run locally with Docker Desktop
+## Run it locally
 
-Requirements: Windows 10/11, WSL2, Docker Desktop using the WSL2 backend, and Git. Python 3.12 is needed for running the test suite outside Docker.
+The documented setup targets Windows 10/11 with WSL2 and Docker Desktop using the WSL2 backend. Git is also required. Python 3.12 is needed if you want to run the test suite on the host.
 
-1. Create the local environment file only if it does not already exist:
+1. Create `.env` from the example if you do not already have one:
 
    ```powershell
    if (-not (Test-Path .env)) {
        Copy-Item .env.example .env
    } else {
-       Write-Host ".env already exists; preserving its credentials."
+       Write-Host ".env already exists; leaving it unchanged."
    }
    ```
 
-2. Review `.env`. Set unique local values for `POSTGRES_PASSWORD`, `RUNTIME_DB_PASSWORD` and `AUTH_SECRET_KEY`. When reusing an initialized PostgreSQL volume, the `POSTGRES_PASSWORD` value must match the password already stored for the database owner role; changing the environment file does not rotate a role password inside an existing database. Keep `.env` private.
+2. Review `.env` and set unique local values for `POSTGRES_PASSWORD`, `RUNTIME_DB_PASSWORD` and `AUTH_SECRET_KEY`. If you reuse an initialized PostgreSQL volume, `POSTGRES_PASSWORD` must still match the password stored for the database owner role. Editing the environment file does not change an existing database role password. Keep `.env` out of Git.
 
-3. Build and start the stack:
+3. Build and start the default stack:
 
    ```powershell
    docker compose up --build -d
    docker compose ps
    ```
 
-   Wait for `api` to report healthy. The API startup applies pending Alembic migrations using the migration-owner connection and then serves traffic through the restricted runtime database role. Worker services wait for API readiness.
+   Wait for the API health check to pass. On startup, the API applies pending Alembic migrations with the migration-owner connection, then serves requests through the restricted runtime database role. Workers wait for API readiness.
 
-   The base stack does not require a Wazuh installation. To attach the integration worker to an existing Wazuh Docker single-node network, first create the network and local CA bundle, then use the optional override documented in [Integration adapters](docs/INTEGRATIONS.md):
+   The default stack does not need Wazuh. To connect the integration worker to an existing Wazuh single-node Docker network, create that network and the local CA bundle first, then use the optional override described in [Integration adapters](docs/INTEGRATIONS.md):
 
    ```powershell
    docker compose -f compose.yaml -f compose.wazuh.yaml up --build -d
    ```
 
-   Keep `wazuh-api-ca-bundle.pem` and provider credentials local; never commit them.
+   Keep `wazuh-api-ca-bundle.pem` and provider credentials on your machine. Do not commit them.
 
-4. Create the first administrator interactively:
+4. Create the first administrator:
 
    ```powershell
    docker compose exec api python -m scripts.create_admin
    ```
 
-5. Open the dashboard at [http://localhost:8000/dashboard](http://localhost:8000/dashboard). API reference: [http://localhost:8000/docs](http://localhost:8000/docs). Health checks: `/health/live` and `/health/ready`.
+5. Open the dashboard at [http://localhost:8000/dashboard](http://localhost:8000/dashboard). The API reference is at [http://localhost:8000/docs](http://localhost:8000/docs). Health endpoints are available at `/health/live` and `/health/ready`.
 
-6. Check migration and worker state:
+6. Check migration and worker status:
 
    ```powershell
    docker compose exec api alembic current
@@ -100,11 +105,23 @@ Requirements: Windows 10/11, WSL2, Docker Desktop using the WSL2 backend, and Gi
    docker compose logs --tail 80 api scheduler retention-worker integration-worker response-worker
    ```
 
-Stop the services with `docker compose down`. This preserves the named database volume. **Do not use `docker compose down -v` unless you intentionally want to delete the local database and backup volumes.**
+Use `docker compose down` to stop the stack without deleting its data. **Do not run `docker compose down -v` unless you intend to remove the database and backup volumes.**
 
-## Synthetic event walkthrough
+## Try a synthetic event
 
-Use a dedicated lab workspace and synthetic data only. After signing in, ingest one test event:
+Use a dedicated lab workspace and synthetic data. First sign in with a local account and keep the password out of shell history and source files:
+
+```powershell
+$username = Read-Host "AegisSOC username"
+$securePassword = Read-Host "AegisSOC password" -AsSecureString
+$password = [System.Net.NetworkCredential]::new("", $securePassword).Password
+$loginBody = @{ username = $username; password = $password } | ConvertTo-Json
+$login = Invoke-RestMethod -Method Post -Uri "http://localhost:8000/api/v1/auth/login" -ContentType "application/json" -Body $loginBody
+$headers = @{ Authorization = "Bearer $($login.access_token)" }
+Remove-Variable password, loginBody, securePassword
+```
+
+Then send a test event:
 
 ```powershell
 $body = @{
@@ -124,46 +141,42 @@ Invoke-RestMethod -Method Post -Uri "http://localhost:8000/api/v1/events" `
   -Headers $headers -ContentType "application/json" -Body $body
 ```
 
-First obtain a token (use your local lab account; do not hard-code or commit a real password):
+The API contract and source-specific examples are available in the OpenAPI page and integration guides.
 
-```powershell
-$username = Read-Host "AegisSOC username"
-$securePassword = Read-Host "AegisSOC password" -AsSecureString
-$password = [System.Net.NetworkCredential]::new("", $securePassword).Password
-$loginBody = @{ username = $username; password = $password } | ConvertTo-Json
-$login = Invoke-RestMethod -Method Post -Uri "http://localhost:8000/api/v1/auth/login" -ContentType "application/json" -Body $loginBody
-$headers = @{ Authorization = "Bearer $($login.access_token)" }
-Remove-Variable password, loginBody, securePassword
-```
+For a reviewer walkthrough and genuine application screenshots, see [Demo and screenshot capture](docs/DEMO_CAPTURE.md). Use synthetic data for captures; do not present mockups as screenshots of the running product.
 
-Then run the event-ingestion example above. The API contract and source-specific examples are documented in the OpenAPI page and integration guides.
+## Documentation
 
-For a reviewer walkthrough and screenshots captured from the real application, follow [Demo and screenshot capture](docs/DEMO_CAPTURE.md). Do not use generated UI mockups or screenshots containing customer data as product evidence.
-
-## Engineering documentation
-
+### Architecture and development
 - [Platform architecture and data flows](docs/PLATFORM_ARCHITECTURE.md)
-- [Platform phases 1.30b–1.34 and remaining roadmap](docs/PLATFORM_COMPLETION_1_30B_1_34.md)
 - [Workspace identity and PostgreSQL RLS](docs/WORKSPACE_IDENTITY.md)
 - [Integration runtime](docs/INTEGRATION_RUNTIME.md)
-- [Native integrations](docs/INTEGRATIONS.md)
-- [Threat-feed synchronization](docs/THREAT_FEED_SYNC.md)
-- [Threat intelligence and IOC handling](docs/THREAT_INTELLIGENCE.md)
-- [Vulnerability scanner imports](docs/VULNERABILITY_IMPORTS.md)
-- [Sigma detection engineering](docs/SIGMA_DETECTION.md)
-- [Response action governance](docs/RESPONSE_GOVERNANCE.md)
 - [Worker scaling](docs/SCALING_AND_WORKERS.md)
-- [Operations, backup and recovery](docs/OPERATIONS_RUNBOOK.md)
 - [Dashboard design system](docs/DESIGN_SYSTEM.md)
+
+### Detection and response
+- [Sigma detection](docs/SIGMA_DETECTION.md)
+- [Threat intelligence and IOC handling](docs/THREAT_INTELLIGENCE.md)
+- [Threat-feed synchronization](docs/THREAT_FEED_SYNC.md)
+- [Vulnerability scanner imports](docs/VULNERABILITY_IMPORTS.md)
+- [Asset risk and playbooks](docs/ASSET_RISK_AND_PLAYBOOKS.md)
+- [Response action governance](docs/RESPONSE_GOVERNANCE.md)
+- [Incident response](docs/INCIDENT_RESPONSE.md)
+
+### Running and reviewing the project
+- [Native integrations](docs/INTEGRATIONS.md)
+- [Operations, backup and recovery](docs/OPERATIONS_RUNBOOK.md)
 - [Demo and screenshot capture](docs/DEMO_CAPTURE.md)
+- [Screenshot gallery](docs/SCREENSHOT_GALLERY.md)
+- [Release readiness](docs/RELEASE_READINESS.md)
 - [Contributor guide](CONTRIBUTING.md)
-- [Security reporting policy](SECURITY.md)
+- [Security reporting](SECURITY.md)
 - [Support policy](SUPPORT.md)
 - [Changelog](CHANGELOG.md)
 
-## Development checks
+## Run the tests
 
-Create and activate a Python 3.12 environment, then install the development requirements:
+Create a Python 3.12 environment and install the project requirements:
 
 ```powershell
 py -3.12 -m venv .venv
@@ -173,17 +186,17 @@ pip install -r requirements.txt
 pytest -q
 ```
 
-The CI workflow also validates PostgreSQL migrations and RLS behavior, runs the API tests, and checks dashboard JavaScript syntax. SQLite-backed unit tests are useful for fast regression feedback; use the PostgreSQL CI checks to validate RLS enforcement.
+CI also checks PostgreSQL migrations, runtime-role setup, row-level security, dashboard JavaScript syntax and Docker Compose configuration. SQLite-backed unit tests are useful for quick feedback, but they do not prove PostgreSQL RLS isolation.
 
-## Security notes
+## Security and deployment notes
 
-- Never commit `.env`, tokens, real logs, production screenshots or exported customer telemetry.
+- Do not commit `.env`, tokens, private keys, real logs, production screenshots or customer telemetry.
 - Use PostgreSQL and the dedicated non-owner runtime role for workspace isolation.
 - Keep migration-owner credentials separate from application runtime credentials.
-- OIDC identities must be provisioned by an administrator; unknown external identities are not auto-created.
-- The audit hash chain is tamper-evident within the database trust boundary, not an external immutable archive.
-- Before a real production deployment, complete the remaining assurance work in the [platform roadmap](docs/PLATFORM_COMPLETION_1_30B_1_34.md), including independent security review, load testing, restore drills, secrets rotation and provider validation.
+- OIDC identities must be provisioned by an administrator; unknown external identities are not created automatically.
+- The audit hash chain is tamper-evident inside the database trust boundary. It is not an external immutable archive.
+- Before using AegisSOC in production, complete the remaining work in the [release checklist](docs/RELEASE_READINESS.md), including an independent security review, load testing, restore drills, secrets rotation and provider validation.
 
-## Product evidence
+## Evidence
 
-See the [dashboard and API screenshot gallery](docs/SCREENSHOT_GALLERY.md), the [organized screenshot index](evidence/README.md), and the [timestamped runtime verification evidence](docs/evidence/README.md) for genuine captures and lab checks. Screenshots and runtime snapshots describe their captured environment and should not be read as a production certification.
+The [screenshot gallery](docs/SCREENSHOT_GALLERY.md), [screenshot index](evidence/README.md) and [runtime verification index](docs/evidence/README.md) contain captures and lab evidence. Each item reflects the environment and date when it was collected; none should be read as production certification.
