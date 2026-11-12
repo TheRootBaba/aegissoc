@@ -898,7 +898,7 @@ def test_overdue_detection_schedule_degrades_operations_health(api_client, isola
     assert health.json()["enabled_schedules_overdue"] == 1
 
 
-def test_source_inventory_recovers_event_time_from_existing_telemetry(isolated_db):
+def test_source_inventory_recovers_event_time_from_existing_telemetry(api_client, isolated_db):
     from app.services.source_inventory import record_ingestion
 
     workspace_id = UUID(isolated_db.info["workspace_id"])
@@ -941,3 +941,8 @@ def test_source_inventory_recovers_event_time_from_existing_telemetry(isolated_d
     assert source.last_successful_event_at.replace(tzinfo=timezone.utc) == event_time
     assert source.accepted_events == 911
     assert source.duplicate_events == 688
+    listed = api_client.get("/api/v1/sources")
+    assert listed.status_code == 200
+    recovered = next(item for item in listed.json() if item["source_name"] == "wazuh-indexer-lab")
+    assert recovered["health_status"] == "stale"
+    assert recovered["last_successful_event_at"] is not None
