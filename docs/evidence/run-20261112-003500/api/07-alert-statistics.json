@@ -1,0 +1,11 @@
+﻿{
+    "total_alerts":  4,
+    "by_status":  {
+                      "acknowledged":  3,
+                      "resolved":  1
+                  },
+    "by_severity":  {
+                        "high":  2,
+                        "medium":  2
+                    }
+}

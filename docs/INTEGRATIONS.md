@@ -71,3 +71,16 @@ Provider-specific configuration is validated by the adapter before polling. A su
 Provider APIs evolve. Validate endpoint paths, auth behavior, pagination, cursor semantics, rate limits and response schemas against the version deployed by the operator. Add a fixture and regression test when a new response variant is accepted. Do not broaden parsing by silently guessing field names.
 
 For polling limits, leases, retries and operational health, see [Integration runtime](INTEGRATION_RUNTIME.md) and [Worker execution and scaling](SCALING_AND_WORKERS.md).
+
+## Optional Wazuh Docker lab network
+
+The default `compose.yaml` deliberately does not depend on a Wazuh deployment. To connect the integration worker to the Wazuh Docker single-node stack, use the separate override after that stack has created its external Docker network and the trusted CA bundle exists locally:
+
+```powershell
+docker network inspect single-node_default
+Test-Path .\wazuh-api-ca-bundle.pem
+docker compose -f compose.yaml -f compose.wazuh.yaml config
+docker compose -f compose.yaml -f compose.wazuh.yaml up --build -d
+```
+
+The override attaches only the integration worker to `single-node_default`, mounts `wazuh-api-ca-bundle.pem` read-only and sets `SSL_CERT_FILE`. Keep the CA bundle and all provider credentials local; they are not committed. If the Wazuh network or CA file is unavailable, use the base command in the root README without the override. To return to the standalone network configuration, recreate the stack with only `compose.yaml`.

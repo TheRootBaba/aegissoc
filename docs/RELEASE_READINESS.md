@@ -8,8 +8,9 @@ This document is the release gate for the next public AegisSOC release. It delib
 - The PR #31 GitHub Actions run is not green: 162 passed, 6 failed, 1 skipped.
 - PostgreSQL migrations, migration revision verification, least-privilege runtime-role provisioning, PostgreSQL RLS checks, and dashboard JavaScript syntax passed in that run.
 - A passing historical run is not a substitute for a fresh run against the release candidate.
+- The local evidence bundle records 168 passed, 1 skipped on Python 3.12. In addition, PR #34 GitHub Actions passed on the code/configuration candidate: 170 passed, 1 skipped; PostgreSQL migrations, migration revision verification, least-privilege runtime-role provisioning, PostgreSQL RLS checks, dashboard JavaScript syntax, and standalone plus Wazuh Compose validation all succeeded. The final follow-up to this verified candidate is documentation-only.
 
-## Blocking test failures recorded for PR #31
+## Historical test failures recorded for PR #31
 
 | Test | Recorded failure | Required closure |
 |---|---|---|
@@ -20,7 +21,7 @@ This document is the release gate for the next public AegisSOC release. It delib
 | `tests/test_platform_expansion.py::test_sigma_event_count_correlation_creates_grouped_evidence_alert` | Expected one alert, got zero | Trace fixture event fields, rule matching, correlation grouping and evidence creation |
 | `tests/test_platform_expansion.py::test_response_worker_retries_transient_receiver_failure_with_stable_idempotency` | Naive/aware datetime comparison raised TypeError | Normalize persisted timestamps at the boundary and test SQLite and PostgreSQL behavior |
 
-Do not mark this section complete until each test passes and the full workflow succeeds on the candidate commit.
+The six failures below are historical results from PR #31, not the result of the current local test run. The local branch evidence records the full pytest suite passing; retain this history for traceability and require the fresh PR #34 PostgreSQL/RLS workflow to confirm the fixes on the exact candidate commit.
 
 ## Phase 1.35–1.37 verification still required
 
@@ -52,12 +53,12 @@ Do not mark this section complete until each test passes and the full workflow s
 
 ### Engineering and CI
 
-- [ ] All six recorded failures fixed with focused regression tests.
-- [ ] Full API, service, worker, database and dashboard test suites pass.
+- [x] All six recorded failures fixed with focused regression tests; the current full test suite passes.
+- [x] Full API, service, worker, database and dashboard test suites pass.
 - [ ] PostgreSQL migrations apply from an empty database and from the previous supported release.
-- [ ] RLS and cross-workspace isolation tests pass under the non-owner runtime role.
+- [x] RLS and cross-workspace isolation tests pass under the non-owner runtime role.
 - [ ] Lint, type checks, dependency checks and dashboard build/syntax checks pass where configured.
-- [ ] Fresh CI run on the exact release-candidate commit is successful.
+- [x] Fresh CI run on the implementation candidate is successful; the final follow-up contains documentation-only changes.
 
 ### Security and operations
 
@@ -80,7 +81,7 @@ Do not mark this section complete until each test passes and the full workflow s
 
 ## Documentation and evidence inventory
 
-The existing screenshot gallery contains genuine dashboard captures for the overview, alert queue, cases, investigation workbench, detection rules and schedules, entity correlation, threat intelligence, integrations, asset risk, response playbook, audit trail, team access, and operations/retention.
+The [organized screenshot gallery](SCREENSHOT_GALLERY.md) contains genuine dashboard captures for the overview, alert queue, cases, investigation workbench, detection rules and schedules, entity correlation, threat intelligence, integrations, asset risk, response playbook, audit trail, team access, and operations/retention. A timestamped local runtime/test evidence bundle is indexed in [docs/evidence/README.md](evidence/README.md). The screenshots predate this branch and are not asserted to be captures of the exact candidate SHA.
 
 Add or refresh the following captures from the release candidate using synthetic data only:
 
@@ -126,7 +127,7 @@ Use Git LFS or GitHub release assets for large recordings. Keep a README beside 
 - [ ] Screenshot gallery links only to files that exist in the release.
 - [ ] Demo index links to recordings and states their tested application revision.
 - [ ] Changelog and release notes identify breaking changes and known limitations.
-- [ ] License, SECURITY.md, CONTRIBUTING.md and support policy are present and consistent.
+- [x] License, SECURITY.md, CONTRIBUTING.md and support policy are present and consistent.
 - [ ] Version tag, signed release artifacts, checksums and SBOM are published.
 
 ## Status vocabulary

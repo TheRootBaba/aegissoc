@@ -1,0 +1,14 @@
+services:
+  integration-worker:
+    environment:
+      SSL_CERT_FILE: /run/secrets/wazuh-api-ca-bundle.pem
+    volumes:
+      - ./wazuh-api-ca-bundle.pem:/run/secrets/wazuh-api-ca-bundle.pem:ro
+    networks:
+      - default
+      - wazuh
+
+networks:
+  wazuh:
+    external: true
+    name: single-node_default

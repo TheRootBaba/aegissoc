@@ -1,0 +1,17 @@
+﻿{
+    "total_events":  886,
+    "by_severity":  {
+                        "medium":  15,
+                        "info":  457,
+                        "high":  1,
+                        "low":  413
+                    },
+    "by_source":  {
+                      "synthetic-lab":  5,
+                      "manual-lab":  1,
+                      "wazuh":  5,
+                      "wazuh-indexer-lab":  872,
+                      "manual-test":  2,
+                      "syslog-lab":  1
+                  }
+}

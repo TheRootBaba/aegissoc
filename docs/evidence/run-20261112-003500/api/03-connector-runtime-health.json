@@ -1,0 +1,8 @@
+﻿{
+    "executions_by_status":  {
+                                 "success":  45
+                             },
+    "scheduled_connectors":  1,
+    "leased_connectors":  0,
+    "connectors_with_failures":  0
+}

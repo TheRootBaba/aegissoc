@@ -72,6 +72,14 @@ Requirements: Windows 10/11, WSL2, Docker Desktop using the WSL2 backend, and Gi
 
    Wait for `api` to report healthy. The API startup applies pending Alembic migrations using the migration-owner connection and then serves traffic through the restricted runtime database role. Worker services wait for API readiness.
 
+   The base stack does not require a Wazuh installation. To attach the integration worker to an existing Wazuh Docker single-node network, first create the network and local CA bundle, then use the optional override documented in [Integration adapters](docs/INTEGRATIONS.md):
+
+   ```powershell
+   docker compose -f compose.yaml -f compose.wazuh.yaml up --build -d
+   ```
+
+   Keep `wazuh-api-ca-bundle.pem` and provider credentials local; never commit them.
+
 4. Create the first administrator interactively:
 
    ```powershell
@@ -144,6 +152,10 @@ For a reviewer walkthrough and screenshots captured from the real application, f
 - [Operations, backup and recovery](docs/OPERATIONS_RUNBOOK.md)
 - [Dashboard design system](docs/DESIGN_SYSTEM.md)
 - [Demo and screenshot capture](docs/DEMO_CAPTURE.md)
+- [Contributor guide](CONTRIBUTING.md)
+- [Security reporting policy](SECURITY.md)
+- [Support policy](SUPPORT.md)
+- [Changelog](CHANGELOG.md)
 
 ## Development checks
 
@@ -170,4 +182,4 @@ The CI workflow also validates PostgreSQL migrations and RLS behavior, runs the 
 
 ## Product evidence
 
-See the [dashboard and API screenshot gallery](docs/SCREENSHOT_GALLERY.md) for genuine captures of the current interface, the related engineering guides, and recorded local walkthroughs. Screenshots are evidence of the captured environment and should not be read as a production certification.
+See the [dashboard and API screenshot gallery](docs/SCREENSHOT_GALLERY.md), the [organized screenshot index](evidence/README.md), and the [timestamped runtime verification evidence](docs/evidence/README.md) for genuine captures and lab checks. Screenshots and runtime snapshots describe their captured environment and should not be read as a production certification.

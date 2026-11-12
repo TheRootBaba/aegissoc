@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "web"
@@ -195,3 +196,20 @@ def test_dashboard_exposes_asset_risk_and_response_playbook_workspaces():
     assert "function renderPlaybooks()" in script
     assert "styles.css?v=3.2" in html
     assert "app.js?v=3.2" in html
+
+
+def test_dashboard_navigation_targets_existing_sections():
+    html = (WEB / "index.html").read_text(encoding="utf-8")
+    navigation = re.findall(r'<a\b[^>]*href="#([^"]+)"[^>]*data-nav="([^"]+)"', html)
+    sections = set(re.findall(r'<section\b[^>]*\bid="([^"]+)"', html))
+    assert len(navigation) == 15
+    assert len({name for name, _ in navigation}) == len(navigation)
+    assert all(target == name and target in sections for target, name in navigation)
+
+
+def test_screenshot_gallery_references_existing_image_assets():
+    gallery_path = ROOT / "docs" / "SCREENSHOT_GALLERY.md"
+    gallery = gallery_path.read_text(encoding="utf-8")
+    image_paths = re.findall(r'!\[[^]]*\]\(([^)]+)\)', gallery)
+    assert image_paths
+    assert all((gallery_path.parent / image_path).resolve().is_file() for image_path in image_paths)
