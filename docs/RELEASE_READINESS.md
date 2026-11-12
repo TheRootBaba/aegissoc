@@ -1,133 +1,116 @@
-# AegisSOC release readiness
+# Release readiness
 
-Use this checklist before publishing a release. Code being merged does not mean the deployment has been tested.
+This checklist tracks what has been tested and what still needs evidence before AegisSOC is used outside a development or lab environment. A merged pull request or a green CI run is not, by itself, a production release.
 
-## Current baseline
+## Current project status
 
-- PR #34 is merged into `main` at `3e7c70456e9db9de27543d42917b92f1a89d0291`.
-- Its GitHub Actions run passed on the merged implementation candidate: 170 passed, 1 skipped. PostgreSQL migrations, runtime-role setup, RLS tests, dashboard JavaScript syntax and both Compose configurations passed.
-- The six failures recorded during PR #31 are historical. The corresponding tests passed in the PR #34 full-suite run.
-- The local lab snapshot was captured at 00:35 UTC on 12 November 2026. It predates the dashboard state reported later that morning and is not a current health report.
-- The dashboard health changes for source timestamps, connector status, active-alert counts and overdue schedules are now in `main`. The CI run for that implementation passed with 174 passed and 1 skipped.\n- On 12 November 2026, the local Wazuh Compose override built and started. The API reported `alive` and `ready`, and the Docker network showed the Wazuh Indexer, Manager and Dashboard attached. This verifies container startup only. The dashboard still showed the Indexer source as inactive with no last-event timestamp, so end-to-end ingestion freshness remains unverified.\n- The current release pass adds recovery of missing source timestamps from existing stored telemetry. It does not treat a successful empty poll as proof that new events arrived.
-- A passing CI run verifies the tested code. It does not replace a clean installation, refreshed product screenshots or external-provider testing.
+**Suitable for public source publication and local-lab use. Not cleared for production deployment.**
 
-## Phase 1.35–1.37 verification still required
+The current baseline is `main` at commit `d993051` (12 November 2026).
 
-### Scanner export jobs
+### Verified
 
-- Contract tests for Nessus, Tenable and Qualys authentication, start, poll, download, throttling, malformed payload and provider failure responses.
-- Verify durable cursor recovery after worker restart.
-- Verify duplicate scan imports are idempotent.
-- Verify unknown assets are rejected and workspace boundaries are enforced.
-- Validate configured provider API paths and JSON payload formats against supported provider versions.
-- Record a successful test-environment integration run for each provider before claiming provider certification. CSV exports are not supported unless a dedicated parser is implemented and tested.
+- GitHub Actions passed on the publication pass: **175 tests passed, 1 skipped**. The workflow covered the test suite, PostgreSQL migration and runtime-role checks, RLS behavior, dashboard JavaScript syntax and Compose validation.
+- The local Docker smoke test used `compose.yaml` with the optional `compose.wazuh.yaml` override.
+- The API returned `alive` from `/health/live` and `ready` from `/health/ready`.
+- The API, database, scheduler, integration worker, response worker and retention worker started. The database and API health checks passed.
+- The integration worker queried the Wazuh Indexer successfully (HTTP 200) and completed its connector cycle.
+- The dashboard showed three active alerts, matching the three acknowledged alerts. There were no overdue detection schedules, detection failures or ingest rejections in that check.
+- The Wazuh source reported healthy status and a recent event timestamp after the local smoke test.
 
-### Sigma detection
+These checks describe one local lab run. They do not establish availability, security or performance in a production environment.
 
-- Positive and negative fixtures for every shipped rule.
-- Parser and unique-ID validation for the complete rule pack.
-- API import, test, enable, schedule and alert-evidence integration coverage.
-- Document supported Sigma syntax and explicitly list unsupported modifiers, pipelines and correlation types.
+### Dashboard health interpretation
 
-### Response orchestration
+The local dashboard still reported overall operations health as **degraded** because five other configured sources were stale. That status is expected when a source has no recent event evidence. A successful connector poll is not the same as receiving fresh events, so stale sources should not be marked healthy just to make the overall status green.
 
-- Approval, expiry, cancellation, dry-run, successful delivery and receiver rejection.
-- Stable idempotency under timeout, retry and worker restart.
-- Receiver reconciliation for succeeded, pending, failed and not-found states.
-- Compensation capability, reference validation, allowlist enforcement and idempotent compensation.
-- Demonstrate only against a local or dedicated test receiver; never trigger destructive production actions in a portfolio demo.
+## Remaining work before production
 
-## Release gates
+### Security review
+- [ ] Complete a threat model review and track findings to closure.
+- [ ] Run an independent security assessment or penetration test.
+- [ ] Review Python dependencies, base images and container packages for known vulnerabilities.
+- [ ] Exercise secret and signing-key rotation.
+- [ ] Generate an SBOM and sign release artifacts.
 
-### Engineering and CI
+### Operations and recovery
+- [ ] Test backup restoration in an isolated environment and record the result.
+- [ ] Define and verify recovery point and recovery time objectives.
+- [ ] Run load, concurrency and soak tests against documented targets.
+- [ ] Test worker restart, retry, lease expiry and database failover behavior.
+- [ ] Review monitoring, alerting, retention, incident response and rollback procedures.
 
-- [x] All six recorded failures fixed with focused regression tests; the current full test suite passes.
-- [x] Full API, service, worker, database and dashboard test suites pass.
-- [ ] PostgreSQL migrations apply from an empty database and from the previous supported release.
-- [x] RLS and cross-workspace isolation tests pass under the non-owner runtime role.
-- [ ] Lint, type checks, dependency checks and dashboard build/syntax checks pass where configured.
-- [x] PR #34 implementation candidate passed CI (170 passed, 1 skipped).
-- [x] Dashboard health follow-up implementation passes CI (174 passed, 1 skipped).
-- [x] Final documentation and dashboard follow-up head passes CI (174 passed, 1 skipped).
+### Installation and compatibility
+- [ ] Have a reviewer follow the clean-install guide on a fresh machine.
+- [ ] Test upgrades from the previous supported version and document rollback.
+- [ ] Validate each external provider against a representative supported version and account.
+- [ ] Publish supported versions, network requirements, permissions and known limitations.
+- [ ] Refresh screenshots and recordings from the exact release candidate.
 
-### Security and operations
+## Integration-specific checks
 
-- [ ] Threat model reviewed and findings tracked to closure.
-- [ ] Independent security assessment / penetration test completed.
-- [ ] Dependency and container image vulnerability review completed.
-- [ ] SBOM generated and release artifacts signed.
-- [ ] Secret and signing-key rotation exercised.
-- [ ] Backup restore and disaster recovery drill recorded.
-- [ ] Load, concurrency and soak tests completed against stated targets.
-- [ ] Monitoring, alerting, retention, incident response and rollback runbooks reviewed.
+### Scanner imports
+- [ ] Test Nessus, Tenable and Qualys authentication, export creation, polling, download and provider errors.
+- [ ] Confirm cursor recovery after worker restart and idempotent re-import behavior.
+- [ ] Verify unknown-asset handling and workspace isolation.
+- [ ] Record a successful run against each supported provider before describing it as integration-verified.
 
-### Deployment and compatibility
+Scanner adapters import existing exports. They do not start vulnerability scans.
 
-- [ ] Clean installation guide verified by a reviewer.
-- [ ] Upgrade and rollback tested from the supported previous version.
-- [ ] Production configuration uses PostgreSQL and a least-privilege runtime role.
-- [ ] SSO and each supported external provider tested in a representative environment.
-- [ ] Supported versions, network requirements, permissions and known limitations published.
+### Sigma detections
+- [ ] Keep positive and negative fixtures for each shipped rule.
+- [ ] Validate rule parsing, unique IDs, enablement, scheduling and alert evidence.
+- [ ] Document unsupported syntax, modifiers and correlation types.
 
-## Documentation and evidence inventory
+Only the documented Sigma subset is supported.
 
-The [organized screenshot gallery](SCREENSHOT_GALLERY.md) contains genuine historical dashboard captures for the overview, alert queue, cases, investigation workbench, detection rules and schedules, entity correlation, threat intelligence, integrations, asset risk, response playbook, audit trail, team access, and operations/retention. The timestamped local runtime/test bundle is indexed in [docs/evidence/README.md](evidence/README.md). It records the 00:35 UTC lab snapshot, not the later dashboard session. The screenshots predate the dashboard follow-up and do not show the current candidate. Recapture them after the local smoke test.
+### Response actions
+- [ ] Test approval, rejection, expiry, cancellation and dry-run behavior.
+- [ ] Test delivery, retries and idempotency across timeouts and worker restarts.
+- [ ] Test receiver reconciliation for successful, pending, failed and unknown outcomes.
+- [ ] Validate allowlists and compensation behavior against a dedicated test receiver.
 
-Add or refresh the following captures from the release candidate using synthetic data only:
+Do not use destructive production actions in a portfolio demo.
 
-| Asset | Evidence to capture |
+## Evidence to keep with a release
+
+For each release candidate, record:
+
+- application commit and version;
+- test run URL and result;
+- deployment configuration and provider versions;
+- date and environment used for each integration test;
+- backup/restore and load-test results;
+- screenshot or recording source for each demonstrated workflow;
+- known issues and checks that were not run.
+
+Use synthetic data for screenshots and recordings. Capture the application directly and redact sensitive values before saving the files. Do not add generated dashboard mockups as product evidence.
+
+Suggested screenshots:
+
+| File | What it should show |
 |---|---|
-| `overview.png` | Populated workspace overview and service health |
-| `source-health.png` | Source inventory, freshness and ingestion outcomes |
-| `event-detail.png` | Normalized event and raw evidence view |
-| `alert-evidence.png` | Alert with linked event IDs and detection explanation |
-| `case-timeline.png` | Case lifecycle, notes, assignments and linked alerts |
-| `scanner-export-job.png` | Scanner job start, polling and completion |
+| `overview.png` | Workspace overview and service health |
+| `source-health.png` | Source status, event freshness and ingestion outcomes |
+| `event-detail.png` | Normalized event and raw evidence |
+| `alert-evidence.png` | Alert with linked event IDs and detection details |
+| `case-timeline.png` | Case status, notes and linked alerts |
 | `scanner-findings.png` | Imported assets and vulnerability findings |
 | `sigma-validation.png` | Rule validation and enabled state |
-| `sigma-alert.png` | Detection result and evidence linkage |
-| `response-approval.png` | Approval and dry-run workflow |
-| `response-reconciliation.png` | Test receiver idempotency and reconciliation result |
+| `response-approval.png` | Approval and dry-run flow |
+| `response-reconciliation.png` | Test receiver result and reconciliation |
 | `workspace-access.png` | Membership and role permissions |
-| `audit-verification.png` | Audit trail and verification result |
-| `operations-health.png` | Worker status, retention and operational health |
+| `audit-verification.png` | Audit history and verification result |
+| `operations-health.png` | Worker status, retention and source health |
 
-Keep captures unaltered as product evidence. Redact sensitive information at the source by using a dedicated synthetic workspace. Do not add generated dashboard mockups as if they were application screenshots.
+## Status terms
 
-## Demo recordings
+Use these terms consistently in documentation and release notes:
 
-Capture from the exact release candidate:
+- **Implemented:** the code is present.
+- **Automated-tested:** the relevant automated tests pass.
+- **Integration-verified:** the feature has been exercised against a representative external service or receiver.
+- **Operationally-validated:** deployment, load, recovery and rotation exercises have recorded results.
+- **Production-ready:** the required security, operational and compatibility gates have been completed for the specific release.
 
-1. Product overview (2–3 minutes).
-2. Synthetic event → detection → alert → case investigation (3–5 minutes).
-3. Threat-intelligence enrichment (2–3 minutes).
-4. Scanner export and vulnerability import (2–4 minutes).
-5. Sigma rule validation and alert generation (2–3 minutes).
-6. Approval → safe test receiver → idempotency/reconciliation (3–5 minutes).
-7. Workspace isolation and access governance (2–3 minutes).
-8. Operations, health and recovery walkthrough (2–4 minutes).
-
-Use Git LFS or GitHub release assets for large recordings. Keep a README beside the recordings with application commit, environment, scenario, capture date and any limitations.
-
-## Final publication package
-
-- [ ] README describes supported capabilities without overstating provider certification or Sigma compatibility.
-- [ ] Architecture, data-flow, trust-boundary, deployment and recovery diagrams are current.
-- [ ] Getting-started, configuration, integrations, API, operations, security and upgrade guides are complete.
-- [ ] Screenshot gallery links only to files that exist in the release.
-- [ ] Demo index links to recordings and states their tested application revision.
-- [ ] Changelog and release notes identify breaking changes and known limitations.
-- [x] License, SECURITY.md, CONTRIBUTING.md and support policy are present and consistent.
-- [ ] Version tag, signed release artifacts, checksums and SBOM are published.
-
-## Status vocabulary
-
-Use only these meanings in release notes:
-
-- **Implemented:** code exists in the repository.
-- **Automated-tested:** relevant tests pass in CI.
-- **Integration-verified:** exercised against a representative external service or receiver.
-- **Operationally-validated:** load, restore, rotation and deployment exercises have evidence.
-- **Release-ready:** all mandatory release gates above are closed for the specific release candidate.
-
-A merged pull request alone does not imply integration-verified, operationally-validated or release-ready.
+Do not use these labels interchangeably. In particular, passing unit tests does not prove an external integration works, and a successful local startup does not prove production readiness.
