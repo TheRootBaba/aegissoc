@@ -70,6 +70,12 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://aegis_runtime:${RUNTIME_DB_PASSWORD:-aegis_runtime_dev_password}@db:5432/aegissoc
       WORKER_POLL_SECONDS: ${WORKER_POLL_SECONDS:-5}
+      SSL_CERT_FILE: /run/secrets/wazuh-api-ca-bundle.pem
+    volumes:
+      - ./wazuh-api-ca-bundle.pem:/run/secrets/wazuh-api-ca-bundle.pem:ro
+    networks:
+      - default
+      - wazuh
     depends_on:
       db:
         condition: service_healthy
@@ -132,3 +138,8 @@ services:
 volumes:
   aegis_postgres_data:
   aegis_backups:
+
+networks:
+  wazuh:
+    external: true
+    name: single-node_default
