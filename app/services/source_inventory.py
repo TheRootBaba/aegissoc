@@ -79,7 +79,6 @@ def record_ingestion(
         ))
         return
 
-    from sqlalchemy import select
     source = db.scalar(select(SourceRegistry).where(SourceRegistry.source_name == source_name))
     if source is None:
         db.add(SourceRegistry(**values))
@@ -96,7 +95,7 @@ def record_ingestion(
             source.display_name = display_name
     elif rejected:
         source.health_status = "failing"
-    if (accepted or duplicates) and event_timestamp and (
+    if event_timestamp and (
         source.last_successful_event_at is None or event_timestamp > source.last_successful_event_at
     ):
         source.last_successful_event_at = event_timestamp
