@@ -38,7 +38,7 @@ Before publishing screenshots from another environment, review them for account 
 | ![Response playbook](../evidence/dashboard/response-playbook.png) | Response playbook workflow | [Response governance](RESPONSE_GOVERNANCE.md) |
 | ![Security audit trail](../evidence/dashboard/security-audit-trail.png) | Recorded administrative and analyst actions | [Operations runbook](OPERATIONS_RUNBOOK.md) |
 | ![Team access](../evidence/dashboard/team-access.png) | Workspace membership and access | [Workspace identity](WORKSPACE_IDENTITY.md) |
-| ![Operations and retention](../evidence/operations%26retention.png) | Operational jobs and retention controls | [Operations runbook](OPERATIONS_RUNBOOK.md) |
+| ![Operations and retention](../evidence/dashboard/operations-retention.png) | Operational jobs and retention controls | [Operations runbook](OPERATIONS_RUNBOOK.md) |
 
 ## Local environment and recorded walkthroughs
 
