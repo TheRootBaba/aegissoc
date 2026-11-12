@@ -8,8 +8,9 @@ This document is the release gate for the next public AegisSOC release. It delib
 - The PR #31 GitHub Actions run is not green: 162 passed, 6 failed, 1 skipped.
 - PostgreSQL migrations, migration revision verification, least-privilege runtime-role provisioning, PostgreSQL RLS checks, and dashboard JavaScript syntax passed in that run.
 - A passing historical run is not a substitute for a fresh run against the release candidate.
+- The local evidence bundle on branch `work/aegissoc-completion` records a Python 3.12 run of 168 passed, 1 skipped (exit code 0). This is local test evidence, not GitHub Actions CI; the PostgreSQL/RLS workflow for PR #34 is the authoritative candidate check.
 
-## Blocking test failures recorded for PR #31
+## Historical test failures recorded for PR #31
 
 | Test | Recorded failure | Required closure |
 |---|---|---|
@@ -20,7 +21,7 @@ This document is the release gate for the next public AegisSOC release. It delib
 | `tests/test_platform_expansion.py::test_sigma_event_count_correlation_creates_grouped_evidence_alert` | Expected one alert, got zero | Trace fixture event fields, rule matching, correlation grouping and evidence creation |
 | `tests/test_platform_expansion.py::test_response_worker_retries_transient_receiver_failure_with_stable_idempotency` | Naive/aware datetime comparison raised TypeError | Normalize persisted timestamps at the boundary and test SQLite and PostgreSQL behavior |
 
-Do not mark this section complete until each test passes and the full workflow succeeds on the candidate commit.
+The six failures below are historical results from PR #31, not the result of the current local test run. The local branch evidence records the full pytest suite passing; retain this history for traceability and require the fresh PR #34 PostgreSQL/RLS workflow to confirm the fixes on the exact candidate commit.
 
 ## Phase 1.35–1.37 verification still required
 
