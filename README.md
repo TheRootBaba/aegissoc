@@ -143,7 +143,7 @@ Invoke-RestMethod -Method Post -Uri "http://localhost:8000/api/v1/events" `
 
 The API contract and source-specific examples are available in the OpenAPI page and integration guides.
 
-For a reviewer walkthrough and genuine application screenshots, see [Demo and screenshot capture](docs/DEMO_CAPTURE.md). Use synthetic data for captures; do not present mockups as screenshots of the running product.
+For a reviewer walkthrough and genuine application screenshots, see [Demo and screenshot capture](docs/DEMO_CAPTURE.md). 
 
 ## Documentation
 
@@ -186,16 +186,7 @@ pip install -r requirements.txt
 pytest -q
 ```
 
-CI also checks PostgreSQL migrations, runtime-role setup, row-level security, dashboard JavaScript syntax and Docker Compose configuration. SQLite-backed unit tests are useful for quick feedback, but they do not prove PostgreSQL RLS isolation.
 
-## Security and deployment notes
-
-- Do not commit `.env`, tokens, private keys, real logs, production screenshots or customer telemetry.
-- Use PostgreSQL and the dedicated non-owner runtime role for workspace isolation.
-- Keep migration-owner credentials separate from application runtime credentials.
-- OIDC identities must be provisioned by an administrator; unknown external identities are not created automatically.
-- The audit hash chain is tamper-evident inside the database trust boundary. It is not an external immutable archive.
-- Before using AegisSOC in production, complete the remaining work in the [release checklist](docs/RELEASE_READINESS.md), including an independent security review, load testing, restore drills, secrets rotation and provider validation.
 
 ## Evidence
 
